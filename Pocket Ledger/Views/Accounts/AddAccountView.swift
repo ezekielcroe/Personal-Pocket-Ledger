@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Form to add a new account with a name and initial balance.
+/// Form to add a new account with a name, starting balance, and optional target.
 struct AddAccountView: View {
     @EnvironmentObject var data: AppData
     @Environment(\.dismiss) var dismiss
@@ -24,54 +24,47 @@ struct AddAccountView: View {
     var body: some View {
         NavigationStack {
             Form {
-                // Section 1: Name
-                Section(header: Text("Name")) {
-                    TextField("Account Name", text: $name)
+                // SECTION 1: Account Type Toggle (at top for clarity)
+                Section(footer: Text(isCredit ?
+                        "Credit accounts track debt or spending (credit cards, loans, budgets)." :
+                        "Debit accounts track cash on hand (bank accounts, wallets, savings).")) {
+                    Toggle("Credit Account", isOn: $isCredit)
+                        .onChange(of: isCredit) { _ in
+                            // Don't clear target - let user decide
+                            // They might be switching back and forth
+                        }
+                }
+                
+                // SECTION 2: Name
+                Section(header: Text("Account Name")) {
+                    TextField("e.g., Checking, Visa, Emergency Fund", text: $name)
                         .focused($focusedField, equals: .name)
-                        .submitLabel(.next) // Explicit "Next" button on keyboard
+                        .submitLabel(.next)
                         .onSubmit {
-                            // Name -> Amount
                             focusedField = .amount
                         }
                 }
                 
-                // Section 2: Amount
-                Section(header: Text(isCredit ? "Credit Limit" : "Initial Amount")) {
-                    TextField(isCredit ? "Credit Limit" : "Amount", text: $initialAmountString)
+                // SECTION 3: Starting Balance
+                Section(header: Text("Starting Balance"), footer: Text(isCredit ?
+                        "Enter the current balance owed or spent (e.g., $1,250 of credit card debt)." :
+                        "Enter how much money is currently in this account.")) {
+                    TextField("Amount", text: $initialAmountString)
                         .keyboardType(.decimalPad)
                         .focused($focusedField, equals: .amount)
                         .onSubmit {
-                            // Amount -> Target (if Debit) OR Save (if Credit)
-                            if !isCredit {
-                                focusedField = .target
-                            } else if canSave {
-                                saveAccount()
-                            }
+                            focusedField = .target
                         }
                 }
                 
-                // Section 3: Target (Debit Only)
-                if !isCredit {
-                    Section(header: Text("Goal Target (Optional)")) {
-                        TextField("Target Amount", text: $targetAmountString)
-                            .keyboardType(.decimalPad)
-                            .focused($focusedField, equals: .target)
-                            .onSubmit {
-                                // Target -> Save
-                                if canSave {
-                                    saveAccount()
-                                }
-                            }
-                    }
-                }
-
-                // Section 4: Type Toggle
-                Section {
-                    Toggle("Credit Account", isOn: $isCredit)
-                        .onChange(of: isCredit) { newValue in
-                            // Clear target if switching to Credit, as Credit accounts don't have savings goals
-                            if newValue {
-                                targetAmountString = ""
+                // SECTION 4: Target Amount (Optional)
+                Section(header: Text("Target Amount (Optional)"), footer: Text(targetFooterText)) {
+                    TextField("Target", text: $targetAmountString)
+                        .keyboardType(.decimalPad)
+                        .focused($focusedField, equals: .target)
+                        .onSubmit {
+                            if canSave {
+                                saveAccount()
                             }
                         }
                 }
@@ -88,23 +81,39 @@ struct AddAccountView: View {
             )
             .decimalPadToolbar()
             .onAppear {
-                // Auto-focus on Name field when view appears
                 focusedField = .name
             }
         }
     }
     
-    // MARK: - Helpers
+    // MARK: - Computed Properties
+    
+    /// Footer text that explains what the target means for each account type
+    private var targetFooterText: String {
+        let hasTarget = !targetAmountString.isEmpty
+        
+        if !hasTarget {
+            return "Leave blank for simple balance tracking."
+        }
+        
+        if isCredit {
+            return "This will become a Budget account. Track spending against a limit (e.g., $500/month for groceries)."
+        } else {
+            return "This will become a Goal account. Track progress toward a savings target (e.g., $5,000 emergency fund)."
+        }
+    }
+    
+    // MARK: - Validation
     
     private var canSave: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
     }
     
+    // MARK: - Actions
+    
     private func saveAccount() {
         let amount = Double(initialAmountString) ?? 0
-        
-        // Parse target if present (and only if not credit)
-        let target = (!isCredit && !targetAmountString.isEmpty) ? Double(targetAmountString) : nil
+        let target = targetAmountString.isEmpty ? nil : Double(targetAmountString)
         
         data.addAccount(
             name: name,

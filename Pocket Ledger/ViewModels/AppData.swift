@@ -459,8 +459,12 @@ class AppData: ObservableObject {
             .reduce(0) { $0 + $1.amount }
         
         if account.isCredit {
-            return account.initialAmount - outflow + inflow
+            // Credit: Outflows increase balance (debt/spending grows)
+            // Inflows decrease balance (payments reduce debt/spending)
+            return account.initialAmount + outflow - inflow
         } else {
+            // Debit: Inflows increase balance (money in)
+            // Outflows decrease balance (money out)
             return account.initialAmount + inflow - outflow
         }
     }
@@ -468,7 +472,14 @@ class AppData: ObservableObject {
     func balance(for group: AccountGroup) -> Double {
         group.accountIDs.reduce(0) { partialResult, accountID in
             if let account = accounts.first(where: { $0.id == accountID }) {
-                return partialResult + balance(for: account)
+                let accountBalance = balance(for: account)
+                
+                // Credit accounts represent debt/spending, so subtract them
+                if account.isCredit {
+                    return partialResult - accountBalance
+                } else {
+                    return partialResult + accountBalance
+                }
             }
             return partialResult
         }

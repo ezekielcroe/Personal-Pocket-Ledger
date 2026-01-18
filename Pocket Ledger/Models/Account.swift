@@ -1,11 +1,17 @@
 import Foundation
 
-/// Represents a financial container such as a bank account or a wallet.
+/// Represents a financial container such as a bank account, credit card, savings goal, or budget envelope.
 ///
-/// Each `Account` has a unique identifier, a name, an initial amount and a
-/// creation date. The `initialAmount` reflects the balance at the time
-/// the account is created in the app; subsequent transactions will modify
-/// the running balance.
+/// Each `Account` has a unique identifier, a name, an initial amount and a creation date.
+/// The `initialAmount` reflects the starting balance when the account is created.
+/// Subsequent transactions will modify the running balance.
+///
+/// Accounts can be categorized into four types based on `isCredit` and `targetAmount`:
+/// - **Debit** (isCredit: false, targetAmount: nil): Cash, checking accounts
+/// - **Credit** (isCredit: true, targetAmount: nil): Credit cards, loans
+/// - **Goal** (isCredit: false, targetAmount: set): Savings goals with targets
+/// - **Budget** (isCredit: true, targetAmount: set): Envelope budgets with spending limits
+
 struct Account: Identifiable, Codable, Hashable, Sendable {
     /// Unique identifier for the account.
     let id: UUID
@@ -15,18 +21,17 @@ struct Account: Identifiable, Codable, Hashable, Sendable {
     var initialAmount: Double
     /// Date when the account record was created.
     var created: Date
-
-    /// Indicates whether this account functions as a credit account.  A
-    /// credit account is one where the ``initialAmount`` represents the
-    /// monthly credit limit or budget rather than an actual balance.  When
-    /// computing the current balance for a credit account the initial
-    /// amount is treated as available credit, so spending reduces the
-    /// balance and incoming payments restore it.  Defaults to `false` for
-    /// typical cash or bank accounts.
+    
+    /// Indicates whether this account functions as a credit account.
+    /// - For debit accounts: balance increases with inflows, decreases with outflows
+    /// - For credit accounts: balance increases with outflows (debt/spending), decreases with inflows (payments)
     var isCredit: Bool = false
     
+    /// Optional target amount for goal tracking or budget limits.
+    /// - For debit accounts: represents a savings goal to reach
+    /// - For credit accounts: represents a spending budget limit
     var targetAmount: Double? = nil
-
+    
     init(id: UUID = UUID(),
          name: String,
          initialAmount: Double = 0.0,
@@ -39,6 +44,5 @@ struct Account: Identifiable, Codable, Hashable, Sendable {
         self.created = created
         self.isCredit = isCredit
         self.targetAmount = targetAmount
-
     }
 }

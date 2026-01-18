@@ -1,11 +1,3 @@
-//
-//  AccountGroupDetailView.swift
-//  Pocket Ledger
-//
-//  Created by Zhi Zheng Yeo on 18/1/26.
-//
-
-
 import SwiftUI
 
 struct AccountGroupDetailView: View {
@@ -16,40 +8,43 @@ struct AccountGroupDetailView: View {
     
     var body: some View {
         List {
-            Section(header: Text("Balance")) {
+            // SECTION 1: Total Balance
+            Section(header: Text("Total")) {
                 HStack {
-                    Text("Total Group Balance")
+                    Text("Group Balance")
+                        .font(.headline)
                     Spacer()
                     Text(data.balance(for: group).formattedCurrency(symbol: currencySymbol))
+                        .font(.title2)
                         .fontWeight(.bold)
+                        .foregroundColor(totalBalanceColor)
                 }
             }
             
-            // Statistics parity with physical accounts
+            // SECTION 2: Breakdown by Account
+            Section(header: Text("Accounts in Group"), footer: Text(balanceCalculationExplanation)) {
+                ForEach(group.accountIDs, id: \.self) { id in
+                    if let account = data.accounts.first(where: { $0.id == id }) {
+                        NavigationLink(destination: AccountDetailView(account: account)) {
+                            accountBreakdownRow(for: account)
+                        }
+                    }
+                }
+            }
+            
+            // SECTION 3: Statistics (This Period)
             Section(header: Text("Statistics")) {
                 let totals = calculateGroupMonthlyTotals()
                 StatRow(title: "Inflow (This Month)", value: totals.inflow, symbol: currencySymbol, color: .green)
                 StatRow(title: "Outflow (This Month)", value: totals.outflow, symbol: currencySymbol, color: .red)
             }
             
-            Section(header: Text("Breakdown")) {
-                ForEach(group.accountIDs, id: \.self) { id in
-                    if let acc = data.accounts.first(where: { $0.id == id }) {
-                        HStack {
-                            Text(acc.name)
-                            Spacer()
-                            Text(data.balance(for: acc).formattedCurrency(symbol: currencySymbol))
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-            }
-            
+            // SECTION 4: Recent Activity
             Section(header: Text("Recent Activity")) {
                 let recent = data.transactions
                     .filter { group.accountIDs.contains($0.accountID) }
                     .sorted { $0.date > $1.date }
-                    .prefix(50)
+                    .prefix(25)
                 
                 if recent.isEmpty {
                     Text("No transactions in this group.")
@@ -65,6 +60,129 @@ struct AccountGroupDetailView: View {
         }
         .navigationTitle(group.name)
     }
+    
+    // MARK: - Account Breakdown Row
+    
+    @ViewBuilder
+    private func accountBreakdownRow(for account: Account) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(account.name)
+                    .font(.headline)
+                
+                // Show account type badge
+                HStack(spacing: 4) {
+                    Image(systemName: accountTypeIcon(for: account))
+                        .font(.caption2)
+                    Text(accountTypeLabel(for: account))
+                        .font(.caption)
+                }
+                .foregroundColor(accountTypeLabelColor(for: account))
+            }
+            
+            Spacer()
+            
+            VStack(alignment: .trailing, spacing: 4) {
+                // Main balance
+                Text(data.balance(for: account).formattedCurrency(symbol: currencySymbol))
+                    .font(.body)
+                    .fontWeight(.medium)
+                    .foregroundColor(accountBalanceColor(for: account))
+                
+                // Show contribution to group total
+                Text(contributionText(for: account))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+    
+    // MARK: - Helper Functions
+    
+    private func accountTypeIcon(for account: Account) -> String {
+        switch (account.isCredit, account.targetAmount) {
+        case (false, nil):   return "dollarsign.circle"      // Debit
+        case (true, nil):    return "creditcard"             // Credit
+        case (false, .some): return "target"                 // Goal
+        case (true, .some):  return "chart.bar.doc.horizontal" // Budget
+        }
+    }
+    
+    private func accountTypeLabel(for account: Account) -> String {
+        switch (account.isCredit, account.targetAmount) {
+        case (false, nil):   return "Debit"
+        case (true, nil):    return "Credit"
+        case (false, .some): return "Goal"
+        case (true, .some):  return "Budget"
+        }
+    }
+    
+    private func accountTypeLabelColor(for account: Account) -> Color {
+        switch (account.isCredit, account.targetAmount) {
+        case (false, .some): return .blue    // Goal
+        case (true, .some):  return .purple  // Budget
+        default:             return .secondary
+        }
+    }
+    
+    private func accountBalanceColor(for account: Account) -> Color {
+        let balance = data.balance(for: account)
+        
+        if account.isCredit {
+            // Credit: Warn if high
+            if balance > account.initialAmount * 0.9 {
+                return .red
+            } else if balance > account.initialAmount * 0.7 {
+                return .orange
+            }
+        } else {
+            // Debit: Warn if negative
+            if balance < 0 {
+                return .red
+            }
+        }
+        return .primary
+    }
+    
+    /// Shows how this account contributes to the group total
+    private func contributionText(for account: Account) -> String {
+        let balance = data.balance(for: account)
+        
+        if account.isCredit {
+            // Credit accounts are subtracted from total
+            return "(\(balance.formattedCurrency(symbol: currencySymbol)))"
+        } else {
+            // Debit accounts are added to total
+            return "+\(balance.formattedCurrency(symbol: currencySymbol))"
+        }
+    }
+    
+    /// Color for the total balance
+    private var totalBalanceColor: Color {
+        let total = data.balance(for: group)
+        return total < 0 ? .red : .primary
+    }
+    
+    /// Explains how the balance is calculated
+    private var balanceCalculationExplanation: String {
+        let hasDebit = group.accountIDs.contains { id in
+            data.accounts.first(where: { $0.id == id })?.isCredit == false
+        }
+        let hasCredit = group.accountIDs.contains { id in
+            data.accounts.first(where: { $0.id == id })?.isCredit == true
+        }
+        
+        if hasDebit && hasCredit {
+            return "Group total = Debit accounts (+) minus Credit accounts (−). Credit balances shown in parentheses are subtracted from the total."
+        } else if hasCredit {
+            return "Group total = Sum of all credit balances. Negative total means net debt."
+        } else {
+            return "Group total = Sum of all debit balances."
+        }
+    }
+    
+    // MARK: - Statistics Calculation
     
     private func calculateGroupMonthlyTotals() -> (inflow: Double, outflow: Double) {
         let transactions = data.transactions.filter { group.accountIDs.contains($0.accountID) }

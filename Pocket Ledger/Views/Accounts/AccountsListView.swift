@@ -13,15 +13,31 @@ struct AccountsListView: View {
 
     // MARK: - Filtered Lists
     
+    /// Debit accounts without target (Cash, Checking)
     private var debitAccounts: [Account] {
         data.accounts
-            .filter { !$0.isCredit }
+            .filter { !$0.isCredit && $0.targetAmount == nil }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
     
+    /// Credit accounts without target (Credit Cards, Loans)
     private var creditAccounts: [Account] {
         data.accounts
-            .filter { $0.isCredit }
+            .filter { $0.isCredit && $0.targetAmount == nil }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+    
+    /// Debit accounts with target (Savings Goals)
+    private var goalAccounts: [Account] {
+        data.accounts
+            .filter { !$0.isCredit && $0.targetAmount != nil }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+    
+    /// Credit accounts with target (Budget Envelopes)
+    private var budgetAccounts: [Account] {
+        data.accounts
+            .filter { $0.isCredit && $0.targetAmount != nil }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
@@ -35,25 +51,43 @@ struct AccountsListView: View {
                             .padding()
                     }
 
-                    // 1. DEBIT SECTION
+                    // SECTION 1: DEBIT (Cash/Checking)
                     if !debitAccounts.isEmpty {
-                        Section(header: Text("Debit Accounts")) {
+                        Section(header: Text("Debit")) {
                             ForEach(debitAccounts) { account in
                                 accountRowLink(for: account)
                             }
                         }
                     }
 
-                    // 2. CREDIT SECTION
+                    // SECTION 2: CREDIT (Credit Cards/Loans)
                     if !creditAccounts.isEmpty {
-                        Section(header: Text("Credit Accounts")) {
+                        Section(header: Text("Credit")) {
                             ForEach(creditAccounts) { account in
                                 accountRowLink(for: account)
                             }
                         }
                     }
                     
-                    // 3. ACCOUNT GROUPS SECTION
+                    // SECTION 3: GOALS (Savings Targets)
+                    if !goalAccounts.isEmpty {
+                        Section(header: Text("Goals")) {
+                            ForEach(goalAccounts) { account in
+                                accountRowLink(for: account)
+                            }
+                        }
+                    }
+                    
+                    // SECTION 4: BUDGETS (Spending Envelopes)
+                    if !budgetAccounts.isEmpty {
+                        Section(header: Text("Budgets")) {
+                            ForEach(budgetAccounts) { account in
+                                accountRowLink(for: account)
+                            }
+                        }
+                    }
+                    
+                    // SECTION 5: ACCOUNT GROUPS (Virtual Aggregates)
                     if !data.accountGroups.isEmpty {
                         Section(header: Text("Account Groups")) {
                             ForEach(data.accountGroups) { group in
@@ -91,7 +125,7 @@ struct AccountsListView: View {
                     Color.clear.frame(height: 80).listRowBackground(Color.clear)
                 }
                 
-                // NEW: Multi-Action FAB
+                // Multi-Action FAB
                 Menu {
                     Button {
                         showingAddSheet = true
@@ -170,29 +204,35 @@ struct AccountRow: View {
                 Text(account.name)
                     .font(.headline)
                 
-                // Show "Goal Account" label if it has a target
-                if let _ = account.targetAmount {
-                    Text("Target Account")
-                        .font(.caption)
-                        .foregroundColor(.blue)
-                } else {
-                    Text(account.isCredit ? "Credit Account" : "Debit Account")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+                // Type-specific subtitle
+                Text(accountTypeLabel)
+                    .font(.caption)
+                    .foregroundColor(accountTypeLabelColor)
             }
             Spacer()
             
-            // NEW: Display Logic
-            if let target = account.targetAmount, target > 0 {
-                let current = data.balance(for: account)
-                let isMet = current >= target
-                
-                Text("\(current.formattedCurrency(symbol: currencySymbol)) / \(target.formattedCurrency(symbol: currencySymbol))")
-                    .foregroundColor(isMet ? .green : .primary) // Green if met
-                    .fontWeight(isMet ? .bold : .regular)      // Bold if met
+            // Balance Display Logic
+            if let target = account.targetAmount {
+                if account.isCredit {
+                    // BUDGET ACCOUNT: Show remaining budget (Target - Spent)
+                    let spent = data.balance(for: account)
+                    let remaining = target - spent
+                    let isOverBudget = remaining < 0
+                    
+                    Text("\(remaining.formattedCurrency(symbol: currencySymbol)) left")
+                        .foregroundColor(isOverBudget ? .red : (remaining < target * 0.2 ? .orange : .green))
+                        .fontWeight(isOverBudget ? .bold : .regular)
+                } else {
+                    // GOAL ACCOUNT: Show progress (Current / Target)
+                    let current = data.balance(for: account)
+                    let isMet = current >= target
+                    
+                    Text("\(current.formattedCurrency(symbol: currencySymbol)) / \(target.formattedCurrency(symbol: currencySymbol))")
+                        .foregroundColor(isMet ? .green : .primary)
+                        .fontWeight(isMet ? .bold : .regular)
+                }
             } else {
-                // Standard Display
+                // NO TARGET: Show simple balance
                 Text(data.balance(for: account).formattedCurrency(symbol: currencySymbol))
                     .foregroundColor(balanceColor)
             }
@@ -200,11 +240,44 @@ struct AccountRow: View {
         .padding(.vertical, 4)
     }
     
+    // MARK: - Computed Properties
+    
+    /// Returns the appropriate label based on account type
+    private var accountTypeLabel: String {
+        switch (account.isCredit, account.targetAmount) {
+        case (false, nil):   return "Debit Account"
+        case (true, nil):    return "Credit Account"
+        case (false, .some): return "Goal Account"
+        case (true, .some):  return "Budget Account"
+        }
+    }
+    
+    /// Color coding for account type labels
+    private var accountTypeLabelColor: Color {
+        switch (account.isCredit, account.targetAmount) {
+        case (false, .some): return .blue    // Goals
+        case (true, .some):  return .purple  // Budgets
+        default:             return .secondary
+        }
+    }
+    
+    /// Balance text color based on account type and status
     private var balanceColor: Color {
+        let balance = data.balance(for: account)
+        
         if account.isCredit {
-            return .orange
+            // Credit accounts: Higher balance = more debt/spending
+            // Warn if approaching or exceeding initial amount
+            if balance > account.initialAmount * 0.9 {
+                return .red
+            } else if balance > account.initialAmount * 0.7 {
+                return .orange
+            } else {
+                return .primary
+            }
         } else {
-            return data.balance(for: account) < 0 ? .red : .primary
+            // Debit accounts: Negative balance = overdrawn
+            return balance < 0 ? .red : .primary
         }
     }
 }
