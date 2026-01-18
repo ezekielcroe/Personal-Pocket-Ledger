@@ -1,86 +1,50 @@
-//
-//  ContentView.swift
-//  Pocket Ledger
-//
-//  Created by Zhi Zheng Yeo on 17/1/26.
-//
-
 import SwiftUI
-import CoreData
 
 struct ContentView: View {
-    @Environment(\.managedObjectContext) private var viewContext
-
-    @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \Item.timestamp, ascending: true)],
-        animation: .default)
-    private var items: FetchedResults<Item>
+    @EnvironmentObject var data: AppData
+    @AppStorage("selectedTheme") private var selectedTheme: Int = 0
+    
+    // State to trigger the deep-link sheet (from Notifications)
+    @State private var pendingTemplate: TransactionTemplate?
 
     var body: some View {
-        NavigationView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp!, formatter: itemFormatter)")
-                    } label: {
-                        Text(item.timestamp!, formatter: itemFormatter)
-                    }
-                }
-                .onDelete(perform: deleteItems)
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
-            }
-            Text("Select an item")
+        TabView {
+            // Tab 1: Accounts
+            AccountsListView()
+                .tabItem { Label("Accounts", systemImage: "wallet.pass") }
+
+            // Tab 2: Transactions
+            TransactionListView()
+                .tabItem { Label("Transact", systemImage: "list.bullet") }
+
+            // Tab 3: Templates (ADDED)
+            TemplatesView()
+                .tabItem { Label("Templates", systemImage: "doc.on.doc") }
+
+            // Tab 4: Insights
+            InsightsView()
+                .tabItem { Label("Insights", systemImage: "chart.pie") }
+
+            // Tab 5: More (Settings)
+            SettingsView()
+                .tabItem { Label("More", systemImage: "ellipsis") }
         }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(context: viewContext)
-            newItem.timestamp = Date()
-
-            do {
-                try viewContext.save()
-            } catch {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-                let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
+        .preferredColorScheme(selectedTheme == 0 ? nil : (selectedTheme == 1 ? .light : .dark))
+        
+        // 1. Listen for the signal from AppDelegate (Notification Tap)
+        .onReceive(NotificationCenter.default.publisher(for: .openTransactionTemplate)) { notification in
+            if let idString = notification.userInfo?["id"] as? String,
+               let uuid = UUID(uuidString: idString),
+               let foundTemplate = data.templates.first(where: { $0.id == uuid }) {
+                
+                // Set this state to trigger the sheet below
+                pendingTemplate = foundTemplate
             }
         }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            offsets.map { items[$0] }.forEach(viewContext.delete)
-
-            do {
-                try viewContext.save()
-            } catch {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-                let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
-            }
+        // 2. Present the Add View over EVERYTHING when a notification is tapped
+        .sheet(item: $pendingTemplate) { template in
+            AddTransactionView(initialType: template.type, template: template)
+                .environmentObject(data)
         }
     }
-}
-
-private let itemFormatter: DateFormatter = {
-    let formatter = DateFormatter()
-    formatter.dateStyle = .short
-    formatter.timeStyle = .medium
-    return formatter
-}()
-
-#Preview {
-    ContentView().environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
 }
