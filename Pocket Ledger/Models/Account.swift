@@ -11,8 +11,7 @@ import Foundation
 /// - **Credit** (isCredit: true, targetAmount: nil): Credit cards, loans
 /// - **Goal** (isCredit: false, targetAmount: set): Savings goals with targets
 /// - **Budget** (isCredit: true, targetAmount: set): Envelope budgets with spending limits
-
-struct Account: Identifiable, Codable, Hashable, Sendable {
+struct Account: Identifiable, Hashable, Sendable {
     /// Unique identifier for the account.
     let id: UUID
     /// Human-readable name for the account.
@@ -44,5 +43,45 @@ struct Account: Identifiable, Codable, Hashable, Sendable {
         self.created = created
         self.isCredit = isCredit
         self.targetAmount = targetAmount
+    }
+}
+
+// MARK: - Codable Implementation with Backward Compatibility
+
+extension Account: Codable {
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case initialAmount
+        case created
+        case isCredit
+        case targetAmount
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        initialAmount = try container.decode(Double.self, forKey: .initialAmount)
+        created = try container.decode(Date.self, forKey: .created)
+        isCredit = try container.decodeIfPresent(Bool.self, forKey: .isCredit) ?? false
+        
+        // NEW: Handle targetAmount with backward compatibility
+        // If the key doesn't exist in old data, default to nil
+        targetAmount = try container.decodeIfPresent(Double.self, forKey: .targetAmount)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(initialAmount, forKey: .initialAmount)
+        try container.encode(created, forKey: .created)
+        try container.encode(isCredit, forKey: .isCredit)
+        
+        // Always encode targetAmount (even if nil) for forward compatibility
+        try container.encode(targetAmount, forKey: .targetAmount)
     }
 }

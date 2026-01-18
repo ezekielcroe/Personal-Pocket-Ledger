@@ -218,12 +218,11 @@ class AppData: ObservableObject {
     // MARK: - UPDATE & DELETE Operations
 
     func updateAccount(id: UUID, name: String, initialAmount: Double, targetAmount: Double? = nil) {
-            if let index = accounts.firstIndex(where: { $0.id == id }) {
-                accounts[index].name = name
-                accounts[index].initialAmount = initialAmount
-                // Only update target if it's not a credit account
-                accounts[index].targetAmount = accounts[index].isCredit ? nil : targetAmount
-                save()
+        if let index = accounts.firstIndex(where: { $0.id == id }) {
+            accounts[index].name = name
+            accounts[index].initialAmount = initialAmount
+            accounts[index].targetAmount = targetAmount  // Always update target
+            save()
         }
     }
 
