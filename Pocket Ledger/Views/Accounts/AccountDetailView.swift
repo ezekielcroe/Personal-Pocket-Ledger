@@ -13,22 +13,27 @@ struct AccountDetailView: View {
             // SECTION 1: Balance Card (Type-Specific)
             balanceSection
             
-            // SECTION 2: Target Progress (Goals & Budgets Only)
-            if account.targetAmount != nil {
+            // SECTION 2: Target Progress (Goals, Budgets, Debts)
+            if shouldShowTargetProgress {
                 targetProgressSection
             }
             
-            // SECTION 3: Statistics
+            // SECTION 3: Installment Calculator (Goals & Debts with target dates)
+            if shouldShowInstallmentCalculator {
+                installmentCalculatorSection
+            }
+            
+            // SECTION 4: Statistics
             statisticsSection
             
-            // SECTION 4: Recent Transactions
+            // SECTION 5: Recent Transactions
             recentTransactionsSection
         }
         .navigationTitle(account.name)
         .navigationBarTitleDisplayMode(.inline)
     }
     
-    // MARK: - Balance Section (Type-Specific)
+    // MARK: - Balance Section
     
     @ViewBuilder
     private var balanceSection: some View {
@@ -36,9 +41,9 @@ struct AccountDetailView: View {
             VStack(spacing: 12) {
                 // Account Type Badge
                 HStack {
-                    Image(systemName: accountTypeIcon)
+                    Image(systemName: account.accountType.icon)
                         .foregroundColor(accountTypeColor)
-                    Text(accountTypeLabel)
+                    Text(account.accountType.rawValue + " Account")
                         .font(.subheadline)
                         .foregroundColor(accountTypeColor)
                     Spacer()
@@ -68,12 +73,12 @@ struct AccountDetailView: View {
         }
     }
     
-    // MARK: - Target Progress Section (Goals & Budgets)
+    // MARK: - Target Progress Section
     
     @ViewBuilder
     private var targetProgressSection: some View {
-        if let target = account.targetAmount {
-            Section(header: Text(account.isCredit ? "Budget Progress" : "Goal Progress")) {
+        if let target = account.targetAmount, target > 0 {
+            Section(header: Text(progressSectionTitle)) {
                 VStack(spacing: 16) {
                     // Progress Bar
                     progressBar(current: data.balance(for: account), target: target)
@@ -81,7 +86,7 @@ struct AccountDetailView: View {
                     // Progress Stats
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(account.isCredit ? "Spent" : "Saved")
+                            Text(currentAmountLabel)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                             Text(data.balance(for: account).formattedCurrency(symbol: currencySymbol))
@@ -91,7 +96,7 @@ struct AccountDetailView: View {
                         Spacer()
                         
                         VStack(alignment: .trailing, spacing: 4) {
-                            Text(account.isCredit ? "Budget" : "Goal")
+                            Text(targetAmountLabel)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                             Text(target.formattedCurrency(symbol: currencySymbol))
@@ -99,55 +104,115 @@ struct AccountDetailView: View {
                         }
                     }
                     
-                    // Remaining/Over amount
-                    if account.isCredit {
-                        // Budget: Show remaining or overspent
-                        let remaining = target - data.balance(for: account)
+                    // Status Badge
+                    statusBadge(current: data.balance(for: account), target: target)
+                }
+                .padding(.vertical, 8)
+            }
+        } else if account.accountType == .debt {
+            // Debt account with target = 0 or nil
+            Section(header: Text("Debt Tracking")) {
+                VStack(spacing: 12) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Current Debt")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text(data.balance(for: account).formattedCurrency(symbol: currencySymbol))
+                                .font(.headline)
+                        }
+                        
+                        Spacer()
+                        
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text("Payoff Goal")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text("$0.00")
+                                .font(.headline)
+                        }
+                    }
+                    
+                    if data.balance(for: account) > 0 {
                         HStack {
-                            Image(systemName: remaining >= 0 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                                .foregroundColor(remaining >= 0 ? .green : .red)
-                            Text(remaining >= 0 ?
-                                 "\(remaining.formattedCurrency(symbol: currencySymbol)) remaining" :
-                                 "Over budget by \(abs(remaining).formattedCurrency(symbol: currencySymbol))")
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                            Text("Set a target date to calculate payment plan")
+                                .font(.caption)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(8)
+                        .background(Color.orange.opacity(0.1))
+                        .cornerRadius(8)
+                    } else {
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                            Text("Debt paid off! 🎉")
                                 .font(.subheadline)
                                 .fontWeight(.medium)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(8)
-                        .background(remaining >= 0 ? Color.green.opacity(0.1) : Color.red.opacity(0.1))
+                        .background(Color.green.opacity(0.1))
                         .cornerRadius(8)
-                    } else {
-                        // Goal: Show remaining or achieved
-                        let current = data.balance(for: account)
-                        if current >= target {
-                            HStack {
-                                Image(systemName: "star.fill")
-                                    .foregroundColor(.yellow)
-                                Text("Goal reached! 🎉")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(8)
-                            .background(Color.green.opacity(0.1))
-                            .cornerRadius(8)
-                        } else {
-                            let remaining = target - current
-                            HStack {
-                                Image(systemName: "arrow.up.circle.fill")
-                                    .foregroundColor(.blue)
-                                Text("\(remaining.formattedCurrency(symbol: currencySymbol)) to go")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(8)
-                            .background(Color.blue.opacity(0.1))
-                            .cornerRadius(8)
-                        }
                     }
                 }
                 .padding(.vertical, 8)
+            }
+        }
+    }
+    
+    // MARK: - Installment Calculator Section
+    
+    @ViewBuilder
+    private var installmentCalculatorSection: some View {
+        if let targetDate = account.targetDate,
+           let frequency = account.paymentFrequency {
+            
+            Section(header: Text(account.accountType == .goal ? "Savings Plan" : "Payment Plan")) {
+                VStack(spacing: 12) {
+                    // Target Date
+                    HStack {
+                        Text("Target Date")
+                        Spacer()
+                        Text(targetDate, style: .date)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Divider()
+                    
+                    // Frequency
+                    HStack {
+                        Text("Payment Frequency")
+                        Spacer()
+                        Text(frequency.rawValue)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Divider()
+                    
+                    // Calculations
+                    if let installment = calculateInstallment() {
+                        VStack(spacing: 8) {
+                            HStack {
+                                Text("Payments Remaining")
+                                Spacer()
+                                Text("\(installment.periodsRemaining)")
+                                    .fontWeight(.semibold)
+                            }
+                            
+                            HStack {
+                                Text("Required per \(frequency.rawValue.lowercased())")
+                                Spacer()
+                                Text(installment.amountPerPeriod.formattedCurrency(symbol: currencySymbol))
+                                    .font(.headline)
+                                    .foregroundColor(account.accountType == .goal ? .blue : .orange)
+                            }
+                        }
+                        .padding(.top, 4)
+                    }
+                }
             }
         }
     }
@@ -161,18 +226,8 @@ struct AccountDetailView: View {
             let stats = data.stats(for: account)
             
             // This Period Stats
-            if account.isCredit {
-                // Credit accounts: Show spending this period
-                StatRow(title: "Spending (This Month)",
-                       value: monthlyTotals.outflow,
-                       symbol: currencySymbol,
-                       color: .red)
-                StatRow(title: "Payments (This Month)",
-                       value: monthlyTotals.inflow,
-                       symbol: currencySymbol,
-                       color: .green)
-            } else {
-                // Debit accounts: Show income/expenses
+            switch account.accountType {
+            case .debit, .goal:
                 StatRow(title: "Income (This Month)",
                        value: monthlyTotals.inflow,
                        symbol: currencySymbol,
@@ -181,23 +236,52 @@ struct AccountDetailView: View {
                        value: monthlyTotals.outflow,
                        symbol: currencySymbol,
                        color: .red)
+                
+            case .budget:
+                StatRow(title: "Spent (This Month)",
+                       value: monthlyTotals.outflow,
+                       symbol: currencySymbol,
+                       color: .red)
+                if let target = account.targetAmount {
+                    StatRow(title: "Budget",
+                           value: target,
+                           symbol: currencySymbol,
+                           color: .purple)
+                }
+                
+            case .debt:
+                StatRow(title: "Payments Made (This Month)",
+                       value: monthlyTotals.inflow,
+                       symbol: currencySymbol,
+                       color: .green)
+                StatRow(title: "New Charges (This Month)",
+                       value: monthlyTotals.outflow,
+                       symbol: currencySymbol,
+                       color: .red)
             }
             
             Divider()
             
             // Average Stats
-            if account.isCredit {
-                StatRow(title: "Avg Spending / Month",
-                       value: stats.monthlyOutflow,
-                       symbol: currencySymbol)
-                StatRow(title: "Avg Payments / Month",
-                       value: stats.monthlyInflow,
-                       symbol: currencySymbol)
-            } else {
+            switch account.accountType {
+            case .debit, .goal:
                 StatRow(title: "Avg Income / Month",
                        value: stats.monthlyInflow,
                        symbol: currencySymbol)
                 StatRow(title: "Avg Expenses / Month",
+                       value: stats.monthlyOutflow,
+                       symbol: currencySymbol)
+                
+            case .budget:
+                StatRow(title: "Avg Spending / Month",
+                       value: stats.monthlyOutflow,
+                       symbol: currencySymbol)
+                
+            case .debt:
+                StatRow(title: "Avg Payment / Month",
+                       value: stats.monthlyInflow,
+                       symbol: currencySymbol)
+                StatRow(title: "Avg New Charges / Month",
                        value: stats.monthlyOutflow,
                        symbol: currencySymbol)
             }
@@ -232,12 +316,10 @@ struct AccountDetailView: View {
     private func progressBar(current: Double, target: Double) -> some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
-                // Background
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color.gray.opacity(0.2))
                     .frame(height: 12)
                 
-                // Progress fill
                 RoundedRectangle(cornerRadius: 8)
                     .fill(progressBarColor(current: current, target: target))
                     .frame(width: progressBarWidth(current: current, target: target, totalWidth: geometry.size.width),
@@ -247,87 +329,155 @@ struct AccountDetailView: View {
         .frame(height: 12)
     }
     
-    // MARK: - Computed Properties
-    
-    private var accountTypeIcon: String {
-        switch (account.isCredit, account.targetAmount) {
-        case (false, nil):   return "dollarsign.circle.fill"
-        case (true, nil):    return "creditcard.fill"
-        case (false, .some): return "target"
-        case (true, .some):  return "chart.bar.doc.horizontal.fill"
+    @ViewBuilder
+    private func statusBadge(current: Double, target: Double) -> some View {
+        switch account.accountType {
+        case .budget:
+            let remaining = target - current
+            HStack {
+                Image(systemName: remaining >= 0 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .foregroundColor(remaining >= 0 ? .green : .red)
+                if remaining >= 0 {
+                    Text("\(remaining.formattedCurrency(symbol: currencySymbol)) remaining (\(Int((current/target)*100))% used)")
+                } else {
+                    Text("Over budget by \(abs(remaining).formattedCurrency(symbol: currencySymbol))")
+                }
+            }
+            .font(.subheadline)
+            .fontWeight(.medium)
+            .frame(maxWidth: .infinity)
+            .padding(8)
+            .background(remaining >= 0 ? Color.green.opacity(0.1) : Color.red.opacity(0.1))
+            .cornerRadius(8)
+            
+        case .goal:
+            if current >= target {
+                HStack {
+                    Image(systemName: "star.fill")
+                        .foregroundColor(.yellow)
+                    Text("Goal reached! 🎉")
+                }
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .frame(maxWidth: .infinity)
+                .padding(8)
+                .background(Color.green.opacity(0.1))
+                .cornerRadius(8)
+            } else {
+                let remaining = target - current
+                HStack {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .foregroundColor(.blue)
+                    Text("\(remaining.formattedCurrency(symbol: currencySymbol)) to go (\(Int((current/target)*100))% saved)")
+                }
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .frame(maxWidth: .infinity)
+                .padding(8)
+                .background(Color.blue.opacity(0.1))
+                .cornerRadius(8)
+            }
+            
+        default:
+            EmptyView()
         }
     }
     
-    private var accountTypeLabel: String {
-        switch (account.isCredit, account.targetAmount) {
-        case (false, nil):   return "Debit Account"
-        case (true, nil):    return "Credit Account"
-        case (false, .some): return "Goal Account"
-        case (true, .some):  return "Budget Account"
+    // MARK: - Computed Properties
+    
+    private var shouldShowTargetProgress: Bool {
+        if account.accountType == .debt {
+            return true // Always show for debt
         }
+        return account.targetAmount != nil && account.targetAmount! > 0
+    }
+    
+    private var shouldShowInstallmentCalculator: Bool {
+        guard account.targetDate != nil && account.paymentFrequency != nil else {
+            return false
+        }
+        return account.accountType == .goal || account.accountType == .debt
     }
     
     private var accountTypeColor: Color {
-        switch (account.isCredit, account.targetAmount) {
-        case (false, nil):   return .primary
-        case (true, nil):    return .orange
-        case (false, .some): return .blue
-        case (true, .some):  return .purple
+        switch account.accountType {
+        case .debit:  return .primary
+        case .goal:   return .blue
+        case .budget: return .purple
+        case .debt:   return .orange
         }
     }
     
     private var balanceLabel: String {
-        switch (account.isCredit, account.targetAmount) {
-        case (false, nil):   return "Current Balance"
-        case (true, nil):    return "Amount Owed"
-        case (false, .some): return "Current Savings"
-        case (true, .some):  return "Total Spent"
+        switch account.accountType {
+        case .debit:  return "Current Balance"
+        case .goal:   return "Current Savings"
+        case .budget: return "Spent This Period"
+        case .debt:   return "Amount Owed"
         }
     }
     
     private var balanceColor: Color {
         let balance = data.balance(for: account)
         
-        if account.isCredit {
-            // Credit: Warn if high spending/debt
-            if let target = account.targetAmount {
-                // Budget account: Warn if over budget
-                return balance > target ? .red : .primary
-            } else {
-                // Credit card: Warn if high utilization
-                if balance > account.initialAmount * 0.9 {
-                    return .red
-                } else if balance > account.initialAmount * 0.7 {
-                    return .orange
-                }
-            }
-        } else {
-            // Debit: Warn if negative
-            if balance < 0 {
-                return .red
-            } else if let target = account.targetAmount, balance >= target {
+        switch account.accountType {
+        case .debit:
+            return balance < 0 ? .red : .primary
+            
+        case .goal:
+            if let target = account.targetAmount, balance >= target {
                 return .green
             }
+            return .primary
+            
+        case .budget:
+            if let target = account.targetAmount {
+                return balance > target ? .red : .primary
+            }
+            return .primary
+            
+        case .debt:
+            return balance > 0 ? .orange : .green
         }
-        return .primary
     }
     
     private var balanceSubtitle: String? {
-        if account.isCredit {
-            if account.targetAmount == nil {
-                // Credit card: Show available credit
-                let available = account.initialAmount - data.balance(for: account)
-                return "Available credit: \(available.formattedCurrency(symbol: currencySymbol))"
-            }
-        } else {
-            if account.targetAmount == nil && account.initialAmount > 0 {
-                // Debit account: Show change from initial
-                let change = data.balance(for: account) - account.initialAmount
-                let prefix = change >= 0 ? "+" : ""
-                return "Change from start: \(prefix)\(change.formattedCurrency(symbol: currencySymbol))"
-            }
+        switch account.accountType {
+        case .debit:
+            let change = data.balance(for: account) - account.initialAmount
+            let prefix = change >= 0 ? "+" : ""
+            return "Change from start: \(prefix)\(change.formattedCurrency(symbol: currencySymbol))"
+            
+        default:
+            return nil
         }
-        return nil
+    }
+    
+    private var progressSectionTitle: String {
+        switch account.accountType {
+        case .goal:   return "Goal Progress"
+        case .budget: return "Budget Progress"
+        case .debt:   return "Payoff Progress"
+        default:      return "Progress"
+        }
+    }
+    
+    private var currentAmountLabel: String {
+        switch account.accountType {
+        case .goal:   return "Saved"
+        case .budget: return "Spent"
+        case .debt:   return "Owed"
+        default:      return "Current"
+        }
+    }
+    
+    private var targetAmountLabel: String {
+        switch account.accountType {
+        case .goal:   return "Goal"
+        case .budget: return "Budget"
+        case .debt:   return "Payoff"
+        default:      return "Target"
+        }
     }
     
     private func progressBarWidth(current: Double, target: Double, totalWidth: CGFloat) -> CGFloat {
@@ -338,19 +488,59 @@ struct AccountDetailView: View {
     private func progressBarColor(current: Double, target: Double) -> Color {
         let percentage = current / target
         
-        if account.isCredit {
-            // Budget: Green = under budget, Red = over budget
-            if percentage > 1.0 {
-                return .red
-            } else if percentage > 0.9 {
-                return .orange
-            } else {
-                return .green
-            }
-        } else {
-            // Goal: Green when achieved, blue otherwise
+        switch account.accountType {
+        case .budget:
+            if percentage > 1.0 { return .red }
+            else if percentage > 0.9 { return .orange }
+            else { return .green }
+            
+        case .goal:
             return percentage >= 1.0 ? .green : .blue
+            
+        case .debt:
+            return .orange
+            
+        default:
+            return .blue
         }
+    }
+    
+    // MARK: - Installment Calculation
+    
+    private func calculateInstallment() -> (periodsRemaining: Int, amountPerPeriod: Double)? {
+        guard let targetDate = account.targetDate,
+              let frequency = account.paymentFrequency else {
+            return nil
+        }
+        
+        let today = Date()
+        guard targetDate > today else { return nil }
+        
+        let periodsRemaining = frequency.periodsBetween(from: today, to: targetDate)
+        guard periodsRemaining > 0 else { return nil }
+        
+        let current = data.balance(for: account)
+        let remaining: Double
+        
+        switch account.accountType {
+        case .goal:
+            // Need to save: target - current
+            if let target = account.targetAmount {
+                remaining = max(target - current, 0)
+            } else {
+                return nil
+            }
+            
+        case .debt:
+            // Need to pay: current balance
+            remaining = max(current, 0)
+            
+        default:
+            return nil
+        }
+        
+        let amountPerPeriod = remaining / Double(periodsRemaining)
+        return (periodsRemaining, amountPerPeriod)
     }
     
     // MARK: - View Helpers
@@ -371,8 +561,6 @@ struct AccountDetailView: View {
         formatter.dateFormat = "MMM d, yyyy"
         return "\(formatter.string(from: range.start)) - \(formatter.string(from: range.end))"
     }
-    
-    // MARK: - Logic Helpers
     
     private func calculateCurrentMonthTotals() -> (inflow: Double, outflow: Double) {
         let range = getCurrentFiscalRange()
@@ -414,7 +602,6 @@ struct AccountDetailView: View {
     }
 }
 
-// MARK: - Helper View (StatRow already exists in your code)
 // MARK: - Helper View
 
 /// A consistent row format for displaying labeled monetary values.

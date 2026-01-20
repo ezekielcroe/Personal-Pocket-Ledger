@@ -5,11 +5,13 @@ struct AddAccountGroupView: View {
     @Environment(\.dismiss) var dismiss
     
     // Optional: If editing, pass the existing group
-    var groupToEdit: AccountGroup?
+    let groupToEdit: AccountGroup?
     
-    @State private var name: String = ""
-    @State private var selectedAccountIDs: Set<UUID> = []
+    @State private var name: String
+    @State private var selectedAccountIDs: Set<UUID>
     @State private var searchText: String = ""
+    
+    @AppStorage("currencySymbol") private var currencySymbol: String = "$"
     
     // MARK: - Focus State
     enum Field {
@@ -18,24 +20,50 @@ struct AddAccountGroupView: View {
     }
     @FocusState private var focusedField: Field?
     
+    // MARK: - Explicit Initializer
     init(groupToEdit: AccountGroup? = nil) {
         self.groupToEdit = groupToEdit
+        
         if let group = groupToEdit {
             _name = State(initialValue: group.name)
             _selectedAccountIDs = State(initialValue: Set(group.accountIDs))
+        } else {
+            _name = State(initialValue: "")
+            _selectedAccountIDs = State(initialValue: [])
         }
     }
     
     // MARK: - Filter Logic
     var filteredAccounts: [Account] {
-        // Show all accounts (Debit & Credit) or just Debit based on preference.
-        // Defaulting to all for flexibility, but you can add .filter { !$0.isCredit } if desired.
         let all = data.accounts
         
-        if searchText.isEmpty {
-            return all
-        } else {
-            return all.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        let filtered = searchText.isEmpty ? all : all.filter {
+            $0.name.localizedCaseInsensitiveContains(searchText)
+        }
+        
+        // Sort by: 1) Account Type, 2) Name (alphabetical)
+        return filtered.sorted { lhs, rhs in
+            // Primary sort: Account type order (Debit, Goal, Budget, Debt)
+            let typeOrder: [AccountType] = [.debit, .goal, .budget, .debt]
+            let lhsIndex = typeOrder.firstIndex(of: lhs.accountType) ?? 999
+            let rhsIndex = typeOrder.firstIndex(of: rhs.accountType) ?? 999
+            
+            if lhsIndex != rhsIndex {
+                return lhsIndex < rhsIndex
+            }
+            
+            // Secondary sort: Alphabetical by name
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
+    }
+    
+    // MARK: - Grouped Accounts
+    private var accountsByType: [(type: AccountType, accounts: [Account])] {
+        let typeOrder: [AccountType] = [.debit, .goal, .budget, .debt]
+        
+        return typeOrder.compactMap { type in
+            let accountsOfType = filteredAccounts.filter { $0.accountType == type }
+            return accountsOfType.isEmpty ? nil : (type, accountsOfType)
         }
     }
     
@@ -46,9 +74,8 @@ struct AddAccountGroupView: View {
                 Section(header: Text("Group Name")) {
                     TextField("E.g., Liquid Cash, Travel Fund", text: $name)
                         .focused($focusedField, equals: .name)
-                        .submitLabel(.next) // Shows "Next" on keyboard
+                        .submitLabel(.next)
                         .onSubmit {
-                            // Requirement 2: Jump to search bar on Enter
                             focusedField = .search
                         }
                 }
@@ -61,7 +88,6 @@ struct AddAccountGroupView: View {
                         
                         TextField("Filter accounts...", text: $searchText)
                             .focused($focusedField, equals: .search)
-                            // Context-aware Return Key
                             .submitLabel(searchText.isEmpty ? .done : (filteredAccounts.count == 1 ? .join : .search))
                             .onSubmit {
                                 handleSearchSubmit()
@@ -79,32 +105,55 @@ struct AddAccountGroupView: View {
                     }
                 }
                 
-                // MARK: - Account List
-                Section {
-                    if filteredAccounts.isEmpty {
+                // MARK: - Account List (Grouped by Type)
+                if filteredAccounts.isEmpty {
+                    Section {
                         Text("No accounts found")
                             .foregroundColor(.secondary)
-                    } else {
-                        ForEach(filteredAccounts) { account in
-                            Button {
-                                toggleSelection(for: account)
-                            } label: {
-                                HStack {
-                                    Text(account.name)
-                                        .foregroundColor(.primary)
-                                    Spacer()
-                                    if selectedAccountIDs.contains(account.id) {
-                                        Image(systemName: "checkmark")
-                                            .foregroundColor(.blue)
-                                            .fontWeight(.bold)
+                    }
+                } else {
+                    // Group accounts by type for visual clarity
+                    ForEach(accountsByType, id: \.type) { section in
+                        Section(header: Text(section.type.rawValue)) {
+                            ForEach(section.accounts) { account in
+                                Button {
+                                    toggleSelection(for: account)
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        // Account type icon
+                                        Image(systemName: account.accountType.icon)
+                                            .foregroundColor(accountTypeColor(account.accountType))
+                                            .frame(width: 24)
+                                        
+                                        // Account name
+                                        Text(account.name)
+                                            .foregroundColor(.primary)
+                                        
+                                        Spacer()
+                                        
+                                        // Balance with color
+                                        Text(data.balance(for: account).formattedCurrency(symbol: currencySymbol))
+                                            .font(.subheadline)
+                                            .foregroundColor(balanceColor(for: account))
+                                        
+                                        // Checkmark
+                                        if selectedAccountIDs.contains(account.id) {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundColor(.blue)
+                                                .fontWeight(.bold)
+                                        } else {
+                                            Image(systemName: "circle")
+                                                .foregroundColor(.secondary.opacity(0.3))
+                                        }
                                     }
+                                    .contentShape(Rectangle())
                                 }
+                                .buttonStyle(.plain)
                             }
                         }
                     }
                 }
             }
-            // Requirement 3: Bottom Save Button using your StandardFormToolbar
             .formToolbar(
                 title: groupToEdit == nil ? "New Group" : "Edit Group",
                 canSave: canSave,
@@ -112,7 +161,6 @@ struct AddAccountGroupView: View {
                 onCancel: { dismiss() }
             )
             .onAppear {
-                // Requirement 1: Focus Name immediately (only if creating new)
                 if groupToEdit == nil {
                     focusedField = .name
                 }
@@ -136,15 +184,13 @@ struct AddAccountGroupView: View {
     
     private func handleSearchSubmit() {
         if searchText.isEmpty {
-            // Requirement 2: Empty search bar Enter = "Complete"
             if canSave {
                 saveGroup()
             }
         } else if filteredAccounts.count == 1 {
-            // Requirement 2: Narrowed to one option = Select it
             if let account = filteredAccounts.first {
                 toggleSelection(for: account)
-                searchText = "" // Clear search to allow finding the next one or saving
+                searchText = ""
             }
         }
     }
@@ -158,5 +204,37 @@ struct AddAccountGroupView: View {
             data.addAccountGroup(name: name, accountIDs: Array(selectedAccountIDs))
         }
         dismiss()
+    }
+    
+    // MARK: - Styling Helpers
+    
+    private func accountTypeColor(_ type: AccountType) -> Color {
+        switch type {
+        case .debit:  return .primary
+        case .goal:   return .blue
+        case .budget: return .purple
+        case .debt:   return .orange
+        }
+    }
+    
+    private func balanceColor(for account: Account) -> Color {
+        let balance = data.balance(for: account)
+        
+        switch account.accountType {
+        case .debit:
+            return balance < 0 ? .red : .primary
+        case .goal:
+            if let target = account.targetAmount, balance >= target {
+                return .green
+            }
+            return .primary
+        case .budget:
+            if let target = account.targetAmount, balance > target {
+                return .red
+            }
+            return .primary
+        case .debt:
+            return balance > 0 ? .orange : .green
+        }
     }
 }

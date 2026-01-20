@@ -8,6 +8,9 @@ struct EditAccountView: View {
     @State private var name: String
     @State private var initialAmountString: String
     @State private var targetAmountString: String
+    @State private var hasTargetDate: Bool
+    @State private var targetDate: Date
+    @State private var paymentFrequency: PaymentFrequency
     
     @AppStorage("currencySymbol") private var currencySymbol: String = "$"
     
@@ -25,12 +28,18 @@ struct EditAccountView: View {
         _name = State(initialValue: account.name)
         _initialAmountString = State(initialValue: String(format: "%.2f", account.initialAmount))
         
-        // Initialize target string
-        if let target = account.targetAmount {
+        // Initialize target
+        if let target = account.targetAmount, target > 0 {
             _targetAmountString = State(initialValue: String(format: "%.2f", target))
         } else {
+            // For debt accounts (credit with no target or target = 0), leave empty
             _targetAmountString = State(initialValue: "")
         }
+        
+        // Initialize target date and frequency
+        _hasTargetDate = State(initialValue: account.targetDate != nil)
+        _targetDate = State(initialValue: account.targetDate ?? Calendar.current.date(byAdding: .year, value: 1, to: Date()) ?? Date())
+        _paymentFrequency = State(initialValue: account.paymentFrequency ?? .monthly)
     }
 
     var body: some View {
@@ -39,16 +48,16 @@ struct EditAccountView: View {
                 // SECTION 1: Account Type (Read-Only)
                 Section(footer: Text("Account type cannot be changed after creation. Create a new account if you need a different type.")) {
                     HStack {
-                        Text("Account Type")
+                        Image(systemName: account.accountType.icon)
+                            .foregroundColor(accountTypeColor)
+                        Text(account.accountType.rawValue + " Account")
+                            .foregroundColor(accountTypeColor)
                         Spacer()
-                        Text(accountTypeLabel)
-                            .foregroundColor(.secondary)
                     }
                 }
                 
                 // SECTION 2: Account Details
                 Section(header: Text("Account Details")) {
-                    // Name Field
                     TextField("Name", text: $name)
                         .submitLabel(.next)
                         .focused($focusedField, equals: .name)
@@ -56,7 +65,6 @@ struct EditAccountView: View {
                             focusedField = .amount
                         }
                     
-                    // Starting Balance Field
                     HStack {
                         Text("Starting Balance")
                         Spacer()
@@ -71,11 +79,11 @@ struct EditAccountView: View {
                 }
                 
                 // SECTION 3: Target Amount
-                Section(header: Text("Target Amount (Optional)"), footer: Text(targetFooterText)) {
+                Section(header: Text(targetSectionHeader), footer: Text(targetSectionFooter)) {
                     HStack {
                         Text("Target")
                         Spacer()
-                        TextField("None", text: $targetAmountString)
+                        TextField(targetPlaceholder, text: $targetAmountString)
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
                             .focused($focusedField, equals: .target)
@@ -85,7 +93,63 @@ struct EditAccountView: View {
                     }
                 }
                 
-                // SECTION 4: Current Balance (Read-Only Info)
+                // SECTION 4: Payment/Contribution Plan
+                if shouldShowInstallmentSection {
+                    Section(header: Text(installmentSectionHeader), footer: Text(installmentSectionFooter)) {
+                        Toggle("Set \(account.isCredit ? "Payment" : "Contribution") Plan", isOn: $hasTargetDate)
+                        
+                        if hasTargetDate {
+                            DatePicker("Target Date",
+                                     selection: $targetDate,
+                                     in: Date()...,
+                                     displayedComponents: .date)
+                            
+                            Picker("Frequency", selection: $paymentFrequency) {
+                                ForEach(PaymentFrequency.allCases) { frequency in
+                                    Text(frequency.rawValue).tag(frequency)
+                                }
+                            }
+                            
+                            // Preview calculation
+                            if let preview = calculatePreview() {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Divider()
+                                    
+                                    HStack {
+                                        Image(systemName: "calendar")
+                                            .foregroundColor(.blue)
+                                        Text("Updated Plan")
+                                            .font(.subheadline)
+                                            .fontWeight(.semibold)
+                                    }
+                                    
+                                    HStack {
+                                        Text("Payments Remaining:")
+                                        Spacer()
+                                        Text("\(preview.periods)")
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .font(.caption)
+                                    
+                                    HStack {
+                                        Text("Amount per \(paymentFrequency.rawValue.lowercased()):")
+                                        Spacer()
+                                        Text(preview.amountPerPeriod.formattedCurrency(symbol: currencySymbol))
+                                            .foregroundColor(account.isCredit ? .orange : .blue)
+                                            .fontWeight(.semibold)
+                                    }
+                                    .font(.caption)
+                                }
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 12)
+                                .background(Color(.systemGray6))
+                                .cornerRadius(8)
+                            }
+                        }
+                    }
+                }
+                
+                // SECTION 5: Current Status
                 Section(header: Text("Current Status"), footer: Text("Current balance is calculated from your starting balance plus all transactions.")) {
                     HStack {
                         Text("Current Balance")
@@ -94,6 +158,7 @@ struct EditAccountView: View {
                             .foregroundColor(currentBalanceColor)
                     }
                     
+                    // Progress indicator
                     if let target = Double(targetAmountString), target > 0 {
                         HStack {
                             Text("Progress")
@@ -101,6 +166,14 @@ struct EditAccountView: View {
                             Text(progressText)
                                 .foregroundColor(.secondary)
                         }
+                    }
+                }
+            }
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                     }
                 }
             }
@@ -114,62 +187,98 @@ struct EditAccountView: View {
                     dismiss()
                 }
             )
-            .decimalPadToolbar()
         }
     }
     
     // MARK: - Computed Properties
     
-    /// Human-readable account type label
-    private var accountTypeLabel: String {
-        switch (account.isCredit, account.targetAmount) {
-        case (false, nil):   return "Debit Account"
-        case (true, nil):    return "Credit Account"
-        case (false, .some): return "Goal Account"
-        case (true, .some):  return "Budget Account"
+    private var accountTypeColor: Color {
+        switch account.accountType {
+        case .debit:  return .primary
+        case .goal:   return .blue
+        case .budget: return .purple
+        case .debt:   return .orange
         }
     }
     
-    /// Footer text explaining what the target means for this account
-    private var targetFooterText: String {
-        let hasTarget = !targetAmountString.isEmpty
-        
-        if !hasTarget {
-            if account.isCredit {
-                return "Add a target to track this as a Budget account with spending limits."
-            } else {
-                return "Add a target to track this as a Goal account with savings targets."
-            }
-        }
-        
-        if account.isCredit {
-            return "Budget target: You'll see warnings when spending approaches this limit."
-        } else {
-            return "Savings goal: Track your progress toward reaching this amount."
+    private var targetSectionHeader: String {
+        switch account.accountType {
+        case .debit:  return "Savings Goal (Optional)"
+        case .goal:   return "Savings Goal"
+        case .budget: return "Monthly Budget Limit"
+        case .debt:   return "Payoff Goal"
         }
     }
     
-    /// Color for current balance display
+    private var targetSectionFooter: String {
+        switch account.accountType {
+        case .debit:
+            return "Add a target to convert this into a Goal account for tracking savings progress."
+        case .goal:
+            return "Your savings target. Progress is tracked automatically."
+        case .budget:
+            return "Your monthly spending limit. You'll see warnings when approaching this amount."
+        case .debt:
+            return "Set to $0 to track debt payoff progress. Set higher to create a monthly spending budget."
+        }
+    }
+    
+    private var targetPlaceholder: String {
+        switch account.accountType {
+        case .debit, .goal: return "Target Amount"
+        case .budget:       return "Monthly Limit"
+        case .debt:         return "0"
+        }
+    }
+    
+    private var shouldShowInstallmentSection: Bool {
+        switch account.accountType {
+        case .goal, .debt:
+            return true
+        case .budget:
+            return false // Budgets don't use installment plans (they're monthly)
+        case .debit:
+            let target = Double(targetAmountString) ?? 0
+            return target > 0 // Only show if user adds a target
+        }
+    }
+    
+    private var installmentSectionHeader: String {
+        account.isCredit ? "Payment Plan (Optional)" : "Contribution Plan (Optional)"
+    }
+    
+    private var installmentSectionFooter: String {
+        switch account.accountType {
+        case .goal:
+            return "Set a target date to calculate how much you need to save each period to reach your goal."
+        case .debt:
+            return "Set a target date to calculate required payments to pay off this debt."
+        default:
+            return ""
+        }
+    }
+    
     private var currentBalanceColor: Color {
         let balance = data.balance(for: account)
         
-        if account.isCredit {
-            // Credit: High balance = more debt/spending
-            if balance > account.initialAmount * 0.9 {
-                return .red
-            } else if balance > account.initialAmount * 0.7 {
-                return .orange
+        switch account.accountType {
+        case .debit:
+            return balance < 0 ? .red : .primary
+        case .goal:
+            if let target = Double(targetAmountString), balance >= target {
+                return .green
             }
-        } else {
-            // Debit: Negative = overdrawn
-            if balance < 0 {
+            return .primary
+        case .budget:
+            if let target = Double(targetAmountString), balance > target {
                 return .red
             }
+            return .primary
+        case .debt:
+            return balance > 0 ? .orange : .green
         }
-        return .primary
     }
     
-    /// Progress text for goal/budget tracking
     private var progressText: String {
         guard let target = Double(targetAmountString), target > 0 else {
             return ""
@@ -178,16 +287,19 @@ struct EditAccountView: View {
         let current = data.balance(for: account)
         let percentage = (current / target) * 100
         
-        if account.isCredit {
-            // Budget: Show how much of limit is used
-            return String(format: "%.0f%% of budget used", percentage)
-        } else {
-            // Goal: Show progress toward target
+        switch account.accountType {
+        case .goal:
             if current >= target {
                 return "Goal reached! 🎉"
             } else {
                 return String(format: "%.0f%% of goal reached", percentage)
             }
+        case .budget:
+            return String(format: "%.0f%% of budget used", percentage)
+        case .debt:
+            return String(format: "%.0f%% of debt remaining", percentage)
+        default:
+            return ""
         }
     }
     
@@ -197,17 +309,59 @@ struct EditAccountView: View {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
     }
     
+    // MARK: - Calculations
+    
+    private func calculatePreview() -> (periods: Int, amountPerPeriod: Double)? {
+        guard hasTargetDate else { return nil }
+        
+        let current = data.balance(for: account)
+        let target = Double(targetAmountString) ?? 0
+        
+        let today = Date()
+        guard targetDate > today else { return nil }
+        
+        let periods = paymentFrequency.periodsBetween(from: today, to: targetDate)
+        guard periods > 0 else { return nil }
+        
+        let remaining: Double
+        
+        switch account.accountType {
+        case .goal:
+            // Calculate savings needed
+            remaining = max(target - current, 0)
+        case .debt:
+            // Calculate payoff amount
+            remaining = max(current, 0)
+        default:
+            return nil
+        }
+        
+        let amountPerPeriod = remaining / Double(periods)
+        return (periods, amountPerPeriod)
+    }
+    
     // MARK: - Actions
     
     private func saveChanges() {
         let amount = Double(initialAmountString) ?? 0.0
-        let target = targetAmountString.isEmpty ? nil : Double(targetAmountString)
+        
+        // Parse target: empty string or "0" → nil for debt accounts
+        let target: Double?
+        if targetAmountString.isEmpty {
+            target = nil
+        } else if let parsed = Double(targetAmountString), parsed > 0 {
+            target = parsed
+        } else {
+            target = nil // Treat 0 or invalid input as nil
+        }
         
         data.updateAccount(
             id: account.id,
             name: name,
             initialAmount: amount,
-            targetAmount: target
+            targetAmount: target,
+            targetDate: hasTargetDate ? targetDate : nil,
+            paymentFrequency: hasTargetDate ? paymentFrequency : nil
         )
         dismiss()
     }

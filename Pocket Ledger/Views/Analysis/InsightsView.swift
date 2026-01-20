@@ -3,97 +3,102 @@ import SwiftUI
 struct InsightsView: View {
     @EnvironmentObject var data: AppData
     @AppStorage("currencySymbol") private var currencySymbol: String = "$"
-    // Persisted fiscal preference
     @AppStorage("fiscalStartDay") private var fiscalStartDay: Int = 1
     
     // MARK: - State
     @State private var selectedDate = Date()
     @State private var showingFilterSheet = false
     @State private var showingReconcileSheet = false
+    @State private var showingPresetPicker = false
 
-    // ACTIVE FILTER STATE (Exclusion Logic)
+    // ACTIVE FILTER STATE
     @State var excludedAccountIDs: Set<UUID> = []
     @State var excludedCategoryIDs: Set<UUID> = []
     @State var excludedTagIDs: Set<UUID> = []
     @State var excludeOutliers: Bool = false
+    @State var minimumAmount: Double? = nil
+    @State var maximumAmount: Double? = nil
     
     // Current Preset Selection
     @State private var selectedPresetID: UUID? = nil
 
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .bottomTrailing) {
-                // 1. Content ScrollView
-                ScrollView {
-                    VStack(spacing: 20) {
-                        // A. Saved Views Selector
-                        if !data.insightPresets.isEmpty {
-                            presetsScrollView
-                        }
-                        
-                        // B. Date Navigator
-                        dateNavigator
-                        
-                        // C. Stats & Charts
-                        CashflowCard(
-                            income: monthlyStats.income,
-                            expense: monthlyStats.expense,
-                            currencySymbol: currencySymbol
-                        )
+            ScrollView {
+                VStack(spacing: 20) {
+                    // A. Active View Banner (if filtered)
+                    if !isDefaultState {
+                        activeViewBanner
+                    }
+                    
+                    // B. Date Navigator
+                    dateNavigator
+                    
+                    // C. Stats & Charts
+                    CashflowCard(
+                        income: monthlyStats.income,
+                        expense: monthlyStats.expense,
+                        currencySymbol: currencySymbol
+                    )
 
-                        VStack(alignment: .leading) {
-                            Text("Spending by Category")
-                                .font(.headline)
-                                .padding(.horizontal)
-                            
-                            if monthlyStats.categoryBreakdown.isEmpty {
-                                Text("No spending data for this period.")
-                                    .foregroundColor(.secondary)
-                                    .padding()
-                            } else {
-                                ForEach(monthlyStats.categoryBreakdown) { item in
-                                    if let category = data.categories.first(where: { $0.id == item.id }) {
-                                        NavigationLink(destination: CategoryDetailView(category: category, monthContext: selectedDate)) {
-                                            CategoryBarRow(
-                                                name: item.name,
-                                                emoji: item.emoji,
-                                                amount: item.amount,
-                                                totalContext: monthlyStats.expense,
-                                                currencySymbol: currencySymbol
-                                            )
-                                        }
-                                        .buttonStyle(.plain)
+                    VStack(alignment: .leading) {
+                        Text("Spending by Category")
+                            .font(.headline)
+                            .padding(.horizontal)
+                        
+                        if monthlyStats.categoryBreakdown.isEmpty {
+                            Text("No spending data for this period.")
+                                .foregroundColor(.secondary)
+                                .padding()
+                        } else {
+                            ForEach(monthlyStats.categoryBreakdown) { item in
+                                if let category = data.categories.first(where: { $0.id == item.id }) {
+                                    NavigationLink(destination: CategoryDetailView(category: category, monthContext: selectedDate)) {
+                                        CategoryBarRow(
+                                            name: item.name,
+                                            emoji: item.emoji,
+                                            amount: item.amount,
+                                            totalContext: monthlyStats.expense,
+                                            currencySymbol: currencySymbol
+                                        )
                                     }
+                                    .buttonStyle(.plain)
                                 }
                             }
                         }
-                        .padding(.vertical)
+                    }
+                    .padding(.vertical)
+                    
+                    Color.clear.frame(height: 80)
+                }
+            }
+            .navigationTitle("Insights")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
+                        Button {
+                            showingPresetPicker = true
+                        } label: {
+                            Label("Saved Views", systemImage: "bookmark")
+                        }
                         
-                        // Spacer for FAB reachability
-                        Color.clear.frame(height: 80)
+                        Button {
+                            showingFilterSheet = true
+                        } label: {
+                            Label("Filter Data", systemImage: "line.3.horizontal.decrease.circle")
+                        }
+                        
+                        Divider()
+                        
+                        Button {
+                            showingReconcileSheet = true
+                        } label: {
+                            Label("Reconcile Accounts", systemImage: "checkmark.seal")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
                     }
                 }
-                .navigationTitle("Insights")
-                
-                // 2. Floating Action Menu
-                Menu {
-                    Button(action: { showingReconcileSheet = true }) {
-                        Label("Reconcile Accounts", systemImage: "checkmark.seal")
-                    }
-                    Button(action: { showingFilterSheet = true }) {
-                        Label("Filter Data", systemImage: "line.3.horizontal.decrease.circle")
-                    }
-                } label: {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.title2.weight(.semibold))
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .clipShape(Circle())
-                        .shadow(radius: 4, y: 3)
-                }
-                .padding()
-                .padding(.bottom, 10)
             }
             // MARK: - Sheets
             .sheet(isPresented: $showingFilterSheet) {
@@ -101,63 +106,97 @@ struct InsightsView: View {
                     excludedAccountIDs: $excludedAccountIDs,
                     excludedCategoryIDs: $excludedCategoryIDs,
                     excludedTagIDs: $excludedTagIDs,
-                    excludeOutliers: $excludeOutliers
+                    excludeOutliers: $excludeOutliers,
+                    minimumAmount: $minimumAmount,
+                    maximumAmount: $maximumAmount
                 )
                 .onDisappear {
                     checkIfCustom()
                 }
             }
+            .sheet(isPresented: $showingPresetPicker) {
+                PresetPickerSheet(
+                    selectedPresetID: $selectedPresetID,
+                    onSelect: applyPreset,
+                    onReset: applyReset
+                )
+            }
             .sheet(isPresented: $showingReconcileSheet) {
-               ReconcileView()
-                   .environmentObject(data)
+                ReconcileView()
+                    .environmentObject(data)
             }
         }
     }
 
-    // MARK: - Presets UI
+    // MARK: - Active View Banner
     
-    private var presetsScrollView: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                Button(action: applyReset) {
-                    Text("All")
-                        .font(.subheadline)
-                        .padding(.vertical, 6)
-                        .padding(.horizontal, 12)
-                        .background(selectedPresetID == nil && isDefaultState ? Color.blue : Color.secondary.opacity(0.1))
-                        .foregroundColor(selectedPresetID == nil && isDefaultState ? .white : .primary)
-                        .cornerRadius(16)
-                }
+    private var activeViewBanner: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Image(systemName: selectedPresetID != nil ? "bookmark.fill" : "line.3.horizontal.decrease.circle.fill")
+                    .foregroundColor(.blue)
                 
-                ForEach(data.insightPresets) { preset in
-                    Button(action: { applyPreset(preset) }) {
-                        Text(preset.name)
-                            .font(.subheadline)
-                            .padding(.vertical, 6)
-                            .padding(.horizontal, 12)
-                            .background(selectedPresetID == preset.id ? Color.blue : Color.secondary.opacity(0.1))
-                            .foregroundColor(selectedPresetID == preset.id ? .white : .primary)
-                            .cornerRadius(16)
-                    }
-                    .contextMenu {
-                        Button(role: .destructive) {
-                            data.deletePreset(preset)
-                            if selectedPresetID == preset.id { applyReset() }
-                        } label: {
-                            Label("Delete View", systemImage: "trash")
-                        }
-                    }
+                Text(activeViewName)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                
+                Spacer()
+                
+                Button {
+                    applyReset()
+                } label: {
+                    Text("Clear")
+                        .font(.caption)
+                        .foregroundColor(.blue)
                 }
             }
-            .padding(.horizontal)
+            
+            // Filter summary
+            if !isDefaultState {
+                VStack(alignment: .leading, spacing: 4) {
+                    if !excludedAccountIDs.isEmpty {
+                        Text("Excluding \(excludedAccountIDs.count) account(s)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    if !excludedCategoryIDs.isEmpty {
+                        Text("Excluding \(excludedCategoryIDs.count) category(ies)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    if !excludedTagIDs.isEmpty {
+                        Text("Excluding \(excludedTagIDs.count) tag(s)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    if excludeOutliers {
+                        Text("Excluding outlier transactions")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
-        .padding(.top, 10)
+        .padding()
+        .background(Color.blue.opacity(0.1))
+        .cornerRadius(12)
+        .padding(.horizontal)
+    }
+    
+    private var activeViewName: String {
+        if let id = selectedPresetID,
+           let preset = data.insightPresets.first(where: { $0.id == id }) {
+            return preset.name
+        }
+        return "Custom Filter"
     }
 
     // MARK: - Logic Helpers
 
     private var isDefaultState: Bool {
-        excludedAccountIDs.isEmpty && excludedCategoryIDs.isEmpty && excludedTagIDs.isEmpty && !excludeOutliers
+        excludedAccountIDs.isEmpty && excludedCategoryIDs.isEmpty && excludedTagIDs.isEmpty &&
+        !excludeOutliers && minimumAmount == nil && maximumAmount == nil
     }
 
     private func applyReset() {
@@ -165,6 +204,8 @@ struct InsightsView: View {
         excludedCategoryIDs = []
         excludedTagIDs = []
         excludeOutliers = false
+        minimumAmount = nil
+        maximumAmount = nil
         selectedPresetID = nil
     }
 
@@ -233,10 +274,15 @@ struct InsightsView: View {
         return formatter.string(from: date)
     }
 
-    // MARK: - Statistics Logic (Fiscal Refactored)
+    // MARK: - Statistics Logic (Transfer Exclusion)
 
     private var monthlyStats: MonthlyStats {
         let range = getFiscalRange()
+        
+        // Identify transfer categories to exclude
+        let transferCategoryIDs = data.categories
+            .filter { $0.name == "Transfer" }
+            .map { $0.id }
         
         let filtered = data.transactions.filter { tx in
             if tx.date < range.start || tx.date > range.end { return false }
@@ -246,6 +292,13 @@ struct InsightsView: View {
             if !tx.tagIDs.isEmpty {
                 if !Set(tx.tagIDs).isDisjoint(with: excludedTagIDs) { return false }
             }
+            // Exclude transfers from income/expense
+            if transferCategoryIDs.contains(tx.categoryID) { return false }
+            
+            // NEW: Amount filters
+            if let min = minimumAmount, tx.amount < min { return false }
+            if let max = maximumAmount, tx.amount > max { return false }
+            
             return true
         }
 
@@ -281,7 +334,92 @@ struct InsightsView: View {
     }
 }
 
-// MARK: - Helper Components
+// MARK: - Preset Picker Sheet
+
+struct PresetPickerSheet: View {
+    @EnvironmentObject var data: AppData
+    @Environment(\.dismiss) var dismiss
+    
+    @Binding var selectedPresetID: UUID?
+    let onSelect: (InsightPreset) -> Void
+    let onReset: () -> Void
+    
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Button {
+                        onReset()
+                        dismiss()
+                    } label: {
+                        HStack {
+                            Image(systemName: "square.grid.2x2")
+                                .foregroundColor(.blue)
+                            Text("All Data")
+                            Spacer()
+                            if selectedPresetID == nil {
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(.blue)
+                                    .fontWeight(.bold)
+                            }
+                        }
+                    }
+                }
+                
+                if !data.insightPresets.isEmpty {
+                    Section(header: Text("Saved Views")) {
+                        ForEach(data.insightPresets) { preset in
+                            Button {
+                                onSelect(preset)
+                                dismiss()
+                            } label: {
+                                HStack {
+                                    Image(systemName: "bookmark.fill")
+                                        .foregroundColor(.blue)
+                                    Text(preset.name)
+                                    Spacer()
+                                    if selectedPresetID == preset.id {
+                                        Image(systemName: "checkmark")
+                                            .foregroundColor(.blue)
+                                            .fontWeight(.bold)
+                                    }
+                                }
+                            }
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    data.deletePreset(preset)
+                                    if selectedPresetID == preset.id {
+                                        onReset()
+                                    }
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Section {
+                        Text("No saved views yet. Create one by applying filters and tapping 'Save View'.")
+                            .foregroundColor(.secondary)
+                            .font(.subheadline)
+                    }
+                }
+            }
+            .navigationTitle("Views")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+}
+
+// MARK: - Helper Components (Keep existing)
 
 struct MonthlyStats {
     let income: Double

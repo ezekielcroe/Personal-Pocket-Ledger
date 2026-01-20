@@ -9,7 +9,7 @@ struct AccountsListView: View {
     
     // Group Management State
     @State private var showingGroupSheet = false
-    @State private var groupToEdit: AccountGroup?
+    @State private var groupToEdit: AccountGroup? = nil
 
     // MARK: - Filtered Lists
     
@@ -211,19 +211,16 @@ struct AccountRow: View {
             }
             Spacer()
             
-            // Balance Display Logic
-            if let target = account.targetAmount {
-                if account.isCredit {
-                    // BUDGET ACCOUNT: Show remaining budget (Target - Spent)
-                    let spent = data.balance(for: account)
-                    let remaining = target - spent
-                    let isOverBudget = remaining < 0
-                    
-                    Text("\(remaining.formattedCurrency(symbol: currencySymbol)) left")
-                        .foregroundColor(isOverBudget ? .red : (remaining < target * 0.2 ? .orange : .green))
-                        .fontWeight(isOverBudget ? .bold : .regular)
-                } else {
-                    // GOAL ACCOUNT: Show progress (Current / Target)
+            // Balance Display Logic (Type-Specific)
+            switch account.accountType {
+            case .debit:
+                // Simple balance
+                Text(data.balance(for: account).formattedCurrency(symbol: currencySymbol))
+                    .foregroundColor(balanceColor)
+                
+            case .goal:
+                // Progress format: Current / Target
+                if let target = account.targetAmount {
                     let current = data.balance(for: account)
                     let isMet = current >= target
                     
@@ -231,10 +228,32 @@ struct AccountRow: View {
                         .foregroundColor(isMet ? .green : .primary)
                         .fontWeight(isMet ? .bold : .regular)
                 }
-            } else {
-                // NO TARGET: Show simple balance
-                Text(data.balance(for: account).formattedCurrency(symbol: currencySymbol))
-                    .foregroundColor(balanceColor)
+                
+            case .budget:
+                // Spending over Budget format: Spent / Budget
+                if let target = account.targetAmount {
+                    let spent = data.balance(for: account)
+                    let isOverBudget = spent > target
+                    
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("\(spent.formattedCurrency(symbol: currencySymbol)) / \(target.formattedCurrency(symbol: currencySymbol))")
+                            .foregroundColor(isOverBudget ? .red : .primary)
+                            .fontWeight(isOverBudget ? .bold : .regular)
+                        
+                        // Percentage indicator
+                        let percentage = (spent / target) * 100
+                        Text("\(Int(percentage))% used")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+            case .debt:
+                // Debt balance (amount owed)
+                let balance = data.balance(for: account)
+                Text(balance.formattedCurrency(symbol: currencySymbol))
+                    .foregroundColor(balance > 0 ? .orange : .green)
+                    .fontWeight(balance > 0 ? .bold : .regular)
             }
         }
         .padding(.vertical, 4)
@@ -244,20 +263,16 @@ struct AccountRow: View {
     
     /// Returns the appropriate label based on account type
     private var accountTypeLabel: String {
-        switch (account.isCredit, account.targetAmount) {
-        case (false, nil):   return "Debit Account"
-        case (true, nil):    return "Credit Account"
-        case (false, .some): return "Goal Account"
-        case (true, .some):  return "Budget Account"
-        }
+        account.accountType.rawValue + " Account"
     }
     
     /// Color coding for account type labels
     private var accountTypeLabelColor: Color {
-        switch (account.isCredit, account.targetAmount) {
-        case (false, .some): return .blue    // Goals
-        case (true, .some):  return .purple  // Budgets
-        default:             return .secondary
+        switch account.accountType {
+        case .debit:  return .secondary
+        case .goal:   return .blue
+        case .budget: return .purple
+        case .debt:   return .orange
         }
     }
     

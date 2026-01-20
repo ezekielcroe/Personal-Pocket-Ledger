@@ -173,10 +173,22 @@ class AppData: ObservableObject {
     
     // MARK: - CREATE Operations
 
-    func addAccount(name: String, initialAmount: Double, isCredit: Bool = false, targetAmount: Double? = nil) {
-            let account = Account(name: name, initialAmount: initialAmount, isCredit: isCredit, targetAmount: targetAmount)
-            accounts.append(account)
-            save()
+    func addAccount(name: String,
+                    initialAmount: Double,
+                    isCredit: Bool = false,
+                    targetAmount: Double? = nil,
+                    targetDate: Date? = nil,
+                    paymentFrequency: PaymentFrequency? = nil) {
+        let account = Account(
+            name: name,
+            initialAmount: initialAmount,
+            isCredit: isCredit,
+            targetAmount: targetAmount,
+            targetDate: targetDate,
+            paymentFrequency: paymentFrequency
+        )
+        accounts.append(account)
+        save()
     }
     
     func addAccountGroup(name: String, accountIDs: [UUID]) {
@@ -217,11 +229,18 @@ class AppData: ObservableObject {
 
     // MARK: - UPDATE & DELETE Operations
 
-    func updateAccount(id: UUID, name: String, initialAmount: Double, targetAmount: Double? = nil) {
+    func updateAccount(id: UUID,
+                       name: String,
+                       initialAmount: Double,
+                       targetAmount: Double? = nil,
+                       targetDate: Date? = nil,
+                       paymentFrequency: PaymentFrequency? = nil) {
         if let index = accounts.firstIndex(where: { $0.id == id }) {
             accounts[index].name = name
             accounts[index].initialAmount = initialAmount
-            accounts[index].targetAmount = targetAmount  // Always update target
+            accounts[index].targetAmount = targetAmount
+            accounts[index].targetDate = targetDate
+            accounts[index].paymentFrequency = paymentFrequency
             save()
         }
     }

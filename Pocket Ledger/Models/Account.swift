@@ -1,17 +1,13 @@
 import Foundation
 
-/// Represents a financial container such as a bank account, credit card, savings goal, or budget envelope.
-///
-/// Each `Account` has a unique identifier, a name, an initial amount and a creation date.
-/// The `initialAmount` reflects the starting balance when the account is created.
-/// Subsequent transactions will modify the running balance.
+/// Represents a financial container such as a bank account, credit card, savings goal, or debt.
 ///
 /// Accounts can be categorized into four types based on `isCredit` and `targetAmount`:
 /// - **Debit** (isCredit: false, targetAmount: nil): Cash, checking accounts
-/// - **Credit** (isCredit: true, targetAmount: nil): Credit cards, loans
-/// - **Goal** (isCredit: false, targetAmount: set): Savings goals with targets
-/// - **Budget** (isCredit: true, targetAmount: set): Envelope budgets with spending limits
-struct Account: Identifiable, Hashable, Sendable {
+/// - **Goal** (isCredit: false, targetAmount: set): Savings goals with target dates
+/// - **Budget** (isCredit: true, targetAmount: set): Spending envelopes with monthly limits
+/// - **Debt** (isCredit: true, targetAmount: nil or 0): Loans, installments with payoff goals
+struct Account: Identifiable, Codable, Hashable, Sendable {
     /// Unique identifier for the account.
     let id: UUID
     /// Human-readable name for the account.
@@ -26,62 +22,133 @@ struct Account: Identifiable, Hashable, Sendable {
     /// - For credit accounts: balance increases with outflows (debt/spending), decreases with inflows (payments)
     var isCredit: Bool = false
     
-    /// Optional target amount for goal tracking or budget limits.
+    /// Optional target amount for goal tracking, budget limits, or debt payoff.
     /// - For debit accounts: represents a savings goal to reach
-    /// - For credit accounts: represents a spending budget limit
+    /// - For budget accounts: represents a spending limit
+    /// - For debt accounts: typically nil or 0 (payoff goal)
     var targetAmount: Double? = nil
+    
+    /// Optional target date for reaching a goal or paying off debt.
+    /// Used to calculate required periodic contributions/payments.
+    var targetDate: Date? = nil
+    
+    /// Frequency of contributions (Goals) or payments (Debts).
+    /// Used with targetDate to calculate installment amounts.
+    var paymentFrequency: PaymentFrequency? = nil
     
     init(id: UUID = UUID(),
          name: String,
          initialAmount: Double = 0.0,
          created: Date = Date(),
          isCredit: Bool = false,
-         targetAmount: Double? = nil) {
+         targetAmount: Double? = nil,
+         targetDate: Date? = nil,
+         paymentFrequency: PaymentFrequency? = nil) {
         self.id = id
         self.name = name
         self.initialAmount = initialAmount
         self.created = created
         self.isCredit = isCredit
         self.targetAmount = targetAmount
+        self.targetDate = targetDate
+        self.paymentFrequency = paymentFrequency
+    }
+    
+    /// Computed property for account type classification
+    var accountType: AccountType {
+        switch (isCredit, targetAmount) {
+        case (false, nil):
+            return .debit
+        case (false, .some(let target)) where target > 0:
+            return .goal
+        case (true, .some(let target)) where target > 0:
+            return .budget
+        case (true, nil), (true, .some(0)):
+            return .debt
+        default:
+            return .debt
+        }
     }
 }
 
-// MARK: - Codable Implementation with Backward Compatibility
+// MARK: - Supporting Enums
 
-extension Account: Codable {
-    enum CodingKeys: String, CodingKey {
-        case id
-        case name
-        case initialAmount
-        case created
-        case isCredit
-        case targetAmount
+enum AccountType: String, Codable {
+    case debit = "Debit"
+    case goal = "Goal"
+    case budget = "Budget"
+    case debt = "Debt"
+    
+    var icon: String {
+        switch self {
+        case .debit:  return "dollarsign.circle.fill"
+        case .goal:   return "target"
+        case .budget: return "chart.bar.doc.horizontal.fill"
+        case .debt:   return "creditcard.and.123"
+        }
     }
     
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        
-        id = try container.decode(UUID.self, forKey: .id)
-        name = try container.decode(String.self, forKey: .name)
-        initialAmount = try container.decode(Double.self, forKey: .initialAmount)
-        created = try container.decode(Date.self, forKey: .created)
-        isCredit = try container.decodeIfPresent(Bool.self, forKey: .isCredit) ?? false
-        
-        // NEW: Handle targetAmount with backward compatibility
-        // If the key doesn't exist in old data, default to nil
-        targetAmount = try container.decodeIfPresent(Double.self, forKey: .targetAmount)
+    var color: String {
+        switch self {
+        case .debit:  return "primary"
+        case .goal:   return "blue"
+        case .budget: return "purple"
+        case .debt:   return "orange"
+        }
+    }
+}
+
+enum PaymentFrequency: String, Codable, CaseIterable, Identifiable {
+    case weekly = "Weekly"
+    case biweekly = "Bi-weekly"
+    case monthly = "Monthly"
+    case quarterly = "Quarterly"
+    case yearly = "Yearly"
+    
+    var id: String { rawValue }
+    
+    /// Returns the number of periods per year
+    var periodsPerYear: Double {
+        switch self {
+        case .weekly:    return 52
+        case .biweekly:  return 26
+        case .monthly:   return 12
+        case .quarterly: return 4
+        case .yearly:    return 1
+        }
     }
     
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
+    /// Calculates total number of periods between two dates
+    func periodsBetween(from start: Date, to end: Date) -> Int {
+        let calendar = Calendar.current
+        let components: Calendar.Component
+        let multiplier: Int
         
-        try container.encode(id, forKey: .id)
-        try container.encode(name, forKey: .name)
-        try container.encode(initialAmount, forKey: .initialAmount)
-        try container.encode(created, forKey: .created)
-        try container.encode(isCredit, forKey: .isCredit)
+        switch self {
+        case .weekly:
+            components = .weekOfYear
+            multiplier = 1
+        case .biweekly:
+            components = .weekOfYear
+            multiplier = 2
+        case .monthly:
+            components = .month
+            multiplier = 1
+        case .quarterly:
+            components = .month
+            multiplier = 3
+        case .yearly:
+            components = .year
+            multiplier = 1
+        }
         
-        // Always encode targetAmount (even if nil) for forward compatibility
-        try container.encode(targetAmount, forKey: .targetAmount)
+        let difference = calendar.dateComponents([components], from: start, to: end)
+        let rawPeriods = difference.value(for: components) ?? 0
+        
+        if multiplier == 1 {
+            return rawPeriods
+        } else {
+            return rawPeriods / multiplier
+        }
     }
 }

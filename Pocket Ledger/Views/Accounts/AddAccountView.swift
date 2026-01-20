@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Form to add a new account with a name, starting balance, and optional target.
+/// Form to add a new account with a name, starting balance, and optional target/installment plan.
 struct AddAccountView: View {
     @EnvironmentObject var data: AppData
     @Environment(\.dismiss) var dismiss
@@ -9,6 +9,11 @@ struct AddAccountView: View {
     @State private var initialAmountString: String = ""
     @State private var isCredit: Bool = false
     @State private var targetAmountString: String = ""
+    @State private var hasTargetDate: Bool = false
+    @State private var targetDate: Date = Calendar.current.date(byAdding: .year, value: 1, to: Date()) ?? Date()
+    @State private var paymentFrequency: PaymentFrequency = .monthly
+    
+    @State private var selectedGroupIDs: Set<UUID> = []
     
     @AppStorage("currencySymbol") private var currencySymbol: String = "$"
     
@@ -24,32 +29,24 @@ struct AddAccountView: View {
     var body: some View {
         NavigationStack {
             Form {
-                // SECTION 1: Account Type Toggle (at top for clarity)
-                Section(footer: Text(isCredit ?
-                        "Credit accounts track debt or spending (credit cards, loans, budgets)." :
-                        "Debit accounts track cash on hand (bank accounts, wallets, savings).")) {
-                    Toggle("Credit Account", isOn: $isCredit)
-                        .onChange(of: isCredit) { _ in
-                            // Don't clear target - let user decide
-                            // They might be switching back and forth
+                // SECTION 1: Account Type Toggle
+                Section(footer: Text(accountTypeFooter)) {
+                    Toggle(isCredit ? "Debt/Credit Account" : "Cash Account", isOn: $isCredit)
+                        .onChange(of: isCredit) { newValue in
+                            // Don't auto-set anything - let user decide
                         }
                 }
                 
-                // SECTION 2: Name
-                Section(header: Text("Account Name")) {
-                    TextField("e.g., Checking, Visa, Emergency Fund", text: $name)
+                // SECTION 2: Basic Info
+                Section(header: Text("Account Details"), footer: Text(startingBalanceFooter)) {
+                    TextField("Account Name", text: $name)
                         .focused($focusedField, equals: .name)
                         .submitLabel(.next)
                         .onSubmit {
                             focusedField = .amount
                         }
-                }
-                
-                // SECTION 3: Starting Balance
-                Section(header: Text("Starting Balance"), footer: Text(isCredit ?
-                        "Enter the current balance owed or spent (e.g., $1,250 of credit card debt)." :
-                        "Enter how much money is currently in this account.")) {
-                    TextField("Amount", text: $initialAmountString)
+                    
+                    TextField("Starting Balance", text: $initialAmountString)
                         .keyboardType(.decimalPad)
                         .focused($focusedField, equals: .amount)
                         .onSubmit {
@@ -57,9 +54,9 @@ struct AddAccountView: View {
                         }
                 }
                 
-                // SECTION 4: Target Amount (Optional)
-                Section(header: Text("Target Amount (Optional)"), footer: Text(targetFooterText)) {
-                    TextField("Target", text: $targetAmountString)
+                // SECTION 3: Target Amount
+                Section(header: Text(targetSectionHeader), footer: Text(targetSectionFooter)) {
+                    TextField(targetPlaceholder, text: $targetAmountString)
                         .keyboardType(.decimalPad)
                         .focused($focusedField, equals: .target)
                         .onSubmit {
@@ -67,6 +64,96 @@ struct AddAccountView: View {
                                 saveAccount()
                             }
                         }
+                }
+                
+                // SECTION 4: Payment/Contribution Plan (Optional)
+                if shouldShowInstallmentSection {
+                    Section(header: Text(installmentSectionHeader), footer: Text(installmentSectionFooter)) {
+                        Toggle("Set \(isCredit ? "Payment" : "Contribution") Plan", isOn: $hasTargetDate)
+                        
+                        if hasTargetDate {
+                            DatePicker("Target Date",
+                                     selection: $targetDate,
+                                     in: Date()...,
+                                     displayedComponents: .date)
+                            
+                            Picker("Frequency", selection: $paymentFrequency) {
+                                ForEach(PaymentFrequency.allCases) { frequency in
+                                    Text(frequency.rawValue).tag(frequency)
+                                }
+                            }
+                            
+                            // Preview calculation
+                            if let preview = calculatePreview() {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Divider()
+                                    
+                                    HStack {
+                                        Image(systemName: "calendar")
+                                            .foregroundColor(.blue)
+                                        Text("Payment Preview")
+                                            .font(.subheadline)
+                                            .fontWeight(.semibold)
+                                    }
+                                    
+                                    HStack {
+                                        Text("Payments:")
+                                        Spacer()
+                                        Text("\(preview.periods)")
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .font(.caption)
+                                    
+                                    HStack {
+                                        Text("Amount per \(paymentFrequency.rawValue.lowercased()):")
+                                        Spacer()
+                                        Text(preview.amountPerPeriod.formattedCurrency(symbol: currencySymbol))
+                                            .foregroundColor(isCredit ? .orange : .blue)
+                                            .fontWeight(.semibold)
+                                    }
+                                    .font(.caption)
+                                }
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 12)
+                                .background(Color(.systemGray6))
+                                .cornerRadius(8)
+                            }
+                        }
+                    }
+                }
+                
+                // SECTION 5: Account Groups (Optional)
+                if !data.accountGroups.isEmpty {
+                    Section(header: Text("Add to Account Groups (Optional)"), footer: Text("This account will be included in the selected groups.")) {
+                        ForEach(data.accountGroups) { group in
+                            Button {
+                                toggleGroupSelection(group.id)
+                            } label: {
+                                HStack {
+                                    Image(systemName: "folder")
+                                        .foregroundColor(.blue)
+                                    Text(group.name)
+                                        .foregroundColor(.primary)
+                                    Spacer()
+                                    if selectedGroupIDs.contains(group.id) {
+                                        Image(systemName: "checkmark")
+                                            .foregroundColor(.blue)
+                                            .fontWeight(.bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // SECTION 6: Account Type Summary
+                Section {
+                    HStack {
+                        Image(systemName: accountTypeIcon)
+                            .foregroundColor(accountTypeColor)
+                        Text("This will be a \(accountTypeName)")
+                            .foregroundColor(accountTypeColor)
+                    }
                 }
             }
             .formToolbar(
@@ -88,18 +175,106 @@ struct AddAccountView: View {
     
     // MARK: - Computed Properties
     
-    /// Footer text that explains what the target means for each account type
-    private var targetFooterText: String {
-        let hasTarget = !targetAmountString.isEmpty
-        
-        if !hasTarget {
-            return "Leave blank for simple balance tracking."
+    private var accountTypeFooter: String {
+        if isCredit {
+            return "Debt/Credit accounts track money you owe (credit cards, loans, installments)."
+        } else {
+            return "Cash accounts track money you have (bank accounts, wallets, savings)."
         }
+    }
+    
+    private var startingBalanceFooter: String {
+        if isCredit {
+            return "Enter how much you currently owe (e.g., $1,250 of credit card debt)."
+        } else {
+            return "Enter how much money is currently in this account."
+        }
+    }
+    
+    private var targetSectionHeader: String {
+        if isCredit {
+            return "Spending Limit / Payoff Goal"
+        } else {
+            return "Savings Goal (Optional)"
+        }
+    }
+    
+    private var targetSectionFooter: String {
+        let target = Double(targetAmountString) ?? 0
         
         if isCredit {
-            return "This will become a Budget account. Track spending against a limit (e.g., $500/month for groceries)."
+            if target > 0 {
+                return "This will be a Budget account. Track spending against this limit."
+            } else {
+                return "This will be a Debt account. Leave at $0 to track debt payoff, or set a monthly spending limit."
+            }
         } else {
-            return "This will become a Goal account. Track progress toward a savings target (e.g., $5,000 emergency fund)."
+            if target > 0 {
+                return "This will be a Goal account. Track your savings progress toward this target."
+            } else {
+                return "Leave blank for simple balance tracking."
+            }
+        }
+    }
+    
+    private var targetPlaceholder: String {
+        isCredit ? "0 (Debt) or Monthly Budget" : "Target Amount"
+    }
+    
+    private var shouldShowInstallmentSection: Bool {
+        let target = Double(targetAmountString) ?? 0
+        
+        if isCredit {
+            // Show for debt accounts (target = 0) or budgets (target > 0)
+            return true
+        } else {
+            // Show for goals (target > 0)
+            return target > 0
+        }
+    }
+    
+    private var installmentSectionHeader: String {
+        isCredit ? "Payment Plan (Optional)" : "Contribution Plan (Optional)"
+    }
+    
+    private var installmentSectionFooter: String {
+        if isCredit {
+            return "Set a target date to calculate required monthly payments to pay off this debt or stay within budget."
+        } else {
+            return "Set a target date to calculate required contributions to reach your savings goal."
+        }
+    }
+    
+    private var accountTypeIcon: String {
+        let target = Double(targetAmountString) ?? 0
+        
+        switch (isCredit, target > 0) {
+        case (false, false): return "dollarsign.circle.fill"
+        case (false, true):  return "target"
+        case (true, true):   return "chart.bar.doc.horizontal.fill"
+        case (true, false):  return "creditcard.and.123"
+        }
+    }
+    
+    private var accountTypeColor: Color {
+        let target = Double(targetAmountString) ?? 0
+        
+        switch (isCredit, target > 0) {
+        case (false, false): return .primary
+        case (false, true):  return .blue
+        case (true, true):   return .purple
+        case (true, false):  return .orange
+        }
+    }
+    
+    private var accountTypeName: String {
+        let target = Double(targetAmountString) ?? 0
+        
+        switch (isCredit, target > 0) {
+        case (false, false): return "Debit Account"
+        case (false, true):  return "Goal Account"
+        case (true, true):   return "Budget Account"
+        case (true, false):  return "Debt Account"
         }
     }
     
@@ -109,18 +284,82 @@ struct AddAccountView: View {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
     }
     
+    // MARK: - Calculations
+    
+    private func calculatePreview() -> (periods: Int, amountPerPeriod: Double)? {
+        guard hasTargetDate else { return nil }
+        
+        let initial = Double(initialAmountString) ?? 0
+        let target = Double(targetAmountString) ?? 0
+        
+        let today = Date()
+        guard targetDate > today else { return nil }
+        
+        let periods = paymentFrequency.periodsBetween(from: today, to: targetDate)
+        guard periods > 0 else { return nil }
+        
+        let remaining: Double
+        
+        if isCredit {
+            if target > 0 {
+                // Budget account: No installment calculation needed (it's monthly spending limit)
+                return nil
+            } else {
+                // Debt account: Calculate payoff amount
+                remaining = max(initial, 0)
+            }
+        } else {
+            // Goal account: Calculate savings needed
+            remaining = max(target - initial, 0)
+        }
+        
+        let amountPerPeriod = remaining / Double(periods)
+        return (periods, amountPerPeriod)
+    }
+    
     // MARK: - Actions
+    
+    private func toggleGroupSelection(_ groupID: UUID) {
+        if selectedGroupIDs.contains(groupID) {
+            selectedGroupIDs.remove(groupID)
+        } else {
+            selectedGroupIDs.insert(groupID)
+        }
+    }
     
     private func saveAccount() {
         let amount = Double(initialAmountString) ?? 0
-        let target = targetAmountString.isEmpty ? nil : Double(targetAmountString)
         
-        data.addAccount(
+        // Parse target: empty string or "0" → nil for debt accounts
+        let target: Double?
+        if targetAmountString.isEmpty {
+            target = nil
+        } else if let parsed = Double(targetAmountString), parsed > 0 {
+            target = parsed
+        } else {
+            target = nil // Treat 0 or invalid input as nil
+        }
+        
+        let newAccount = Account(
             name: name,
             initialAmount: amount,
             isCredit: isCredit,
-            targetAmount: target
+            targetAmount: target,
+            targetDate: hasTargetDate ? targetDate : nil,
+            paymentFrequency: hasTargetDate ? paymentFrequency : nil
         )
+        
+        // Add account to AppData
+        data.accounts.append(newAccount)
+        
+        // Add to selected groups
+        for groupID in selectedGroupIDs {
+            if let index = data.accountGroups.firstIndex(where: { $0.id == groupID }) {
+                data.accountGroups[index].accountIDs.append(newAccount.id)
+            }
+        }
+        
+        data.save()
         dismiss()
     }
 }
