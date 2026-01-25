@@ -11,6 +11,10 @@ struct TemplatesView: View {
 
     // MARK: - Search State
     @State private var searchText = ""
+    
+    // MARK: - Expansion State
+    @State private var isScheduledExpanded = true
+    @State private var isStandardExpanded = true
 
     // MARK: - Filter & Sort Logic
     var filteredTemplates: [TransactionTemplate] {
@@ -36,6 +40,15 @@ struct TemplatesView: View {
         }
     }
     
+    // Split into groups
+    var scheduledTemplates: [TransactionTemplate] {
+        filteredTemplates.filter { $0.reminderSchedule != nil }
+    }
+    
+    var standardTemplates: [TransactionTemplate] {
+        filteredTemplates.filter { $0.reminderSchedule == nil }
+    }
+    
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -55,73 +68,36 @@ struct TemplatesView: View {
                     if data.templates.isEmpty {
                         Text("No templates yet. Create one from the Add Transaction form.")
                             .foregroundColor(.secondary)
+                            .padding()
                     } else if filteredTemplates.isEmpty {
                         Text("No templates match your search.")
                             .foregroundColor(.secondary)
-                    }
-
-                    ForEach(filteredTemplates) { template in
-                        HStack {
-                            // 1. The Main Template Info (Tap to use)
-                            Button {
-                                selectedTemplate = template
-                            } label: {
-                                VStack(alignment: .leading) {
-                                    Text(template.name)
-                                        .foregroundColor(.primary)
-                                    HStack {
-                                        Text(template.type.rawValue.capitalized)
-                                        if let accountName = accountName(for: template.accountID) {
-                                            Text("– \(accountName)")
-                                        }
-                                        if let categoryName = categoryName(for: template.categoryID) {
-                                            Text("– \(categoryName)")
-                                        }
+                            .padding()
+                    } else {
+                        // SECTION 1: STANDARD
+                        if !standardTemplates.isEmpty {
+                            DisclosureGroup(
+                                isExpanded: $isStandardExpanded,
+                                content: {
+                                    ForEach(standardTemplates) { template in
+                                        templateRow(template)
                                     }
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                    
-                                    // Reminder Icon
-                                    if let schedule = template.reminderSchedule {
-                                        HStack(spacing: 4) {
-                                            Image(systemName: "bell.fill")
-                                                .font(.caption2)
-                                            Text("\(schedule.frequency.rawValue)")
-                                                .font(.caption2)
-                                        }
-                                        .foregroundColor(.blue)
-                                        .padding(.top, 2)
+                                },
+                                label: { headerLabel(title: "Standard", count: standardTemplates.count, icon: "list.bullet", color: .primary) }
+                            )
+                        }
+                        
+                        // SECTION 2: WITH REMINDERS
+                        if !scheduledTemplates.isEmpty {
+                            DisclosureGroup(
+                                isExpanded: $isScheduledExpanded,
+                                content: {
+                                    ForEach(scheduledTemplates) { template in
+                                        templateRow(template)
                                     }
-                                }
-                            }
-                            
-                            Spacer()
-                            
-                            // 2. Visible Edit Button
-                            Button {
-                                templateToEdit = template
-                            } label: {
-                                Image(systemName: "slider.horizontal.3")
-                                    .foregroundColor(.secondary)
-                                    .padding(.leading, 10)
-                            }
-                            .buttonStyle(.borderless)
-                        }
-                        // Swipe Actions
-                        .swipeActions(edge: .leading) {
-                            Button {
-                                templateToEdit = template
-                            } label: {
-                                Label("Edit", systemImage: "pencil")
-                            }
-                            .tint(.blue)
-                        }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                deleteSingleTemplate(template)
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
+                                },
+                                label: { headerLabel(title: "Scheduled", count: scheduledTemplates.count, icon: "bell.fill", color: .blue) }
+                            )
                         }
                     }
                 }
@@ -137,6 +113,90 @@ struct TemplatesView: View {
             .sheet(item: $templateToEdit) { template in
                 EditTemplateView(template: template)
                     .environmentObject(data)
+            }
+        }
+    }
+    
+    // MARK: - View Builders
+    
+    private func headerLabel(title: String, count: Int, icon: String, color: Color) -> some View {
+        HStack {
+            Label(title, systemImage: icon)
+                .font(.headline)
+                .foregroundColor(color)
+            Spacer()
+            Text("\(count)")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 8)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(Capsule())
+        }
+        .padding(.vertical, 4)
+    }
+    
+    @ViewBuilder
+    private func templateRow(_ template: TransactionTemplate) -> some View {
+        HStack {
+            // 1. The Main Template Info (Tap to use)
+            Button {
+                selectedTemplate = template
+            } label: {
+                VStack(alignment: .leading) {
+                    Text(template.name)
+                        .foregroundColor(.primary)
+                    HStack {
+                        Text(template.type.rawValue.capitalized)
+                        if let accountName = accountName(for: template.accountID) {
+                            Text("– \(accountName)")
+                        }
+                        if let categoryName = categoryName(for: template.categoryID) {
+                            Text("– \(categoryName)")
+                        }
+                    }
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    
+                    // Reminder Detail
+                    if let schedule = template.reminderSchedule {
+                        HStack(spacing: 4) {
+                            Image(systemName: "bell.fill")
+                                .font(.caption2)
+                            Text("\(schedule.frequency.rawValue)")
+                                .font(.caption2)
+                        }
+                        .foregroundColor(.blue)
+                        .padding(.top, 2)
+                    }
+                }
+            }
+            
+            Spacer()
+            
+            // 2. Visible Edit Button
+            Button {
+                templateToEdit = template
+            } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .foregroundColor(.secondary)
+                    .padding(.leading, 10)
+            }
+            .buttonStyle(.borderless)
+        }
+        // Swipe Actions
+        .swipeActions(edge: .leading) {
+            Button {
+                templateToEdit = template
+            } label: {
+                Label("Edit", systemImage: "pencil")
+            }
+            .tint(.blue)
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button(role: .destructive) {
+                deleteSingleTemplate(template)
+            } label: {
+                Label("Delete", systemImage: "trash")
             }
         }
     }

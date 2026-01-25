@@ -21,7 +21,7 @@ struct TransactionRow: View {
                     .font(.body)
                     .foregroundColor(.primary)
                 
-                // Secondary: Account Type Icon + Account Name • First Tag
+                // Secondary: Account Type Icon + Account Name
                 HStack(spacing: 4) {
                     // VISUAL: Account Type Icon (compact)
                     if let account = account {
@@ -30,12 +30,6 @@ struct TransactionRow: View {
                     
                     if let accName = accountName {
                         Text(accName)
-                    }
-                    
-                    if let tagName = firstTagName {
-                        Text("•")
-                        Text(tagName)
-                            .fontWeight(.medium)
                     }
                 }
                 .font(.caption)
@@ -79,11 +73,6 @@ struct TransactionRow: View {
     
     private var accountName: String? {
         account?.name
-    }
-    
-    private var firstTagName: String? {
-        guard let firstTagID = transaction.tagIDs.first else { return nil }
-        return data.tags.first(where: { $0.id == firstTagID })?.name
     }
     
     // Logic to distinguish Transfers visually

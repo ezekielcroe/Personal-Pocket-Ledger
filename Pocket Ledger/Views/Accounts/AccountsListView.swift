@@ -160,7 +160,6 @@ struct AccountsListView: View {
                                                 Text(account.name)
                                                     .font(.headline)
                                                     .foregroundColor(.secondary)
-                                                    .strikethrough()
                                                 
                                                 HStack(spacing: 4) {
                                                     Image(systemName: "archivebox.fill")

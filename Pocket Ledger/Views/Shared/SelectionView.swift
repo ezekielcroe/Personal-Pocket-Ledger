@@ -152,7 +152,6 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
                         HStack(spacing: 6) {
                             Text(account.name)
                                 .foregroundColor(account.isArchived ? .secondary : .primary)
-                                .strikethrough(account.isArchived)
                             
                             // VISUAL: Status Badge (Dimmed if archived)
                             if let badge = account.statusBadge(balance: data.balance(for: account)) {
