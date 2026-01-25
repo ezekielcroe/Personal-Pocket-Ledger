@@ -47,7 +47,7 @@ struct AddAccountView: View {
                         }
                     
                     TextField("Starting Balance", text: $initialAmountString)
-                        .keyboardType(.decimalPad)
+                        .keyboardType(.numbersAndPunctuation) // Changed to allow math symbols
                         .focused($focusedField, equals: .amount)
                         .onSubmit {
                             focusedField = .target
@@ -57,7 +57,7 @@ struct AddAccountView: View {
                 // SECTION 3: Target Amount
                 Section(header: Text(targetSectionHeader), footer: Text(targetSectionFooter)) {
                     TextField(targetPlaceholder, text: $targetAmountString)
-                        .keyboardType(.decimalPad)
+                        .keyboardType(.numbersAndPunctuation) // Changed to allow math symbols
                         .focused($focusedField, equals: .target)
                         .onSubmit {
                             if canSave {
@@ -200,7 +200,7 @@ struct AddAccountView: View {
     }
     
     private var targetSectionFooter: String {
-        let target = Double(targetAmountString) ?? 0
+        let target = calculateAmount(targetAmountString)
         
         if isCredit {
             if target > 0 {
@@ -222,7 +222,7 @@ struct AddAccountView: View {
     }
     
     private var shouldShowInstallmentSection: Bool {
-        let target = Double(targetAmountString) ?? 0
+        let target = calculateAmount(targetAmountString)
         
         if isCredit {
             // Show for debt accounts (target = 0) or budgets (target > 0)
@@ -246,7 +246,7 @@ struct AddAccountView: View {
     }
     
     private var accountTypeIcon: String {
-        let target = Double(targetAmountString) ?? 0
+        let target = calculateAmount(targetAmountString)
         
         switch (isCredit, target > 0) {
         case (false, false): return "dollarsign.circle.fill"
@@ -257,7 +257,7 @@ struct AddAccountView: View {
     }
     
     private var accountTypeColor: Color {
-        let target = Double(targetAmountString) ?? 0
+        let target = calculateAmount(targetAmountString)
         
         switch (isCredit, target > 0) {
         case (false, false): return .primary
@@ -268,7 +268,7 @@ struct AddAccountView: View {
     }
     
     private var accountTypeName: String {
-        let target = Double(targetAmountString) ?? 0
+        let target = calculateAmount(targetAmountString)
         
         switch (isCredit, target > 0) {
         case (false, false): return "Debit Account"
@@ -284,13 +284,39 @@ struct AddAccountView: View {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
     }
     
+    // MARK: - Math Engine
+    
+    /// Parses a string that may contain math expressions (e.g., "100+50") into a Double.
+    private func calculateAmount(_ input: String) -> Double {
+        // 1. Filter allowed characters
+        let allowed = CharacterSet(charactersIn: "0123456789.+-*/")
+        let sanitized = input.components(separatedBy: allowed.inverted).joined()
+        
+        if sanitized.isEmpty { return 0 }
+        
+        // 2. If it ends in a math symbol, just parse the safe part to avoid crash
+        if let lastChar = sanitized.last, !lastChar.isNumber {
+            return Double(sanitized.dropLast()) ?? 0
+        }
+        
+        // 3. Evaluate expression
+        let expression = NSExpression(format: sanitized)
+        if let result = expression.expressionValue(with: nil, context: nil) as? Double {
+            return result
+        } else if let intResult = expression.expressionValue(with: nil, context: nil) as? Int {
+            return Double(intResult)
+        }
+        
+        return Double(sanitized) ?? 0
+    }
+    
     // MARK: - Calculations
     
     private func calculatePreview() -> (periods: Int, amountPerPeriod: Double)? {
         guard hasTargetDate else { return nil }
         
-        let initial = Double(initialAmountString) ?? 0
-        let target = Double(targetAmountString) ?? 0
+        let initial = calculateAmount(initialAmountString)
+        let target = calculateAmount(targetAmountString)
         
         let today = Date()
         guard targetDate > today else { return nil }
@@ -302,7 +328,7 @@ struct AddAccountView: View {
         
         if isCredit {
             if target > 0 {
-                // Budget account: No installment calculation needed (it's monthly spending limit)
+                // Budget account: No installment calculation needed
                 return nil
             } else {
                 // Debt account: Calculate payoff amount
@@ -328,16 +354,24 @@ struct AddAccountView: View {
     }
     
     private func saveAccount() {
-        let amount = Double(initialAmountString) ?? 0
+        let amount = calculateAmount(initialAmountString)
+        let targetRaw = calculateAmount(targetAmountString)
         
-        // Parse target: empty string or "0" → nil for debt accounts
+        // Logic for Target:
+        // If Debt (isCredit=true): target can be 0 (payoff goal) or >0 (budget limit).
+        // If Debit (isCredit=false): target must be >0 to be a Goal. If 0, it's nil.
+        
         let target: Double?
-        if targetAmountString.isEmpty {
-            target = nil
-        } else if let parsed = Double(targetAmountString), parsed > 0 {
-            target = parsed
+        if isCredit {
+            // For credit, we store whatever the user entered (0 or higher) if the string wasn't empty
+            if targetAmountString.isEmpty {
+                target = nil
+            } else {
+                target = targetRaw
+            }
         } else {
-            target = nil // Treat 0 or invalid input as nil
+            // For debit, 0 means "Standard Debit Account", so we convert to nil
+            target = targetRaw > 0 ? targetRaw : nil
         }
         
         let newAccount = Account(

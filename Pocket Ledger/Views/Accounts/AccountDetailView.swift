@@ -3,10 +3,18 @@ import SwiftUI
 /// Displays details about an account including its transactions and statistics.
 struct AccountDetailView: View {
     @EnvironmentObject var data: AppData
-    var account: Account
+    
+    // The account passed in is just used for its ID to find the "Live" version
+    let account: Account
 
     @AppStorage("currencySymbol") private var currencySymbol: String = "$"
     @AppStorage("fiscalStartDay") private var fiscalStartDay: Int = 1
+    
+    /// Fetches the latest version of the account from the source of truth.
+    /// This ensures that when AppData changes (e.g. archiving), this view updates immediately.
+    private var liveAccount: Account {
+        data.accounts.first(where: { $0.id == account.id }) ?? account
+    }
     
     var body: some View {
         List {
@@ -32,7 +40,7 @@ struct AccountDetailView: View {
             // SECTION 6: Archive Controls
             archiveSection
         }
-        .navigationTitle(account.name)
+        .navigationTitle(liveAccount.name)
         .navigationBarTitleDisplayMode(.inline)
     }
     
@@ -44,9 +52,9 @@ struct AccountDetailView: View {
             VStack(spacing: 12) {
                 // Account Type Badge
                 HStack {
-                    Image(systemName: account.accountType.icon)
+                    Image(systemName: liveAccount.accountType.icon)
                         .foregroundColor(accountTypeColor)
-                    Text(account.accountType.rawValue + " Account")
+                    Text(liveAccount.accountType.rawValue + " Account")
                         .font(.subheadline)
                         .foregroundColor(accountTypeColor)
                     Spacer()
@@ -58,7 +66,7 @@ struct AccountDetailView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                     
-                    Text(data.balance(for: account).formattedCurrency(symbol: currencySymbol))
+                    Text(data.balance(for: liveAccount).formattedCurrency(symbol: currencySymbol))
                         .font(.system(size: 36, weight: .bold, design: .rounded))
                         .foregroundColor(balanceColor)
                 }
@@ -80,11 +88,11 @@ struct AccountDetailView: View {
     
     @ViewBuilder
     private var targetProgressSection: some View {
-        if let target = account.targetAmount, target > 0 {
+        if let target = liveAccount.targetAmount, target > 0 {
             Section(header: Text(progressSectionTitle)) {
                 VStack(spacing: 16) {
                     // Progress Bar
-                    progressBar(current: data.balance(for: account), target: target)
+                    progressBar(current: data.balance(for: liveAccount), target: target)
                     
                     // Progress Stats
                     HStack {
@@ -92,7 +100,7 @@ struct AccountDetailView: View {
                             Text(currentAmountLabel)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
-                            Text(data.balance(for: account).formattedCurrency(symbol: currencySymbol))
+                            Text(data.balance(for: liveAccount).formattedCurrency(symbol: currencySymbol))
                                 .font(.headline)
                         }
                         
@@ -108,11 +116,11 @@ struct AccountDetailView: View {
                     }
                     
                     // Status Badge
-                    statusBadge(current: data.balance(for: account), target: target)
+                    statusBadge(current: data.balance(for: liveAccount), target: target)
                 }
                 .padding(.vertical, 8)
             }
-        } else if account.accountType == .debt {
+        } else if liveAccount.accountType == .debt {
             // Debt account with target = 0 or nil
             Section(header: Text("Debt Tracking")) {
                 VStack(spacing: 12) {
@@ -121,7 +129,7 @@ struct AccountDetailView: View {
                             Text("Current Debt")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
-                            Text(data.balance(for: account).formattedCurrency(symbol: currencySymbol))
+                            Text(data.balance(for: liveAccount).formattedCurrency(symbol: currencySymbol))
                                 .font(.headline)
                         }
                         
@@ -136,7 +144,7 @@ struct AccountDetailView: View {
                         }
                     }
                     
-                    if data.balance(for: account) > 0 {
+                    if data.balance(for: liveAccount) > 0 {
                         HStack {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundColor(.orange)
@@ -170,10 +178,10 @@ struct AccountDetailView: View {
     
     @ViewBuilder
     private var installmentCalculatorSection: some View {
-        if let targetDate = account.targetDate,
-           let frequency = account.paymentFrequency {
+        if let targetDate = liveAccount.targetDate,
+           let frequency = liveAccount.paymentFrequency {
             
-            Section(header: Text(account.accountType == .goal ? "Savings Plan" : "Payment Plan")) {
+            Section(header: Text(liveAccount.accountType == .goal ? "Savings Plan" : "Payment Plan")) {
                 VStack(spacing: 12) {
                     // Target Date
                     HStack {
@@ -210,7 +218,7 @@ struct AccountDetailView: View {
                                 Spacer()
                                 Text(installment.amountPerPeriod.formattedCurrency(symbol: currencySymbol))
                                     .font(.headline)
-                                    .foregroundColor(account.accountType == .goal ? .blue : .orange)
+                                    .foregroundColor(liveAccount.accountType == .goal ? .blue : .orange)
                             }
                         }
                         .padding(.top, 4)
@@ -226,10 +234,10 @@ struct AccountDetailView: View {
     private var statisticsSection: some View {
         Section(header: Text("Statistics"), footer: fiscalRangeFooter) {
             let monthlyTotals = calculateCurrentMonthTotals()
-            let stats = data.stats(for: account)
+            let stats = data.stats(for: liveAccount)
             
             // This Period Stats
-            switch account.accountType {
+            switch liveAccount.accountType {
             case .debit, .goal:
                 StatRow(title: "Income (This Month)",
                        value: monthlyTotals.inflow,
@@ -245,7 +253,7 @@ struct AccountDetailView: View {
                        value: monthlyTotals.outflow,
                        symbol: currencySymbol,
                        color: .red)
-                if let target = account.targetAmount {
+                if let target = liveAccount.targetAmount {
                     StatRow(title: "Budget",
                            value: target,
                            symbol: currencySymbol,
@@ -266,7 +274,7 @@ struct AccountDetailView: View {
             Divider()
             
             // Average Stats
-            switch account.accountType {
+            switch liveAccount.accountType {
             case .debit, .goal:
                 StatRow(title: "Avg Income / Month",
                        value: stats.monthlyInflow,
@@ -296,7 +304,7 @@ struct AccountDetailView: View {
     @ViewBuilder
     private var recentTransactionsSection: some View {
         Section(header: Text("Recent Transactions (Last 20)")) {
-            let recentTransactions = data.transactions(for: account)
+            let recentTransactions = data.transactions(for: liveAccount)
                 .sorted { $0.date > $1.date }
                 .prefix(20)
             
@@ -318,7 +326,7 @@ struct AccountDetailView: View {
     @ViewBuilder
     private var archiveSection: some View {
         Section(footer: archiveFooter) {
-            if account.isArchived {
+            if liveAccount.isArchived {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
                         Image(systemName: "archivebox.fill")
@@ -328,7 +336,7 @@ struct AccountDetailView: View {
                             .fontWeight(.semibold)
                     }
                     
-                    if let archivedDate = account.archivedDate {
+                    if let archivedDate = liveAccount.archivedDate {
                         Text("Archived on \(archivedDate.formatted(date: .long, time: .omitted))")
                             .font(.caption)
                             .foregroundColor(.secondary)
@@ -339,7 +347,10 @@ struct AccountDetailView: View {
                         .foregroundColor(.secondary)
                     
                     Button {
-                        data.unarchiveAccount(account)
+                        // Action wrapped in animation for instant visual feedback
+                        withAnimation {
+                            data.unarchiveAccount(liveAccount)
+                        }
                     } label: {
                         HStack {
                             Image(systemName: "arrow.uturn.backward.circle.fill")
@@ -356,7 +367,10 @@ struct AccountDetailView: View {
                 .padding(.vertical, 8)
             } else {
                 Button(role: .destructive) {
-                    data.archiveAccount(account)
+                    // Action wrapped in animation for instant visual feedback
+                    withAnimation {
+                        data.archiveAccount(liveAccount)
+                    }
                 } label: {
                     HStack {
                         Image(systemName: "archivebox")
@@ -368,7 +382,7 @@ struct AccountDetailView: View {
     }
     
     private var archiveFooter: Text? {
-        if !account.isArchived {
+        if !liveAccount.isArchived {
             return Text("Archive this account to hide it from the main list. You can unarchive it anytime, and all transaction history will be preserved.")
         }
         return nil
@@ -395,7 +409,7 @@ struct AccountDetailView: View {
     
     @ViewBuilder
     private func statusBadge(current: Double, target: Double) -> some View {
-        switch account.accountType {
+        switch liveAccount.accountType {
         case .budget:
             let remaining = target - current
             HStack {
@@ -450,21 +464,21 @@ struct AccountDetailView: View {
     // MARK: - Computed Properties
     
     private var shouldShowTargetProgress: Bool {
-        if account.accountType == .debt {
+        if liveAccount.accountType == .debt {
             return true
         }
-        return account.targetAmount != nil && account.targetAmount! > 0
+        return liveAccount.targetAmount != nil && liveAccount.targetAmount! > 0
     }
     
     private var shouldShowInstallmentCalculator: Bool {
-        guard account.targetDate != nil && account.paymentFrequency != nil else {
+        guard liveAccount.targetDate != nil && liveAccount.paymentFrequency != nil else {
             return false
         }
-        return account.accountType == .goal || account.accountType == .debt
+        return liveAccount.accountType == .goal || liveAccount.accountType == .debt
     }
     
     private var accountTypeColor: Color {
-        switch account.accountType {
+        switch liveAccount.accountType {
         case .debit:  return .primary
         case .goal:   return .blue
         case .budget: return .purple
@@ -473,7 +487,7 @@ struct AccountDetailView: View {
     }
     
     private var balanceLabel: String {
-        switch account.accountType {
+        switch liveAccount.accountType {
         case .debit:  return "Current Balance"
         case .goal:   return "Current Savings"
         case .budget: return "Spent This Period"
@@ -482,20 +496,20 @@ struct AccountDetailView: View {
     }
     
     private var balanceColor: Color {
-        let balance = data.balance(for: account)
+        let balance = data.balance(for: liveAccount)
         
-        switch account.accountType {
+        switch liveAccount.accountType {
         case .debit:
             return balance < 0 ? .red : .primary
             
         case .goal:
-            if let target = account.targetAmount, balance >= target {
+            if let target = liveAccount.targetAmount, balance >= target {
                 return .green
             }
             return .primary
             
         case .budget:
-            if let target = account.targetAmount {
+            if let target = liveAccount.targetAmount {
                 return balance > target ? .red : .primary
             }
             return .primary
@@ -506,9 +520,9 @@ struct AccountDetailView: View {
     }
     
     private var balanceSubtitle: String? {
-        switch account.accountType {
+        switch liveAccount.accountType {
         case .debit:
-            let change = data.balance(for: account) - account.initialAmount
+            let change = data.balance(for: liveAccount) - liveAccount.initialAmount
             let prefix = change >= 0 ? "+" : ""
             return "Change from start: \(prefix)\(change.formattedCurrency(symbol: currencySymbol))"
             
@@ -518,7 +532,7 @@ struct AccountDetailView: View {
     }
     
     private var progressSectionTitle: String {
-        switch account.accountType {
+        switch liveAccount.accountType {
         case .goal:   return "Goal Progress"
         case .budget: return "Budget Progress"
         case .debt:   return "Payoff Progress"
@@ -527,7 +541,7 @@ struct AccountDetailView: View {
     }
     
     private var currentAmountLabel: String {
-        switch account.accountType {
+        switch liveAccount.accountType {
         case .goal:   return "Saved"
         case .budget: return "Spent"
         case .debt:   return "Owed"
@@ -536,7 +550,7 @@ struct AccountDetailView: View {
     }
     
     private var targetAmountLabel: String {
-        switch account.accountType {
+        switch liveAccount.accountType {
         case .goal:   return "Goal"
         case .budget: return "Budget"
         case .debt:   return "Payoff"
@@ -552,7 +566,7 @@ struct AccountDetailView: View {
     private func progressBarColor(current: Double, target: Double) -> Color {
         let percentage = current / target
         
-        switch account.accountType {
+        switch liveAccount.accountType {
         case .budget:
             if percentage > 1.0 { return .red }
             else if percentage > 0.9 { return .orange }
@@ -572,8 +586,8 @@ struct AccountDetailView: View {
     // MARK: - Installment Calculation
     
     private func calculateInstallment() -> (periodsRemaining: Int, amountPerPeriod: Double)? {
-        guard let targetDate = account.targetDate,
-              let frequency = account.paymentFrequency else {
+        guard let targetDate = liveAccount.targetDate,
+              let frequency = liveAccount.paymentFrequency else {
             return nil
         }
         
@@ -583,12 +597,12 @@ struct AccountDetailView: View {
         let periodsRemaining = frequency.periodsBetween(from: today, to: targetDate)
         guard periodsRemaining > 0 else { return nil }
         
-        let current = data.balance(for: account)
+        let current = data.balance(for: liveAccount)
         let remaining: Double
         
-        switch account.accountType {
+        switch liveAccount.accountType {
         case .goal:
-            if let target = account.targetAmount {
+            if let target = liveAccount.targetAmount {
                 remaining = max(target - current, 0)
             } else {
                 return nil
@@ -626,7 +640,7 @@ struct AccountDetailView: View {
     
     private func calculateCurrentMonthTotals() -> (inflow: Double, outflow: Double) {
         let range = getCurrentFiscalRange()
-        let accountTransactions = data.transactions(for: account)
+        let accountTransactions = data.transactions(for: liveAccount)
         
         let thisMonthTransactions = accountTransactions.filter {
             $0.date >= range.start && $0.date <= range.end

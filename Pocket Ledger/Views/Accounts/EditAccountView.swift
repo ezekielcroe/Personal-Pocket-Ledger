@@ -29,10 +29,11 @@ struct EditAccountView: View {
         _initialAmountString = State(initialValue: String(format: "%.2f", account.initialAmount))
         
         // Initialize target
-        if let target = account.targetAmount, target > 0 {
+        if let target = account.targetAmount {
+            // Show 0.00 if it's a debt account with explicit 0 target, or any positive target
             _targetAmountString = State(initialValue: String(format: "%.2f", target))
         } else {
-            // For debt accounts (credit with no target or target = 0), leave empty
+            // Nil target means empty string
             _targetAmountString = State(initialValue: "")
         }
         
@@ -69,7 +70,7 @@ struct EditAccountView: View {
                         Text("Starting Balance")
                         Spacer()
                         TextField("0.00", text: $initialAmountString)
-                            .keyboardType(.decimalPad)
+                            .keyboardType(.numbersAndPunctuation) // Changed for math support
                             .multilineTextAlignment(.trailing)
                             .focused($focusedField, equals: .amount)
                             .onSubmit {
@@ -84,7 +85,7 @@ struct EditAccountView: View {
                         Text("Target")
                         Spacer()
                         TextField(targetPlaceholder, text: $targetAmountString)
-                            .keyboardType(.decimalPad)
+                            .keyboardType(.numbersAndPunctuation) // Changed for math support
                             .multilineTextAlignment(.trailing)
                             .focused($focusedField, equals: .target)
                             .onSubmit {
@@ -238,7 +239,7 @@ struct EditAccountView: View {
         case .budget:
             return false // Budgets don't use installment plans (they're monthly)
         case .debit:
-            let target = Double(targetAmountString) ?? 0
+            let target = calculateAmount(targetAmountString)
             return target > 0 // Only show if user adds a target
         }
     }
@@ -280,9 +281,8 @@ struct EditAccountView: View {
     }
     
     private var progressText: String {
-        guard let target = Double(targetAmountString), target > 0 else {
-            return ""
-        }
+        let target = calculateAmount(targetAmountString)
+        guard target > 0 else { return "" }
         
         let current = data.balance(for: account)
         let percentage = (current / target) * 100
@@ -309,13 +309,38 @@ struct EditAccountView: View {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
     }
     
+    // MARK: - Math Engine
+    
+    private func calculateAmount(_ input: String) -> Double {
+        // 1. Filter allowed characters
+        let allowed = CharacterSet(charactersIn: "0123456789.+-*/")
+        let sanitized = input.components(separatedBy: allowed.inverted).joined()
+        
+        if sanitized.isEmpty { return 0 }
+        
+        // 2. If it ends in a math symbol, just parse the safe part to avoid crash
+        if let lastChar = sanitized.last, !lastChar.isNumber {
+            return Double(sanitized.dropLast()) ?? 0
+        }
+        
+        // 3. Evaluate expression
+        let expression = NSExpression(format: sanitized)
+        if let result = expression.expressionValue(with: nil, context: nil) as? Double {
+            return result
+        } else if let intResult = expression.expressionValue(with: nil, context: nil) as? Int {
+            return Double(intResult)
+        }
+        
+        return Double(sanitized) ?? 0
+    }
+    
     // MARK: - Calculations
     
     private func calculatePreview() -> (periods: Int, amountPerPeriod: Double)? {
         guard hasTargetDate else { return nil }
         
         let current = data.balance(for: account)
-        let target = Double(targetAmountString) ?? 0
+        let target = calculateAmount(targetAmountString)
         
         let today = Date()
         guard targetDate > today else { return nil }
@@ -343,16 +368,15 @@ struct EditAccountView: View {
     // MARK: - Actions
     
     private func saveChanges() {
-        let amount = Double(initialAmountString) ?? 0.0
+        let amount = calculateAmount(initialAmountString)
+        let targetRaw = calculateAmount(targetAmountString)
         
         // Parse target: empty string or "0" → nil for debt accounts
         let target: Double?
-        if targetAmountString.isEmpty {
+        if isTargetEmptyOrZero(targetAmountString, val: targetRaw) {
             target = nil
-        } else if let parsed = Double(targetAmountString), parsed > 0 {
-            target = parsed
         } else {
-            target = nil // Treat 0 or invalid input as nil
+            target = targetRaw
         }
         
         data.updateAccount(
@@ -364,5 +388,13 @@ struct EditAccountView: View {
             paymentFrequency: hasTargetDate ? paymentFrequency : nil
         )
         dismiss()
+    }
+    
+    /// Helper to determine if we should treat the target as nil
+    private func isTargetEmptyOrZero(_ str: String, val: Double) -> Bool {
+        if str.isEmpty { return true }
+        if !account.isCredit && val == 0 { return true } // Debit/Goal: 0 target = nil
+        // For Credit/Debt: explicit 0 is a valid target (payoff goal), so we keep it unless empty
+        return false
     }
 }
