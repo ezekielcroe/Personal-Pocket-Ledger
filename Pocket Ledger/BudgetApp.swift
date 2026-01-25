@@ -18,13 +18,24 @@ struct BudgetApp: App {
     // Lifecycle
     @Environment(\.scenePhase) private var scenePhase
     @State private var isLocked = false
+    
+    // Hoisted states for shortcut commands
+    @State private var selectedTab: Int = 0
+    @State private var showAddAccount = false
+    @State private var showAddGroup = false
+    @State private var showAddTransaction = false
 
     var body: some Scene {
         WindowGroup {
             ZStack {
-                ContentView()
-                    .environmentObject(data)
-                    .preferredColorScheme(selectedTheme == 0 ? nil : (selectedTheme == 1 ? .light : .dark))
+                ContentView(
+                    selectedTab: $selectedTab,
+                    showAddAccount: $showAddAccount,
+                    showAddGroup: $showAddGroup,
+                    showAddTransaction: $showAddTransaction
+                )
+                .environmentObject(data)
+                .preferredColorScheme(selectedTheme == 0 ? nil : (selectedTheme == 1 ? .light : .dark))
                 
                 if isLocked {
                     LockView(isLocked: $isLocked)
@@ -46,6 +57,41 @@ struct BudgetApp: App {
                 
                 // Process any pending notification that arrived before AppData loaded
                 appDelegate.processPendingNotification()
+            }
+        }
+        .commands {
+            CommandMenu("Pocket Ledger") {
+                Button("Go to Accounts") {
+                    selectedTab = 0
+                }
+                .keyboardShortcut("1", modifiers: [.command])
+                
+                Button("Go to Groups") {
+                    selectedTab = 1
+                }
+                .keyboardShortcut("2", modifiers: [.command])
+                
+                Button("Go to Transactions") {
+                    selectedTab = 2
+                }
+                .keyboardShortcut("3", modifiers: [.command])
+                
+                Divider()
+                
+                Button("Add Account") {
+                    showAddAccount = true
+                }
+                .keyboardShortcut("A", modifiers: [.command])
+                
+                Button("Add Group") {
+                    showAddGroup = true
+                }
+                .keyboardShortcut("G", modifiers: [.command])
+                
+                Button("Add Transaction") {
+                    showAddTransaction = true
+                }
+                .keyboardShortcut("T", modifiers: [.command])
             }
         }
     }

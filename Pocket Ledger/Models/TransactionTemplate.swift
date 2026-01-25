@@ -1,6 +1,6 @@
 import Foundation
 
-struct TransactionTemplate: Identifiable, Codable, Hashable, Sendable {
+struct TransactionTemplate: Identifiable, Codable, Hashable, Equatable, Sendable {
     var id = UUID()
     var name: String
     var type: TransactionType
@@ -14,7 +14,7 @@ struct TransactionTemplate: Identifiable, Codable, Hashable, Sendable {
     var reminderSchedule: ReminderSchedule?
 }
 
-struct ReminderSchedule: Codable, Hashable, Sendable {
+struct ReminderSchedule: Codable, Hashable, Equatable, Sendable {
     enum Frequency: String, CaseIterable, Codable, Identifiable, Sendable {
         case daily = "Daily"
         case weekly = "Weekly"

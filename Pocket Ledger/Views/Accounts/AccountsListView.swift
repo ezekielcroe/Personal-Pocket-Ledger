@@ -4,15 +4,16 @@ struct AccountsListView: View {
     @EnvironmentObject var data: AppData
     @AppStorage("currencySymbol") private var currencySymbol: String = "$"
     
-    @State private var showingAddSheet = false
-    @State private var accountToEdit: Account?
+    // MARK: - Navigation State (Bindings from ContentView)
+    // These replace the local @State so shortcuts can trigger them
+    @Binding var globalAddAccountTrigger: Bool
+    @Binding var globalAddGroupTrigger: Bool
     
-    // Group Management State
-    @State private var showingGroupSheet = false
+    // Local State for Editing (Sheets that don't need global shortcuts)
+    @State private var accountToEdit: Account?
     @State private var groupToEdit: AccountGroup? = nil
     
     // MARK: - Expansion States
-    // Default main sections to expanded (true), archived to collapsed (false)
     @State private var isDebitExpanded = true
     @State private var isGoalsExpanded = true
     @State private var isBudgetsExpanded = true
@@ -22,35 +23,30 @@ struct AccountsListView: View {
 
     // MARK: - Filtered Lists
     
-    /// Debit accounts without target (Cash, Checking) - Active only
     private var debitAccounts: [Account] {
         data.accounts
             .filter { $0.accountType == .debit && !$0.isArchived }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
     
-    /// Debit accounts with target (Savings Goals) - Active only
     private var goalAccounts: [Account] {
         data.accounts
             .filter { $0.accountType == .goal && !$0.isArchived }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
     
-    /// Credit accounts with target > 0 (Budget Envelopes) - Active only
     private var budgetAccounts: [Account] {
         data.accounts
             .filter { $0.accountType == .budget && !$0.isArchived }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    /// Credit accounts with nil or 0 target (Debt/Loans) - Active only
     private var debtAccounts: [Account] {
         data.accounts
             .filter { $0.accountType == .debt && !$0.isArchived }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
     
-    /// Archived accounts
     private var archivedAccounts: [Account] {
         data.accounts
             .filter { $0.isArchived }
@@ -137,10 +133,19 @@ struct AccountsListView: View {
                                         }
                                     }
                                     .swipeActions(edge: .leading) {
-                                        Button { groupToEdit = group } label: { Label("Edit", systemImage: "pencil") }.tint(.blue)
+                                        Button {
+                                            groupToEdit = group
+                                        } label: {
+                                            Label("Edit", systemImage: "pencil")
+                                        }
+                                        .tint(.blue)
                                     }
                                     .swipeActions(edge: .trailing) {
-                                        Button(role: .destructive) { data.deleteAccountGroup(group) } label: { Label("Delete", systemImage: "trash") }
+                                        Button(role: .destructive) {
+                                            data.deleteAccountGroup(group)
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
                                     }
                                 }
                             },
@@ -148,7 +153,7 @@ struct AccountsListView: View {
                         )
                     }
                     
-                    // SECTION 6: ARCHIVED (Separated at bottom)
+                    // SECTION 6: ARCHIVED
                     if !archivedAccounts.isEmpty {
                         DisclosureGroup(
                             isExpanded: $isArchivedExpanded,
@@ -184,20 +189,20 @@ struct AccountsListView: View {
                         )
                     }
 
-                    // Footer spacer for FAB visibility
+                    // Footer spacer
                     Color.clear.frame(height: 80).listRowBackground(Color.clear)
                 }
                 
-                // Multi-Action FAB
+                // FAB Menu (Modified to use Bindings)
                 Menu {
                     Button {
-                        showingAddSheet = true
+                        globalAddAccountTrigger = true
                     } label: {
                         Label("New Account", systemImage: "plus")
                     }
                     
                     Button {
-                        showingGroupSheet = true
+                        globalAddGroupTrigger = true
                     } label: {
                         Label("New Account Group", systemImage: "folder.badge.plus")
                     }
@@ -219,22 +224,22 @@ struct AccountsListView: View {
                     Button {
                         toggleAllSections()
                     } label: {
-                        // Dynamic icon: If most are expanded, show collapse icon.
                         let anyExpanded = isDebitExpanded || isGoalsExpanded || isBudgetsExpanded || isDebtsExpanded || isGroupsExpanded
                         Image(systemName: anyExpanded ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
                             .font(.subheadline)
                     }
                 }
             }
-            // Sheets
-            .sheet(isPresented: $showingAddSheet) {
+            // Sheets (Bound to Global State)
+            .sheet(isPresented: $globalAddAccountTrigger) {
                 AddAccountView()
             }
+            .sheet(isPresented: $globalAddGroupTrigger) {
+                AddAccountGroupView()
+            }
+            // Sheets (Bound to Local State)
             .sheet(item: $accountToEdit) { account in
                 EditAccountView(account: account)
-            }
-            .sheet(isPresented: $showingGroupSheet) {
-                AddAccountGroupView()
             }
             .sheet(item: $groupToEdit) { group in
                 AddAccountGroupView(groupToEdit: group)
@@ -246,19 +251,13 @@ struct AccountsListView: View {
     
     private func toggleAllSections() {
         withAnimation {
-            // Logic: If ANY of the main sections are expanded, collapse all.
-            // If ALL are collapsed, expand all.
             let anyExpanded = isDebitExpanded || isGoalsExpanded || isBudgetsExpanded || isDebtsExpanded || isGroupsExpanded
-            
             let newState = !anyExpanded
             isDebitExpanded = newState
             isGoalsExpanded = newState
             isBudgetsExpanded = newState
             isDebtsExpanded = newState
             isGroupsExpanded = newState
-            
-            // We usually keep archived collapsed unless manually opened, so we don't toggle it here
-            // to avoid cluttering the view when "Expanding All".
         }
     }
 
@@ -311,7 +310,6 @@ struct AccountRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // VISUAL: Account Type Icon
             AccountTypeIcon(type: account.accountType, size: 36)
             
             VStack(alignment: .leading, spacing: 4) {
@@ -319,13 +317,11 @@ struct AccountRow: View {
                     Text(account.name)
                         .font(.headline)
                     
-                    // VISUAL: Status Badge
                     if let badge = account.statusBadge(balance: currentBalance) {
                         AccountStatusBadgeView(badge: badge)
                     }
                 }
                 
-                // Type-specific subtitle
                 Text(accountTypeLabel)
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -333,7 +329,6 @@ struct AccountRow: View {
             
             Spacer()
             
-            // Balance Display Logic (Type-Specific)
             balanceView
         }
         .padding(.vertical, 4)
@@ -345,21 +340,16 @@ struct AccountRow: View {
     private var balanceView: some View {
         switch account.accountType {
         case .debit:
-            // Simple balance
             Text(currentBalance.formattedCurrency(symbol: currencySymbol))
                 .foregroundColor(balanceColor)
                 
         case .goal:
-            // Progress format: Current / Target
             if let target = account.targetAmount {
                 let isMet = currentBalance >= target
-                
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("\(currentBalance.formattedCurrency(symbol: currencySymbol)) / \(target.formattedCurrency(symbol: currencySymbol))")
                         .foregroundColor(isMet ? .green : .primary)
                         .fontWeight(isMet ? .semibold : .regular)
-                    
-                    // Progress percentage
                     let percentage = min((currentBalance / target) * 100, 100)
                     Text("\(Int(percentage))%")
                         .font(.caption2)
@@ -368,16 +358,12 @@ struct AccountRow: View {
             }
             
         case .budget:
-            // Spending over Budget format: Spent / Budget
             if let target = account.targetAmount {
                 let isOverBudget = currentBalance > target
-                
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("\(currentBalance.formattedCurrency(symbol: currencySymbol)) / \(target.formattedCurrency(symbol: currencySymbol))")
                         .foregroundColor(isOverBudget ? .red : .primary)
                         .fontWeight(isOverBudget ? .semibold : .regular)
-                    
-                    // Percentage indicator
                     let percentage = (currentBalance / target) * 100
                     Text("\(Int(percentage))% used")
                         .font(.caption2)
@@ -386,7 +372,6 @@ struct AccountRow: View {
             }
             
         case .debt:
-            // Debt balance (amount owed)
             Text(currentBalance.formattedCurrency(symbol: currencySymbol))
                 .foregroundColor(currentBalance > 0 ? .orange : .green)
                 .fontWeight(currentBalance > 0 ? .semibold : .regular)
@@ -399,28 +384,15 @@ struct AccountRow: View {
         data.balance(for: account)
     }
     
-    /// Returns the appropriate label based on account type
     private var accountTypeLabel: String {
         account.accountType.rawValue.capitalized + " Account"
     }
     
-    /// Balance text color based on account type and status
     private var balanceColor: Color {
         switch account.accountType {
         case .debit:
-            // Debit accounts: Negative balance = overdrawn
             return currentBalance < 0 ? .red : .primary
-            
-        case .goal:
-            // Goals: No special color for simple balance
-            return .primary
-            
-        case .budget:
-            // Budgets: Already handled in balance view
-            return .primary
-            
-        case .debt:
-            // Debts: Already handled in balance view
+        default:
             return .primary
         }
     }
