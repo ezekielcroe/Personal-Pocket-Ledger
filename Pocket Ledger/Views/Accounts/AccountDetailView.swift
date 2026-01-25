@@ -28,6 +28,9 @@ struct AccountDetailView: View {
             
             // SECTION 5: Recent Transactions
             recentTransactionsSection
+            
+            // SECTION 6: Archive Controls
+            archiveSection
         }
         .navigationTitle(account.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -159,65 +162,6 @@ struct AccountDetailView: View {
                     }
                 }
                 .padding(.vertical, 8)
-            }
-        }
-    }
-    
-    // MARK: - Archive Section
-    
-    @ViewBuilder
-    private var archiveSection: some View {
-        Section {
-            if account.isArchived {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Image(systemName: "archivebox.fill")
-                            .foregroundColor(.orange)
-                        Text("This account is archived")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                    }
-                    
-                    if let archivedDate = account.archivedDate {
-                        Text("Archived on \(archivedDate.formatted(date: .long, time: .omitted))")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    Text("Archived accounts are hidden from the main accounts list but their transactions are still included in Insights.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Button {
-                        data.unarchiveAccount(account)
-                    } label: {
-                        HStack {
-                            Image(systemName: "arrow.uturn.backward.circle.fill")
-                            Text("Unarchive Account")
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                    }
-                    .padding(.top, 4)
-                }
-                .padding(.vertical, 8)
-            } else {
-                Button(role: .destructive) {
-                    data.archiveAccount(account)
-                } label: {
-                    HStack {
-                        Image(systemName: "archivebox")
-                        Text("Archive Account")
-                    }
-                }
-            }
-        }
-        footer: {
-            if !account.isArchived {
-                Text("Archive this account to hide it from the main list. You can unarchive it anytime, and all transaction history will be preserved.")
             }
         }
     }
@@ -369,6 +313,67 @@ struct AccountDetailView: View {
         }
     }
     
+    // MARK: - Archive Section
+    
+    @ViewBuilder
+    private var archiveSection: some View {
+        Section(footer: archiveFooter) {
+            if account.isArchived {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Image(systemName: "archivebox.fill")
+                            .foregroundColor(.orange)
+                        Text("This account is archived")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                    }
+                    
+                    if let archivedDate = account.archivedDate {
+                        Text("Archived on \(archivedDate.formatted(date: .long, time: .omitted))")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Text("Archived accounts are hidden from the main accounts list but their transactions are still included in Insights.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Button {
+                        data.unarchiveAccount(account)
+                    } label: {
+                        HStack {
+                            Image(systemName: "arrow.uturn.backward.circle.fill")
+                            Text("Unarchive Account")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                    }
+                    .padding(.top, 4)
+                }
+                .padding(.vertical, 8)
+            } else {
+                Button(role: .destructive) {
+                    data.archiveAccount(account)
+                } label: {
+                    HStack {
+                        Image(systemName: "archivebox")
+                        Text("Archive Account")
+                    }
+                }
+            }
+        }
+    }
+    
+    private var archiveFooter: Text? {
+        if !account.isArchived {
+            return Text("Archive this account to hide it from the main list. You can unarchive it anytime, and all transaction history will be preserved.")
+        }
+        return nil
+    }
+    
     // MARK: - Helper Views
     
     @ViewBuilder
@@ -446,7 +451,7 @@ struct AccountDetailView: View {
     
     private var shouldShowTargetProgress: Bool {
         if account.accountType == .debt {
-            return true // Always show for debt
+            return true
         }
         return account.targetAmount != nil && account.targetAmount! > 0
     }
@@ -583,7 +588,6 @@ struct AccountDetailView: View {
         
         switch account.accountType {
         case .goal:
-            // Need to save: target - current
             if let target = account.targetAmount {
                 remaining = max(target - current, 0)
             } else {
@@ -591,7 +595,6 @@ struct AccountDetailView: View {
             }
             
         case .debt:
-            // Need to pay: current balance
             remaining = max(current, 0)
             
         default:
