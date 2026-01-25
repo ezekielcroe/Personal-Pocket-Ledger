@@ -104,6 +104,9 @@ struct FilterSheet: View {
                         .foregroundColor(.red)
                     }
                 }
+                
+                // Spacer for bottom toolbar
+                Color.clear.frame(height: 80).listRowBackground(Color.clear)
             }
             .navigationTitle("Filter Data")
             .navigationBarTitleDisplayMode(.inline)
@@ -111,23 +114,48 @@ struct FilterSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Apply") {
-                        if filterMode == .simple {
-                            convertSimpleToExclusion()
+            }
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: 0) {
+                    Divider()
+                    
+                    HStack(spacing: 12) {
+                        // Save as View button (secondary)
+                        if hasActiveFilters {
+                            Button {
+                                showingSaveSheet = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "bookmark")
+                                    Text("Save View")
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color(.secondarySystemBackground))
+                                .foregroundColor(.blue)
+                                .cornerRadius(12)
+                            }
                         }
-                        dismiss()
-                    }
-                    .fontWeight(.semibold)
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    if hasActiveFilters {
+                        
+                        // Apply button (primary)
                         Button {
-                            showingSaveSheet = true
+                            if filterMode == .simple {
+                                convertSimpleToExclusion()
+                            }
+                            dismiss()
                         } label: {
-                            Image(systemName: "bookmark")
+                            Text("Apply Filters")
+                                .fontWeight(.semibold)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.blue)
+                                .foregroundColor(.white)
+                                .cornerRadius(12)
                         }
                     }
+                    .padding(.horizontal)
+                    .padding(.vertical, 12)
+                    .background(Color(.systemBackground))
                 }
             }
             .sheet(isPresented: $showingSaveSheet) {

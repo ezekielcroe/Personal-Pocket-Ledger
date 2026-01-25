@@ -24,82 +24,90 @@ struct InsightsView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    // A. Active View Banner (if filtered)
-                    if !isDefaultState {
-                        activeViewBanner
-                    }
-                    
-                    // B. Date Navigator
-                    dateNavigator
-                    
-                    // C. Stats & Charts
-                    CashflowCard(
-                        income: monthlyStats.income,
-                        expense: monthlyStats.expense,
-                        currencySymbol: currencySymbol
-                    )
-
-                    VStack(alignment: .leading) {
-                        Text("Spending by Category")
-                            .font(.headline)
-                            .padding(.horizontal)
+            ZStack(alignment: .bottomTrailing) {
+                ScrollView {
+                    VStack(spacing: 20) {
+                        // A. Active View Banner (if filtered)
+                        if !isDefaultState {
+                            activeViewBanner
+                        }
                         
-                        if monthlyStats.categoryBreakdown.isEmpty {
-                            Text("No spending data for this period.")
-                                .foregroundColor(.secondary)
-                                .padding()
-                        } else {
-                            ForEach(monthlyStats.categoryBreakdown) { item in
-                                if let category = data.categories.first(where: { $0.id == item.id }) {
-                                    NavigationLink(destination: CategoryDetailView(category: category, monthContext: selectedDate)) {
-                                        CategoryBarRow(
-                                            name: item.name,
-                                            emoji: item.emoji,
-                                            amount: item.amount,
-                                            totalContext: monthlyStats.expense,
-                                            currencySymbol: currencySymbol
-                                        )
+                        // B. Date Navigator
+                        dateNavigator
+                        
+                        // C. Stats & Charts
+                        CashflowCard(
+                            income: monthlyStats.income,
+                            expense: monthlyStats.expense,
+                            currencySymbol: currencySymbol
+                        )
+
+                        VStack(alignment: .leading) {
+                            Text("Spending by Category")
+                                .font(.headline)
+                                .padding(.horizontal)
+                            
+                            if monthlyStats.categoryBreakdown.isEmpty {
+                                Text("No spending data for this period.")
+                                    .foregroundColor(.secondary)
+                                    .padding()
+                            } else {
+                                ForEach(monthlyStats.categoryBreakdown) { item in
+                                    if let category = data.categories.first(where: { $0.id == item.id }) {
+                                        NavigationLink(destination: CategoryDetailView(category: category, monthContext: selectedDate)) {
+                                            CategoryBarRow(
+                                                name: item.name,
+                                                emoji: item.emoji,
+                                                amount: item.amount,
+                                                totalContext: monthlyStats.expense,
+                                                currencySymbol: currencySymbol
+                                            )
+                                        }
+                                        .buttonStyle(.plain)
                                     }
-                                    .buttonStyle(.plain)
                                 }
                             }
                         }
+                        .padding(.vertical)
+                        
+                        Color.clear.frame(height: 80)
                     }
-                    .padding(.vertical)
-                    
-                    Color.clear.frame(height: 80)
                 }
+                
+                // Floating Action Menu
+                Menu {
+                    Button {
+                        showingPresetPicker = true
+                    } label: {
+                        Label("Saved Views", systemImage: "bookmark")
+                    }
+                    
+                    Button {
+                        showingFilterSheet = true
+                    } label: {
+                        Label("Filter Data", systemImage: "line.3.horizontal.decrease.circle")
+                    }
+                    
+                    Divider()
+                    
+                    Button {
+                        showingReconcileSheet = true
+                    } label: {
+                        Label("Reconcile Accounts", systemImage: "checkmark.seal")
+                    }
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.title2.weight(.semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 56, height: 56)
+                        .background(Color.blue)
+                        .clipShape(Circle())
+                        .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 4)
+                }
+                .padding()
+                .padding(.bottom, 10)
             }
             .navigationTitle("Insights")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu {
-                        Button {
-                            showingPresetPicker = true
-                        } label: {
-                            Label("Saved Views", systemImage: "bookmark")
-                        }
-                        
-                        Button {
-                            showingFilterSheet = true
-                        } label: {
-                            Label("Filter Data", systemImage: "line.3.horizontal.decrease.circle")
-                        }
-                        
-                        Divider()
-                        
-                        Button {
-                            showingReconcileSheet = true
-                        } label: {
-                            Label("Reconcile Accounts", systemImage: "checkmark.seal")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                    }
-                }
-            }
             // MARK: - Sheets
             .sheet(isPresented: $showingFilterSheet) {
                 FilterSheet(
@@ -344,6 +352,8 @@ struct PresetPickerSheet: View {
     let onSelect: (InsightPreset) -> Void
     let onReset: () -> Void
     
+    @State private var presetToEdit: InsightPreset?
+    
     var body: some View {
         NavigationStack {
             List {
@@ -385,6 +395,14 @@ struct PresetPickerSheet: View {
                                     }
                                 }
                             }
+                            .swipeActions(edge: .leading) {
+                                Button {
+                                    presetToEdit = preset
+                                } label: {
+                                    Label("Edit", systemImage: "pencil")
+                                }
+                                .tint(.blue)
+                            }
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
                                     data.deletePreset(preset)
@@ -414,8 +432,115 @@ struct PresetPickerSheet: View {
                     }
                 }
             }
+            .sheet(item: $presetToEdit) { preset in
+                EditPresetSheet(preset: preset)
+                    .environmentObject(data)
+            }
         }
         .presentationDetents([.medium, .large])
+    }
+}
+
+// MARK: - Edit Preset Sheet
+
+struct EditPresetSheet: View {
+    @EnvironmentObject var data: AppData
+    @Environment(\.dismiss) var dismiss
+    
+    let preset: InsightPreset
+    @State private var presetName: String
+    @FocusState private var isNameFieldFocused: Bool
+    
+    init(preset: InsightPreset) {
+        self.preset = preset
+        _presetName = State(initialValue: preset.name)
+    }
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(header: Text("View Name")) {
+                    TextField("View Name", text: $presetName)
+                        .focused($isNameFieldFocused)
+                        .submitLabel(.done)
+                        .onSubmit {
+                            if canSave {
+                                saveChanges()
+                            }
+                        }
+                }
+                
+                Section(header: Text("Filter Summary"), footer: Text("To change filters, apply the view and modify filters from the main screen.")) {
+                    if !preset.excludedAccountIDs.isEmpty {
+                        HStack {
+                            Text("Excluded Accounts")
+                            Spacer()
+                            Text("\(preset.excludedAccountIDs.count)")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    if !preset.excludedCategoryIDs.isEmpty {
+                        HStack {
+                            Text("Excluded Categories")
+                            Spacer()
+                            Text("\(preset.excludedCategoryIDs.count)")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    if !preset.excludedTagIDs.isEmpty {
+                        HStack {
+                            Text("Excluded Tags")
+                            Spacer()
+                            Text("\(preset.excludedTagIDs.count)")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    if preset.excludeOutliers {
+                        Text("Excludes outlier transactions")
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    if preset.excludedAccountIDs.isEmpty &&
+                       preset.excludedCategoryIDs.isEmpty &&
+                       preset.excludedTagIDs.isEmpty &&
+                       !preset.excludeOutliers {
+                        Text("No filters applied")
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("Edit View")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        saveChanges()
+                    }
+                    .disabled(!canSave)
+                    .fontWeight(.semibold)
+                }
+            }
+            .onAppear {
+                isNameFieldFocused = true
+            }
+        }
+        .presentationDetents([.medium])
+    }
+    
+    private var canSave: Bool {
+        !presetName.trimmingCharacters(in: .whitespaces).isEmpty && presetName != preset.name
+    }
+    
+    private func saveChanges() {
+        var updatedPreset = preset
+        updatedPreset.name = presetName
+        data.savePreset(updatedPreset)
+        dismiss()
     }
 }
 

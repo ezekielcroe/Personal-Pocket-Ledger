@@ -1,38 +1,12 @@
+//
+//  AccountStatusBadge.swift
+//  Pocket Ledger
+//
+//  Created by Zhi Zheng Yeo on 25/1/26.
+//
+
+
 import SwiftUI
-
-// MARK: - AccountType Visual Extensions
-
-extension AccountType {
-    /// SF Symbol icon for each account type
-    var icon: String {
-        switch self {
-        case .debit:  return "banknote"
-        case .goal:   return "target"
-        case .budget: return "envelope.fill"
-        case .debt:   return "creditcard.fill"
-        }
-    }
-    
-    /// Primary color for each account type
-    var color: Color {
-        switch self {
-        case .debit:  return .green
-        case .goal:   return .blue
-        case .budget: return .purple
-        case .debt:   return .orange
-        }
-    }
-    
-    /// Section header name (for grouping)
-    var sectionName: String {
-        switch self {
-        case .debit:  return "Debit"
-        case .goal:   return "Goals"
-        case .budget: return "Budgets"
-        case .debt:   return "Debts"
-        }
-    }
-}
 
 // MARK: - Account Status Badge
 

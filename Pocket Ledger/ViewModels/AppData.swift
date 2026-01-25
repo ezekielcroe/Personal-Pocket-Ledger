@@ -466,6 +466,22 @@ class AppData: ObservableObject {
         }
     }
     
+    // MARK: - Archive Operations
+
+    func archiveAccount(_ account: Account) {
+        if let index = accounts.firstIndex(where: { $0.id == account.id }) {
+            accounts[index].archivedDate = Date()
+            save()
+        }
+    }
+
+    func unarchiveAccount(_ account: Account) {
+        if let index = accounts.firstIndex(where: { $0.id == account.id }) {
+            accounts[index].archivedDate = nil
+            save()
+        }
+    }
+    
     // MARK: - Query Helpers
 
     func balance(for account: Account) -> Double {

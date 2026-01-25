@@ -120,23 +120,29 @@ struct AddAccountGroupView: View {
                                     toggleSelection(for: account)
                                 } label: {
                                     HStack(spacing: 12) {
-                                        // Account type icon
-                                        Image(systemName: account.accountType.icon)
-                                            .foregroundColor(accountTypeColor(account.accountType))
-                                            .frame(width: 24)
+                                        AccountTypeIcon(type: account.accountType, size: 32)
                                         
-                                        // Account name
-                                        Text(account.name)
-                                            .foregroundColor(.primary)
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            HStack(spacing: 6) {
+                                                Text(account.name)
+                                                    .foregroundColor(.primary)
+                                                
+                                                if let badge = account.statusBadge(balance: data.balance(for: account)) {
+                                                    AccountStatusBadgeView(badge: badge)
+                                                }
+                                            }
+                                            
+                                            Text(account.accountType.rawValue.capitalized)
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        }
                                         
                                         Spacer()
                                         
-                                        // Balance with color
                                         Text(data.balance(for: account).formattedCurrency(symbol: currencySymbol))
                                             .font(.subheadline)
                                             .foregroundColor(balanceColor(for: account))
                                         
-                                        // Checkmark
                                         if selectedAccountIDs.contains(account.id) {
                                             Image(systemName: "checkmark.circle.fill")
                                                 .foregroundColor(.blue)
@@ -207,15 +213,6 @@ struct AddAccountGroupView: View {
     }
     
     // MARK: - Styling Helpers
-    
-    private func accountTypeColor(_ type: AccountType) -> Color {
-        switch type {
-        case .debit:  return .primary
-        case .goal:   return .blue
-        case .budget: return .purple
-        case .debt:   return .orange
-        }
-    }
     
     private func balanceColor(for account: Account) -> Color {
         let balance = data.balance(for: account)

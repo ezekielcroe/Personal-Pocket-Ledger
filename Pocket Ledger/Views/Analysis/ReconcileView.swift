@@ -142,6 +142,7 @@ struct ReconcileView: View {
                             createAdjustment(categoryID: categoryID)
                         }
                     )
+                    .environmentObject(data)
                 }
             }
             .decimalPadToolbar()

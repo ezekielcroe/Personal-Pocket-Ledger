@@ -244,15 +244,10 @@ struct AddTransactionView: View {
                 onCancel: { dismiss() },
                 onSaveAndNew: editingTransaction == nil ? { saveAndAddAnother() } : nil
             )
-            // MARK: - REFACTORED: Alert instead of Sheet
-            // Pressing "Return" on the keyboard here will trigger the "Save" action automatically
+            // MARK: - Alert for transaction
             .alert("Save Template", isPresented: $isShowingTemplateSheet) {
                 TextField("Template Name", text: $templateName)
-                
-                Button("Save") {
-                    saveTemplate()
-                }
-                
+                Button("Save") { saveTemplate() }
                 Button("Cancel", role: .cancel) { }
             } message: {
                 Text("Enter a name for this template.")
@@ -316,7 +311,6 @@ struct AddTransactionView: View {
     
     private func saveTemplate() {
         let name = templateName.trimmingCharacters(in: .whitespacesAndNewlines)
-        // If empty, we simply return and the alert dismisses (standard Alert behavior)
         guard !name.isEmpty else { return }
         
         data.addTemplate(
@@ -374,41 +368,75 @@ struct AddTransactionView: View {
         }
     }
     
-    // MARK: - Focus Chain Logic
+    // MARK: - Focus Chain Logic (Updated)
+    
+    private enum NavigationStep {
+        case account
+        case secondary // Category or Transfer Target
+        case tags
+    }
+    
+    /// Checks current fields and automatically presents the next empty picker.
+    /// If a field is already filled, it falls through to the next step.
+    private func checkAndPresentNextField(startingFrom step: NavigationStep) {
+        switch step {
+        case .account:
+            if accountID == nil {
+                showAccountPicker = true
+                return
+            }
+            fallthrough // Proceed to check next
+            
+        case .secondary:
+            if type == .transfer {
+                if transferTargetAccountID == nil {
+                    showTransferTargetPicker = true
+                    return
+                }
+            } else {
+                if categoryID == nil {
+                    showCategoryPicker = true
+                    return
+                }
+            }
+            fallthrough
+            
+        case .tags:
+            if selectedTagIDs.isEmpty {
+                showTagPicker = true
+                return
+            }
+            // If tags are filled, we stop (flow complete, user can review/save)
+        }
+    }
     
     private func handleAmountSubmit() {
         focusedField = nil
+        // Start checking from the first field
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            if type == .transfer {
-                showAccountPicker = true
-            } else {
-                showAccountPicker = true
-            }
+            checkAndPresentNextField(startingFrom: .account)
         }
     }
     
     private func advanceAfterAccountSelection() {
         guard accountID != nil else { return }
+        // Start checking from the next logical field
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            if type == .transfer {
-                showTransferTargetPicker = true
-            } else {
-                showCategoryPicker = true
-            }
+            checkAndPresentNextField(startingFrom: .secondary)
         }
     }
     
     private func advanceAfterTransferTargetSelection() {
         guard transferTargetAccountID != nil else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            showTagPicker = true
+            checkAndPresentNextField(startingFrom: .tags)
         }
     }
     
     private func advanceAfterCategorySelection() {
         guard categoryID != nil else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            showTagPicker = true
+            checkAndPresentNextField(startingFrom: .tags)
         }
     }
     

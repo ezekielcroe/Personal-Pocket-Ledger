@@ -1,21 +1,33 @@
 import SwiftUI
 
-/// A simple row for displaying a transaction in a list.
+/// Enhanced transaction row with category emoji and account type icon
 struct TransactionRow: View {
     @EnvironmentObject var data: AppData
     @AppStorage("currencySymbol") private var currencySymbol: String = "$"
     var transaction: Transaction
 
     var body: some View {
-        HStack {
+        HStack(spacing: 12) {
+            // VISUAL: Category Emoji (larger, prominent)
+            Text(categoryEmoji)
+                .font(.title2)
+                .frame(width: 40, height: 40)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(Circle())
+            
             VStack(alignment: .leading, spacing: 4) {
                 // Primary: Category Name
                 Text(categoryName)
                     .font(.body)
                     .foregroundColor(.primary)
                 
-                // Secondary: Account Name • First Tag
+                // Secondary: Account Type Icon + Account Name • First Tag
                 HStack(spacing: 4) {
+                    // VISUAL: Account Type Icon (compact)
+                    if let account = account {
+                        AccountTypeIcon(type: account.accountType, size: 14)
+                    }
+                    
                     if let accName = accountName {
                         Text(accName)
                     }
@@ -32,31 +44,41 @@ struct TransactionRow: View {
             
             Spacer()
             
-            // Amount and Sign
-            // We don't show + / - for transfers to keep it clean, or we can keep it strict.
-            // Here I keep strict logic: Outflow (-), Inflow (+)
-            Text(transaction.type == .inflow ? "+" : "-")
-                .foregroundColor(amountColor)
-            
-            // NEW: Use the helper for commas
-            Text(transaction.amount.formattedCurrency(symbol: currencySymbol))
-                .monospacedDigit()
+            VStack(alignment: .trailing, spacing: 2) {
+                // Amount with Sign
+                HStack(spacing: 2) {
+                    Text(transaction.type == .inflow ? "+" : "-")
+                        .foregroundColor(amountColor)
+                    
+                    Text(transaction.amount.formattedCurrency(symbol: currencySymbol))
+                        .monospacedDigit()
+                        .foregroundColor(amountColor)
+                }
+            }
         }
         .padding(.vertical, 4)
     }
 
     // MARK: - Helpers
+    
+    private var account: Account? {
+        data.accounts.first(where: { $0.id == transaction.accountID })
+    }
+    
+    private var category: Category? {
+        data.categories.first(where: { $0.id == transaction.categoryID })
+    }
 
     private var categoryName: String {
-        let id = transaction.categoryID
-        if let category = data.categories.first(where: { $0.id == id }) {
-            return category.name
-        }
-        return "Uncategorized"
+        category?.name ?? "Uncategorized"
+    }
+    
+    private var categoryEmoji: String {
+        category?.emoji ?? "❓"
     }
     
     private var accountName: String? {
-        data.accounts.first(where: { $0.id == transaction.accountID })?.name
+        account?.name
     }
     
     private var firstTagName: String? {

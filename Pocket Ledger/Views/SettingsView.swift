@@ -15,6 +15,7 @@ struct SettingsView: View {
     @AppStorage("isAppLockEnabled") private var isAppLockEnabled: Bool = false
     @AppStorage("hapticsEnabled") private var hapticsEnabled: Bool = true
     @AppStorage("fiscalStartDay") private var fiscalStartDay: Int = 1
+    @AppStorage("defaultTab") private var defaultTab: Int = 0
     
     let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
 
@@ -58,17 +59,25 @@ struct SettingsView: View {
                 }
                 
                 // MARK: - 3. Experience
-                Section(header: Text("Experience")) {
-                    Picker(selection: $selectedTheme, label: Label("Theme", systemImage: "paintpalette")) {
-                        Text("System").tag(0)
-                        Text("Light").tag(1)
-                        Text("Dark").tag(2)
-                    }
-                    
-                    Toggle(isOn: $hapticsEnabled) {
-                        Label("Haptic Feedback", systemImage: "hand.tap")
-                    }
-                }
+                                Section(header: Text("Experience")) {
+                                    Picker(selection: $defaultTab, label: Label("Default Tab", systemImage: "square.grid.2x2")) {
+                                        Text("Accounts").tag(0)
+                                        Text("Transact").tag(1)
+                                        Text("Templates").tag(2)
+                                        Text("Insights").tag(3)
+                                        Text("More").tag(4)
+                                    }
+                                    
+                                    Picker(selection: $selectedTheme, label: Label("Theme", systemImage: "paintpalette")) {
+                                        Text("System").tag(0)
+                                        Text("Light").tag(1)
+                                        Text("Dark").tag(2)
+                                    }
+                                    
+                                    Toggle(isOn: $hapticsEnabled) {
+                                        Label("Haptic Feedback", systemImage: "hand.tap")
+                                    }
+                                }
                 
                 // MARK: - 4. Privacy & Data
                 Section(header: Text("Privacy & Safety")) {

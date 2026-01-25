@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// Represents a financial container such as a bank account, credit card, savings goal, or debt.
 ///
@@ -36,6 +37,14 @@ struct Account: Identifiable, Codable, Hashable, Sendable {
     /// Used with targetDate to calculate installment amounts.
     var paymentFrequency: PaymentFrequency? = nil
     
+    /// Date when the account was archived. If nil, account is active.
+    var archivedDate: Date? = nil
+    
+    /// Computed property to check if account is archived
+    var isArchived: Bool {
+        archivedDate != nil
+    }
+    
     init(id: UUID = UUID(),
          name: String,
          initialAmount: Double = 0.0,
@@ -43,7 +52,8 @@ struct Account: Identifiable, Codable, Hashable, Sendable {
          isCredit: Bool = false,
          targetAmount: Double? = nil,
          targetDate: Date? = nil,
-         paymentFrequency: PaymentFrequency? = nil) {
+         paymentFrequency: PaymentFrequency? = nil,
+         archivedDate: Date? = nil) {
         self.id = id
         self.name = name
         self.initialAmount = initialAmount
@@ -52,6 +62,7 @@ struct Account: Identifiable, Codable, Hashable, Sendable {
         self.targetAmount = targetAmount
         self.targetDate = targetDate
         self.paymentFrequency = paymentFrequency
+        self.archivedDate = archivedDate
     }
     
     /// Computed property for account type classification
@@ -79,22 +90,29 @@ enum AccountType: String, Codable {
     case budget = "Budget"
     case debt = "Debt"
     
+    /// SF Symbol icon for each account type
     var icon: String {
         switch self {
-        case .debit:  return "dollarsign.circle.fill"
+        case .debit:  return "banknote"
         case .goal:   return "target"
-        case .budget: return "chart.bar.doc.horizontal.fill"
-        case .debt:   return "creditcard.and.123"
+        case .budget: return "envelope.fill"
+        case .debt:   return "creditcard.fill"
         }
     }
     
-    var color: String {
+    /// SwiftUI Color for each account type
+    var color: Color {
         switch self {
-        case .debit:  return "primary"
-        case .goal:   return "blue"
-        case .budget: return "purple"
-        case .debt:   return "orange"
+        case .debit:  return .green
+        case .goal:   return .blue
+        case .budget: return .purple
+        case .debt:   return .orange
         }
+    }
+    
+    /// Section header name (for grouping)
+    var sectionName: String {
+        self.rawValue
     }
 }
 

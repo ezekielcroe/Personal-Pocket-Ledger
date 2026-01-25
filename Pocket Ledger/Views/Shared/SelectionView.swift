@@ -1,10 +1,9 @@
 import SwiftUI
 
-// MARK: - Single Selection View
+// MARK: - Single Selection View (Enhanced)
 
-/// A generic searchable list for single selection (Accounts/Categories)
+/// A generic searchable list for single selection (Accounts/Categories) with visual enhancements
 struct SelectionView<T: Identifiable>: View where T: Hashable {
-    // NEW: Access data for balances and currency symbol
     @EnvironmentObject var data: AppData
     @AppStorage("currencySymbol") private var currencySymbol: String = "$"
     
@@ -14,7 +13,6 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
     @Environment(\.dismiss) var dismiss
     @State private var searchText = ""
     
-    // MARK: - State
     @FocusState private var isSearchFocused: Bool
     
     var filteredItems: [T] {
@@ -44,98 +42,152 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
         }
     }
     
-    // Helper to check type
     private var isAccountView: Bool {
         T.self == Account.self
     }
     
-    // Helpers for Grouping Accounts
-    private var debitItems: [T] {
-        filteredItems.filter { ($0 as? Account)?.isCredit == false }
-    }
+    // MARK: - Grouped Accounts by Type
     
-    private var creditItems: [T] {
-        filteredItems.filter { ($0 as? Account)?.isCredit == true }
+    private var accountsByType: [(type: AccountType, accounts: [T])] {
+        guard isAccountView else { return [] }
+        
+        let typeOrder: [AccountType] = [.debit, .goal, .budget, .debt]
+        
+        return typeOrder.compactMap { type in
+            let accountsOfType = filteredItems.filter {
+                ($0 as? Account)?.accountType == type
+            }
+            return accountsOfType.isEmpty ? nil : (type, accountsOfType)
+        }
     }
     
     var body: some View {
         VStack(spacing: 0) {
-            // Custom Search Bar for Focus Control
             searchHeader
             
             List {
-                // BRANCH: If selecting Accounts, use Sections
                 if isAccountView {
-                    if !debitItems.isEmpty {
-                        Section(header: Text("Debit Accounts")) {
-                            ForEach(debitItems) { item in
-                                selectionRow(for: item)
+                    // GROUPED BY ACCOUNT TYPE with visual headers
+                    ForEach(accountsByType, id: \.type) { section in
+                        Section(header: sectionHeader(for: section.type)) {
+                            ForEach(section.accounts) { item in
+                                accountSelectionRow(for: item)
                             }
                         }
                     }
-                    
-                    if !creditItems.isEmpty {
-                        Section(header: Text("Credit Accounts")) {
-                            ForEach(creditItems) { item in
-                                selectionRow(for: item)
-                            }
-                        }
-                    }
-                }
-                // BRANCH: Standard list for Categories
-                else {
+                } else {
+                    // CATEGORIES: Standard list with emoji
                     ForEach(filteredItems) { item in
-                        selectionRow(for: item)
+                        categorySelectionRow(for: item)
                     }
                 }
             }
         }
         .navigationTitle(title)
         .onAppear {
-            // Optimization: Small delay to allow sheet animation to finish
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 isSearchFocused = true
             }
         }
     }
     
-    // Extracted Row Logic to handle both Accounts (with balance) and Categories
+    // MARK: - Section Header
+    
     @ViewBuilder
-    private func selectionRow(for item: T) -> some View {
-        Button {
-            selectAndDismiss(item.id)
-        } label: {
-            HStack {
-                // Name Display
-                if let account = item as? Account {
-                    Text(account.name)
-                } else if let category = item as? Category {
-                    HStack {
-                        Text(category.emoji)
-                        Text(category.name)
+    private func sectionHeader(for accountType: AccountType) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: accountType.icon)
+                .foregroundColor(accountType.color)
+                .font(.caption)
+            Text(accountType.sectionName)
+        }
+    }
+    
+    // MARK: - Account Selection Row (Enhanced)
+    
+    @ViewBuilder
+    private func accountSelectionRow(for item: T) -> some View {
+        if let account = item as? Account {
+            Button {
+                selectAndDismiss(item.id)
+            } label: {
+                HStack(spacing: 12) {
+                    // VISUAL: Account Type Icon
+                    AccountTypeIcon(type: account.accountType, size: 32)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Text(account.name)
+                                .foregroundColor(.primary)
+                            
+                            // VISUAL: Status Badge
+                            if let badge = account.statusBadge(balance: data.balance(for: account)) {
+                                AccountStatusBadgeView(badge: badge)
+                            }
+                        }
+                        
+                        Text(account.accountType.rawValue.capitalized)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                    
+                    // Balance
+                    Text(data.balance(for: account).formattedCurrency(symbol: currencySymbol))
+                        .font(.subheadline)
+                        .foregroundColor(balanceColor(for: account))
+                    
+                    // Checkmark
+                    if item.id == selectedID {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.blue)
+                            .fontWeight(.bold)
+                    } else {
+                        Image(systemName: "circle")
+                            .foregroundColor(.secondary.opacity(0.3))
                     }
                 }
-                
-                Spacer()
-                
-                // NEW: Balance Display for Accounts
-                if let account = item as? Account {
-                    let balance = data.balance(for: account)
-                    Text(balance.formattedCurrency(symbol: currencySymbol))
-                        .font(.subheadline)
-                        .foregroundColor(account.isCredit ? .orange : .secondary) // Orange for Credit
-                }
-                
-                // Checkmark
-                if item.id == selectedID {
-                    Image(systemName: "checkmark")
-                        .foregroundColor(.blue)
-                        .padding(.leading, 8)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+    
+    // MARK: - Category Selection Row (Enhanced)
+    
+    @ViewBuilder
+    private func categorySelectionRow(for item: T) -> some View {
+        if let category = item as? Category {
+            Button {
+                selectAndDismiss(item.id)
+            } label: {
+                HStack(spacing: 12) {
+                    // VISUAL: Category Emoji
+                    Text(category.emoji)
+                        .font(.title2)
+                        .frame(width: 36, height: 36)
+                        .background(Color(.secondarySystemBackground))
+                        .clipShape(Circle())
+                    
+                    Text(category.name)
+                        .foregroundColor(.primary)
+                    
+                    Spacer()
+                    
+                    // Checkmark
+                    if item.id == selectedID {
+                        Image(systemName: "checkmark")
+                            .foregroundColor(.blue)
+                            .padding(.leading, 8)
+                    }
                 }
             }
+            .foregroundColor(.primary)
         }
-        .foregroundColor(.primary)
     }
+    
+    // MARK: - Search Header
     
     private var searchHeader: some View {
         HStack {
@@ -145,7 +197,6 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
                 .focused($isSearchFocused)
                 .submitLabel(.done)
                 .onSubmit {
-                    // Logic: If only one item remains, select it on Enter
                     if filteredItems.count == 1 {
                         selectAndDismiss(filteredItems[0].id)
                     }
@@ -162,13 +213,36 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
         .padding()
     }
     
+    // MARK: - Helpers
+    
     private func selectAndDismiss(_ id: T.ID) {
         selectedID = id
         dismiss()
     }
+    
+    private func balanceColor(for account: Account) -> Color {
+        let balance = data.balance(for: account)
+        
+        switch account.accountType {
+        case .debit:
+            return balance < 0 ? .red : .secondary
+        case .goal:
+            if let target = account.targetAmount, balance >= target {
+                return .green
+            }
+            return .secondary
+        case .budget:
+            if let target = account.targetAmount, balance > target {
+                return .red
+            }
+            return .secondary
+        case .debt:
+            return balance > 0 ? .orange : .green
+        }
+    }
 }
 
-// MARK: - Multiple Selection View
+// MARK: - Multiple Selection View (Enhanced)
 
 /// A searchable list for multiple selection (Tags) with Keyboard-first creation logic
 struct MultiSelectionView: View {
@@ -178,7 +252,6 @@ struct MultiSelectionView: View {
     @Binding var selectedIDs: Set<UUID>
     @Environment(\.dismiss) var dismiss
     
-    // MARK: - State
     @State private var searchText = ""
     @FocusState private var isSearchFocused: Bool
     
@@ -254,8 +327,6 @@ struct MultiSelectionView: View {
         !searchText.isEmpty && !items.contains(where: { $0.name.caseInsensitiveCompare(searchText) == .orderedSame })
     }
     
-    // MARK: - Logic (REFACTORED)
-    
     private func handleKeyboardSubmit() {
         if searchText.isEmpty {
             dismiss()
@@ -280,7 +351,7 @@ struct MultiSelectionView: View {
         let cleanName = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanName.isEmpty else { return }
         
-        data.addTag(name: cleanName) //
+        data.addTag(name: cleanName)
         
         if let newTag = data.tags.first(where: { $0.name == cleanName }) {
             selectedIDs.insert(newTag.id)
