@@ -10,6 +10,15 @@ struct AccountsListView: View {
     // Group Management State
     @State private var showingGroupSheet = false
     @State private var groupToEdit: AccountGroup? = nil
+    
+    // MARK: - Expansion States
+    // Default main sections to expanded (true), archived to collapsed (false)
+    @State private var isDebitExpanded = true
+    @State private var isGoalsExpanded = true
+    @State private var isBudgetsExpanded = true
+    @State private var isDebtsExpanded = true
+    @State private var isGroupsExpanded = true
+    @State private var isArchivedExpanded = false
 
     // MARK: - Filtered Lists
     
@@ -58,117 +67,122 @@ struct AccountsListView: View {
                             .padding()
                     }
 
-                    // SECTION 1: DEBIT (Cash/Checking)
+                    // SECTION 1: DEBIT
                     if !debitAccounts.isEmpty {
-                        Section(header: Text("Debit")) {
-                            ForEach(debitAccounts) { account in
-                                accountRowLink(for: account)
-                            }
-                        }
+                        DisclosureGroup(
+                            isExpanded: $isDebitExpanded,
+                            content: {
+                                ForEach(debitAccounts) { account in
+                                    accountRowLink(for: account)
+                                }
+                            },
+                            label: { headerLabel(title: "Debit", count: debitAccounts.count) }
+                        )
                     }
 
-                    // SECTION 2: GOALS (Savings Targets)
+                    // SECTION 2: GOALS
                     if !goalAccounts.isEmpty {
-                        Section(header: Text("Goals")) {
-                            ForEach(goalAccounts) { account in
-                                accountRowLink(for: account)
-                            }
-                        }
+                        DisclosureGroup(
+                            isExpanded: $isGoalsExpanded,
+                            content: {
+                                ForEach(goalAccounts) { account in
+                                    accountRowLink(for: account)
+                                }
+                            },
+                            label: { headerLabel(title: "Goals", count: goalAccounts.count) }
+                        )
                     }
                     
-                    // SECTION 3: BUDGETS (Spending Envelopes)
+                    // SECTION 3: BUDGETS
                     if !budgetAccounts.isEmpty {
-                        Section(header: Text("Budgets")) {
-                            ForEach(budgetAccounts) { account in
-                                accountRowLink(for: account)
-                            }
-                        }
+                        DisclosureGroup(
+                            isExpanded: $isBudgetsExpanded,
+                            content: {
+                                ForEach(budgetAccounts) { account in
+                                    accountRowLink(for: account)
+                                }
+                            },
+                            label: { headerLabel(title: "Budgets", count: budgetAccounts.count) }
+                        )
                     }
                     
-                    // SECTION 4: DEBTS (Credit Cards/Loans)
+                    // SECTION 4: DEBTS
                     if !debtAccounts.isEmpty {
-                        Section(header: Text("Debts")) {
-                            ForEach(debtAccounts) { account in
-                                accountRowLink(for: account)
-                            }
-                        }
+                        DisclosureGroup(
+                            isExpanded: $isDebtsExpanded,
+                            content: {
+                                ForEach(debtAccounts) { account in
+                                    accountRowLink(for: account)
+                                }
+                            },
+                            label: { headerLabel(title: "Debts", count: debtAccounts.count) }
+                        )
                     }
                     
-                    // SECTION 5: ACCOUNT GROUPS (Virtual Aggregates)
+                    // SECTION 5: ACCOUNT GROUPS
                     if !data.accountGroups.isEmpty {
-                        Section(header: Text("Account Groups")) {
-                            ForEach(data.accountGroups) { group in
-                                NavigationLink(destination: AccountGroupDetailView(group: group)) {
-                                    HStack {
-                                        Image(systemName: "folder")
-                                            .foregroundColor(.blue)
-                                        Text(group.name)
-                                            .fontWeight(.medium)
-                                        Spacer()
-                                        Text(data.balance(for: group).formattedCurrency(symbol: currencySymbol))
-                                            .foregroundColor(.secondary)
+                        DisclosureGroup(
+                            isExpanded: $isGroupsExpanded,
+                            content: {
+                                ForEach(data.accountGroups) { group in
+                                    NavigationLink(destination: AccountGroupDetailView(group: group)) {
+                                        HStack {
+                                            Image(systemName: "folder")
+                                                .foregroundColor(.blue)
+                                            Text(group.name)
+                                                .fontWeight(.medium)
+                                            Spacer()
+                                            Text(data.balance(for: group).formattedCurrency(symbol: currencySymbol))
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+                                    .swipeActions(edge: .leading) {
+                                        Button { groupToEdit = group } label: { Label("Edit", systemImage: "pencil") }.tint(.blue)
+                                    }
+                                    .swipeActions(edge: .trailing) {
+                                        Button(role: .destructive) { data.deleteAccountGroup(group) } label: { Label("Delete", systemImage: "trash") }
                                     }
                                 }
-                                .swipeActions(edge: .leading) {
-                                    Button {
-                                        groupToEdit = group
-                                    } label: {
-                                        Label("Edit", systemImage: "pencil")
-                                    }
-                                    .tint(.blue)
-                                }
-                                .swipeActions(edge: .trailing) {
-                                    Button(role: .destructive) {
-                                        data.deleteAccountGroup(group)
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
-                                }
-                            }
-                        }
+                            },
+                            label: { headerLabel(title: "Groups", count: data.accountGroups.count) }
+                        )
                     }
                     
-                    // SECTION 6: ARCHIVED ACCOUNTS
+                    // SECTION 6: ARCHIVED (Separated at bottom)
                     if !archivedAccounts.isEmpty {
-                        Section(header: Text("Archived")) {
-                            ForEach(archivedAccounts) { account in
-                                NavigationLink(destination: AccountDetailView(account: account)) {
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(account.name)
-                                                .font(.headline)
-                                                .foregroundColor(.secondary)
-                                            
-                                            HStack(spacing: 4) {
-                                                Image(systemName: "archivebox.fill")
-                                                    .font(.caption2)
-                                                Text("Archived")
-                                                    .font(.caption)
+                        DisclosureGroup(
+                            isExpanded: $isArchivedExpanded,
+                            content: {
+                                ForEach(archivedAccounts) { account in
+                                    NavigationLink(destination: AccountDetailView(account: account)) {
+                                        HStack {
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                Text(account.name)
+                                                    .font(.headline)
+                                                    .foregroundColor(.secondary)
+                                                    .strikethrough()
                                                 
-                                                if let archivedDate = account.archivedDate {
-                                                    Text("• \(archivedDate.formatted(date: .abbreviated, time: .omitted))")
+                                                HStack(spacing: 4) {
+                                                    Image(systemName: "archivebox.fill")
                                                         .font(.caption2)
+                                                    Text("Archived")
+                                                        .font(.caption)
                                                 }
+                                                .foregroundColor(.secondary)
                                             }
-                                            .foregroundColor(.secondary)
+                                            Spacer()
+                                            Text(data.balance(for: account).formattedCurrency(symbol: currencySymbol))
+                                                .foregroundColor(.secondary)
+                                                .opacity(0.6)
                                         }
-                                        
-                                        Spacer()
-                                        
-                                        Text(data.balance(for: account).formattedCurrency(symbol: currencySymbol))
-                                            .foregroundColor(.secondary)
-                                            .opacity(0.6)
+                                    }
+                                    .swipeActions(edge: .trailing) {
+                                        Button(role: .destructive) { data.deleteAccount(account) } label: { Label("Delete", systemImage: "trash") }
                                     }
                                 }
-                                .swipeActions(edge: .trailing) {
-                                    Button(role: .destructive) {
-                                        data.deleteAccount(account)
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
-                                }
-                            }
-                        }
+                            },
+                            label: { headerLabel(title: "Archived", count: archivedAccounts.count) }
+                        )
                     }
 
                     // Footer spacer for FAB visibility
@@ -200,6 +214,19 @@ struct AccountsListView: View {
                 .padding()
             }
             .navigationTitle("Accounts")
+            .toolbar {
+                // COLLAPSE/EXPAND ALL BUTTON
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        toggleAllSections()
+                    } label: {
+                        // Dynamic icon: If most are expanded, show collapse icon.
+                        let anyExpanded = isDebitExpanded || isGoalsExpanded || isBudgetsExpanded || isDebtsExpanded || isGroupsExpanded
+                        Image(systemName: anyExpanded ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
+                            .font(.subheadline)
+                    }
+                }
+            }
             // Sheets
             .sheet(isPresented: $showingAddSheet) {
                 AddAccountView()
@@ -215,8 +242,43 @@ struct AccountsListView: View {
             }
         }
     }
+    
+    // MARK: - Logic
+    
+    private func toggleAllSections() {
+        withAnimation {
+            // Logic: If ANY of the main sections are expanded, collapse all.
+            // If ALL are collapsed, expand all.
+            let anyExpanded = isDebitExpanded || isGoalsExpanded || isBudgetsExpanded || isDebtsExpanded || isGroupsExpanded
+            
+            let newState = !anyExpanded
+            isDebitExpanded = newState
+            isGoalsExpanded = newState
+            isBudgetsExpanded = newState
+            isDebtsExpanded = newState
+            isGroupsExpanded = newState
+            
+            // We usually keep archived collapsed unless manually opened, so we don't toggle it here
+            // to avoid cluttering the view when "Expanding All".
+        }
+    }
 
-    // MARK: - Row Builder
+    // MARK: - View Builders
+    
+    private func headerLabel(title: String, count: Int) -> some View {
+        HStack {
+            Text(title)
+                .font(.headline)
+                .foregroundColor(.primary)
+            Spacer()
+            Text("\(count)")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 8)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(Capsule())
+        }
+    }
     
     @ViewBuilder
     private func accountRowLink(for account: Account) -> some View {

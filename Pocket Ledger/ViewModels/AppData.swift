@@ -25,7 +25,7 @@ class AppData: ObservableObject {
     
     // MARK: - Published Properties (Current Book Data)
     @Published var accounts: [Account] = []
-    @Published var accountGroups: [AccountGroup] = [] // NEW: Account Groups
+    @Published var accountGroups: [AccountGroup] = []
     @Published var categories: [Category] = []
     @Published var tags: [Tag] = []
     @Published var transactions: [Transaction] = []
@@ -224,6 +224,10 @@ class AppData: ObservableObject {
                                       date: date,
                                       isOutlier: isOutlier)
         transactions.append(transaction)
+        
+        // Auto-Unarchive: If we use an account, it must be active.
+        unarchiveAccountIfNeeded(id: accountID)
+        
         save()
     }
 
@@ -290,6 +294,10 @@ class AppData: ObservableObject {
     func updateTransaction(_ transaction: Transaction) {
         if let index = transactions.firstIndex(where: { $0.id == transaction.id }) {
             transactions[index] = transaction
+            
+            // Auto-Unarchive: Check the account in case it was changed to an archived one
+            unarchiveAccountIfNeeded(id: transaction.accountID)
+            
             save()
         }
     }
@@ -301,6 +309,32 @@ class AppData: ObservableObject {
             }
         }
         save()
+    }
+    
+    // MARK: - Archive Operations (Public)
+
+    func archiveAccount(_ account: Account) {
+        if let index = accounts.firstIndex(where: { $0.id == account.id }) {
+            accounts[index].archivedDate = Date()
+            save()
+        }
+    }
+
+    func unarchiveAccount(_ account: Account) {
+        if let index = accounts.firstIndex(where: { $0.id == account.id }) {
+            accounts[index].archivedDate = nil
+            save()
+        }
+    }
+    
+    /// Helper to automatically unarchive an account if it is used in a new transaction
+    private func unarchiveAccountIfNeeded(id: UUID) {
+        if let index = accounts.firstIndex(where: { $0.id == id }) {
+            if accounts[index].isArchived {
+                accounts[index].archivedDate = nil
+                // No save() here; it relies on the caller (addTransaction/updateTransaction) to save.
+            }
+        }
     }
 
     // MARK: - Template Operations
@@ -466,22 +500,6 @@ class AppData: ObservableObject {
         }
     }
     
-    // MARK: - Archive Operations
-
-    func archiveAccount(_ account: Account) {
-        if let index = accounts.firstIndex(where: { $0.id == account.id }) {
-            accounts[index].archivedDate = Date()
-            save()
-        }
-    }
-
-    func unarchiveAccount(_ account: Account) {
-        if let index = accounts.firstIndex(where: { $0.id == account.id }) {
-            accounts[index].archivedDate = nil
-            save()
-        }
-    }
-    
     // MARK: - Query Helpers
 
     func balance(for account: Account) -> Double {
@@ -493,12 +511,8 @@ class AppData: ObservableObject {
             .reduce(0) { $0 + $1.amount }
         
         if account.isCredit {
-            // Credit: Outflows increase balance (debt/spending grows)
-            // Inflows decrease balance (payments reduce debt/spending)
             return account.initialAmount + outflow - inflow
         } else {
-            // Debit: Inflows increase balance (money in)
-            // Outflows decrease balance (money out)
             return account.initialAmount + inflow - outflow
         }
     }
@@ -507,8 +521,6 @@ class AppData: ObservableObject {
         group.accountIDs.reduce(0) { partialResult, accountID in
             if let account = accounts.first(where: { $0.id == accountID }) {
                 let accountBalance = balance(for: account)
-                
-                // Credit accounts represent debt/spending, so subtract them
                 if account.isCredit {
                     return partialResult - accountBalance
                 } else {

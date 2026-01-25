@@ -15,6 +15,9 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
     
     @FocusState private var isSearchFocused: Bool
     
+    // NEW: State for collapsed archived section
+    @State private var isArchivedExpanded: Bool = false
+    
     var filteredItems: [T] {
         let list: [T]
         if searchText.isEmpty {
@@ -46,19 +49,28 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
         T.self == Account.self
     }
     
-    // MARK: - Grouped Accounts by Type
+    // MARK: - Account Grouping Logic
     
-    private var accountsByType: [(type: AccountType, accounts: [T])] {
+    // Active accounts grouped by type
+    private var activeAccountsByType: [(type: AccountType, accounts: [T])] {
         guard isAccountView else { return [] }
         
         let typeOrder: [AccountType] = [.debit, .goal, .budget, .debt]
+        // Filter only Active accounts
+        let activeItems = filteredItems.filter { !($0 as? Account)!.isArchived }
         
         return typeOrder.compactMap { type in
-            let accountsOfType = filteredItems.filter {
+            let accountsOfType = activeItems.filter {
                 ($0 as? Account)?.accountType == type
             }
             return accountsOfType.isEmpty ? nil : (type, accountsOfType)
         }
+    }
+    
+    // Archived accounts list
+    private var archivedAccounts: [T] {
+        guard isAccountView else { return [] }
+        return filteredItems.filter { ($0 as? Account)!.isArchived }
     }
     
     var body: some View {
@@ -67,14 +79,34 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
             
             List {
                 if isAccountView {
-                    // GROUPED BY ACCOUNT TYPE with visual headers
-                    ForEach(accountsByType, id: \.type) { section in
+                    // 1. Active Accounts (Grouped by Type)
+                    ForEach(activeAccountsByType, id: \.type) { section in
                         Section(header: sectionHeader(for: section.type)) {
                             ForEach(section.accounts) { item in
                                 accountSelectionRow(for: item)
                             }
                         }
                     }
+                    
+                    // 2. Archived Accounts (Collapsed Section)
+                    if !archivedAccounts.isEmpty {
+                        DisclosureGroup(isExpanded: $isArchivedExpanded) {
+                            ForEach(archivedAccounts) { item in
+                                accountSelectionRow(for: item)
+                            }
+                        } label: {
+                            HStack {
+                                Image(systemName: "archivebox")
+                                Text("Archived Accounts")
+                                Spacer()
+                                Text("\(archivedAccounts.count)")
+                                    .foregroundColor(.secondary)
+                                    .font(.caption)
+                            }
+                            .foregroundColor(.secondary)
+                        }
+                    }
+                    
                 } else {
                     // CATEGORIES: Standard list with emoji
                     ForEach(filteredItems) { item in
@@ -112,17 +144,20 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
                 selectAndDismiss(item.id)
             } label: {
                 HStack(spacing: 12) {
-                    // VISUAL: Account Type Icon
+                    // VISUAL: Account Type Icon (Dimmed if archived)
                     AccountTypeIcon(type: account.accountType, size: 32)
+                        .opacity(account.isArchived ? 0.5 : 1.0)
                     
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 6) {
                             Text(account.name)
-                                .foregroundColor(.primary)
+                                .foregroundColor(account.isArchived ? .secondary : .primary)
+                                .strikethrough(account.isArchived)
                             
-                            // VISUAL: Status Badge
+                            // VISUAL: Status Badge (Dimmed if archived)
                             if let badge = account.statusBadge(balance: data.balance(for: account)) {
                                 AccountStatusBadgeView(badge: badge)
+                                    .opacity(account.isArchived ? 0.5 : 1.0)
                             }
                         }
                         
@@ -133,10 +168,11 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
                     
                     Spacer()
                     
-                    // Balance
+                    // Balance (Dimmed if archived)
                     Text(data.balance(for: account).formattedCurrency(symbol: currencySymbol))
                         .font(.subheadline)
                         .foregroundColor(balanceColor(for: account))
+                        .opacity(account.isArchived ? 0.5 : 1.0)
                     
                     // Checkmark
                     if item.id == selectedID {
@@ -221,6 +257,8 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
     }
     
     private func balanceColor(for account: Account) -> Color {
+        if account.isArchived { return .secondary }
+        
         let balance = data.balance(for: account)
         
         switch account.accountType {
