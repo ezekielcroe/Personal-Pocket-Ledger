@@ -20,7 +20,6 @@ struct AddTransactionView: View {
     @State private var selectedTagIDs: Set<UUID> = []
     @State private var amountString: String = ""
     @State private var date: Date = Date()
-    @State private var installmentCount: Int = 1
     @State private var isOutlier: Bool = false
     
     // Template State
@@ -218,13 +217,8 @@ struct AddTransactionView: View {
                     DatePicker("Date", selection: $date, displayedComponents: [.date])
                 }
 
+                // SECTION 6: OPTIONS (INSTALLMENTS REMOVED)
                 Section(header: Text("Options")) {
-                    if type != .transfer && editingTransaction == nil {
-                        Stepper(value: $installmentCount, in: 1...12) {
-                            Text("Installments: \(installmentCount)")
-                        }
-                    }
-
                     Toggle("Flag as Outlier", isOn: $isOutlier)
                     
                     if editingTransaction == nil {
@@ -368,16 +362,14 @@ struct AddTransactionView: View {
         }
     }
     
-    // MARK: - Focus Chain Logic (Updated)
+    // MARK: - Focus Chain Logic
     
     private enum NavigationStep {
         case account
-        case secondary // Category or Transfer Target
+        case secondary
         case tags
     }
     
-    /// Checks current fields and automatically presents the next empty picker.
-    /// If a field is already filled, it falls through to the next step.
     private func checkAndPresentNextField(startingFrom step: NavigationStep) {
         switch step {
         case .account:
@@ -385,7 +377,7 @@ struct AddTransactionView: View {
                 showAccountPicker = true
                 return
             }
-            fallthrough // Proceed to check next
+            fallthrough
             
         case .secondary:
             if type == .transfer {
@@ -406,13 +398,11 @@ struct AddTransactionView: View {
                 showTagPicker = true
                 return
             }
-            // If tags are filled, we stop (flow complete, user can review/save)
         }
     }
     
     private func handleAmountSubmit() {
         focusedField = nil
-        // Start checking from the first field
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             checkAndPresentNextField(startingFrom: .account)
         }
@@ -420,7 +410,6 @@ struct AddTransactionView: View {
     
     private func advanceAfterAccountSelection() {
         guard accountID != nil else { return }
-        // Start checking from the next logical field
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             checkAndPresentNextField(startingFrom: .secondary)
         }
@@ -477,15 +466,8 @@ struct AddTransactionView: View {
                 updated.isOutlier = isOutlier
                 data.updateTransaction(updated)
             } else {
-                if installmentCount <= 1 {
-                    data.addTransaction(type: type, accountID: accountID, categoryID: categoryID, tagIDs: tags, amount: amount, date: date, isOutlier: isOutlier)
-                } else {
-                    let perInstallment = amount / Double(installmentCount)
-                    for i in 0..<installmentCount {
-                        let instDate = Calendar.current.date(byAdding: .month, value: i, to: date) ?? date
-                        data.addTransaction(type: type, accountID: accountID, categoryID: categoryID, tagIDs: tags, amount: perInstallment, date: instDate, isOutlier: isOutlier)
-                    }
-                }
+                // INSTALLMENT LOGIC REMOVED - Single transaction only
+                data.addTransaction(type: type, accountID: accountID, categoryID: categoryID, tagIDs: tags, amount: amount, date: date, isOutlier: isOutlier)
             }
         }
         

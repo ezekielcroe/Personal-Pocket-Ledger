@@ -128,7 +128,7 @@ struct AccountsListView: View {
                                             Text(group.name)
                                                 .fontWeight(.medium)
                                             Spacer()
-                                            Text(data.balance(for: group).formattedCurrency(symbol: currencySymbol))
+                                            Text(data.groupBalance(group).formattedCurrency(symbol: currencySymbol))
                                                 .foregroundColor(.secondary)
                                         }
                                     }

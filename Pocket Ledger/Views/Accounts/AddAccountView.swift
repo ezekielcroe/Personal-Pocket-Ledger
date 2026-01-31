@@ -389,7 +389,7 @@ struct AddAccountView: View {
         // Add to selected groups
         for groupID in selectedGroupIDs {
             if let index = data.accountGroups.firstIndex(where: { $0.id == groupID }) {
-                data.accountGroups[index].accountIDs.append(newAccount.id)
+                data.accountGroups[index].memberIDs.append(newAccount.id)
             }
         }
         

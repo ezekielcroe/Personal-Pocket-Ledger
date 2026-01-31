@@ -6,29 +6,55 @@ struct AccountGroupDetailView: View {
     @AppStorage("currencySymbol") private var currencySymbol: String = "$"
     @AppStorage("fiscalStartDay") private var fiscalStartDay: Int = 1
     
+    @State private var expandedMemberIDs: Set<UUID> = []
+    
     var body: some View {
         List {
             // SECTION 1: Total Balance
             Section(header: Text("Total")) {
-                HStack {
-                    Text("Group Balance")
-                        .font(.headline)
-                    Spacer()
-                    Text(data.balance(for: group).formattedCurrency(symbol: currencySymbol))
-                        .font(.title2)
-                        .fontWeight(.bold)
+                VStack(spacing: 8) {
+                    HStack {
+                        Text("Group Balance")
+                            .font(.headline)
+                        Spacer()
+                    }
+                    
+                    Text(data.groupBalance(group).formattedCurrency(symbol: currencySymbol))
+                        .font(.system(size: 36, weight: .bold, design: .rounded))
                         .foregroundColor(totalBalanceColor)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    
+                    // Nesting depth indicator
+                    let depth = data.depth(of: group)
+                    if depth > 0 {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.down.forward")
+                                .font(.caption2)
+                            Text("Nesting depth: \(depth)")
+                                .font(.caption)
+                        }
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
             }
             
-            // SECTION 2: Breakdown by Account
-            Section(header: Text("Accounts in Group"), footer: Text(balanceCalculationExplanation)) {
-                ForEach(group.accountIDs, id: \.self) { id in
-                    if let account = data.accounts.first(where: { $0.id == id }) {
-                        NavigationLink(destination: AccountDetailView(account: account)) {
-                            accountBreakdownRow(for: account)
-                        }
-                    }
+            // SECTION 2: Hierarchical Breakdown
+            Section(header: HStack {
+                Text("Members (\(group.memberIDs.count))")
+                Spacer()
+                Button(expandedMemberIDs.isEmpty ? "Expand All" : "Collapse All") {
+                    toggleAllMembers()
+                }
+                .font(.caption)
+            }, footer: Text(balanceCalculationExplanation)) {
+                // REFACTORED: Now uses a struct instead of a recursive function call
+                ForEach(data.members(for: group), id: \.id) { member in
+                    MemberRowView(
+                        member: member,
+                        depth: 0,
+                        expandedMemberIDs: $expandedMemberIDs
+                    )
                 }
             }
             
@@ -39,12 +65,9 @@ struct AccountGroupDetailView: View {
                 StatRow(title: "Outflow (This Month)", value: totals.outflow, symbol: currencySymbol, color: .red)
             }
             
-            // SECTION 4: Recent Activity
-            Section(header: Text("Recent Activity")) {
-                let recent = data.transactions
-                    .filter { group.accountIDs.contains($0.accountID) }
-                    .sorted { $0.date > $1.date }
-                    .prefix(25)
+            // SECTION 4: Recent Transactions
+            Section(header: Text("Recent Transactions (Last 25)")) {
+                let recent = recentTransactions
                 
                 if recent.isEmpty {
                     Text("No transactions in this group.")
@@ -59,133 +82,78 @@ struct AccountGroupDetailView: View {
             }
         }
         .navigationTitle(group.name)
-    }
-    
-    // MARK: - Account Breakdown Row
-    
-    @ViewBuilder
-    private func accountBreakdownRow(for account: Account) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(account.name)
-                    .font(.headline)
-                
-                // Show account type badge
-                HStack(spacing: 4) {
-                    Image(systemName: accountTypeIcon(for: account))
-                        .font(.caption2)
-                    Text(accountTypeLabel(for: account))
-                        .font(.caption)
-                }
-                .foregroundColor(accountTypeLabelColor(for: account))
-            }
-            
-            Spacer()
-            
-            VStack(alignment: .trailing, spacing: 4) {
-                // Main balance
-                Text(data.balance(for: account).formattedCurrency(symbol: currencySymbol))
-                    .font(.body)
-                    .fontWeight(.medium)
-                    .foregroundColor(accountBalanceColor(for: account))
-                
-                // Show contribution to group total
-                Text(contributionText(for: account))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
+        .onAppear {
+            // Auto-expand first level
+            expandedMemberIDs = Set(group.memberIDs.filter { id in
+                data.accountGroups.contains(where: { $0.id == id })
+            })
         }
-        .padding(.vertical, 4)
     }
     
     // MARK: - Helper Functions
     
-    private func accountTypeIcon(for account: Account) -> String {
-        switch (account.isCredit, account.targetAmount) {
-        case (false, nil):   return "dollarsign.circle"      // Debit
-        case (true, nil):    return "creditcard"             // Credit
-        case (false, .some): return "target"                 // Goal
-        case (true, .some):  return "chart.bar.doc.horizontal" // Budget
-        }
-    }
-    
-    private func accountTypeLabel(for account: Account) -> String {
-        switch (account.isCredit, account.targetAmount) {
-        case (false, nil):   return "Debit"
-        case (true, nil):    return "Credit"
-        case (false, .some): return "Goal"
-        case (true, .some):  return "Budget"
-        }
-    }
-    
-    private func accountTypeLabelColor(for account: Account) -> Color {
-        switch (account.isCredit, account.targetAmount) {
-        case (false, .some): return .blue    // Goal
-        case (true, .some):  return .purple  // Budget
-        default:             return .secondary
-        }
-    }
-    
-    private func accountBalanceColor(for account: Account) -> Color {
-        let balance = data.balance(for: account)
-        
-        if account.isCredit {
-            // Credit: Warn if high
-            if balance > account.initialAmount * 0.9 {
-                return .red
-            } else if balance > account.initialAmount * 0.7 {
-                return .orange
-            }
+    private func toggleAllMembers() {
+        if expandedMemberIDs.isEmpty {
+            // Expand all groups recursively
+            expandedMemberIDs = Set(allGroupIDs(in: group))
         } else {
-            // Debit: Warn if negative
-            if balance < 0 {
-                return .red
+            // Collapse all
+            expandedMemberIDs.removeAll()
+        }
+    }
+    
+    private func allGroupIDs(in group: AccountGroup) -> [UUID] {
+        var result: [UUID] = []
+        
+        for member in data.members(for: group) {
+            if case .group(let childGroup) = member {
+                result.append(childGroup.id)
+                result.append(contentsOf: allGroupIDs(in: childGroup))
             }
         }
-        return .primary
-    }
-    
-    /// Shows how this account contributes to the group total
-    private func contributionText(for account: Account) -> String {
-        let balance = data.balance(for: account)
         
-        if account.isCredit {
-            // Credit accounts are subtracted from total
-            return "(\(balance.formattedCurrency(symbol: currencySymbol)))"
-        } else {
-            // Debit accounts are added to total
-            return "+\(balance.formattedCurrency(symbol: currencySymbol))"
-        }
+        return result
     }
     
-    /// Color for the total balance
     private var totalBalanceColor: Color {
-        let total = data.balance(for: group)
+        let total = data.groupBalance(group)
         return total < 0 ? .red : .primary
     }
     
-    /// Explains how the balance is calculated
     private var balanceCalculationExplanation: String {
-        let hasDebit = group.accountIDs.contains { id in
+        let allAccountIDs = data.allAccountIDs(in: group)
+        let hasDebit = allAccountIDs.contains { id in
             data.accounts.first(where: { $0.id == id })?.isCredit == false
         }
-        let hasCredit = group.accountIDs.contains { id in
+        let hasCredit = allAccountIDs.contains { id in
             data.accounts.first(where: { $0.id == id })?.isCredit == true
         }
         
         if hasDebit && hasCredit {
-            return "Group total = Debit accounts (+) minus Credit accounts (−). Credit balances shown in parentheses are subtracted from the total."
+            return "Group total = Debit accounts (+) minus Credit accounts (−). Groups are calculated recursively."
         } else if hasCredit {
-            return "Group total = Sum of all credit balances. Negative total means net debt."
+            return "Group total = Sum of all credit balances. Groups are calculated recursively."
         } else {
-            return "Group total = Sum of all debit balances."
+            return "Group total = Sum of all debit balances. Groups are calculated recursively."
         }
+    }
+    
+    private var recentTransactions: [Transaction] {
+        let allAccountIDs = data.allAccountIDs(in: group)
+        
+        return data.transactions
+            .filter { allAccountIDs.contains($0.accountID) }
+            .sorted { $0.date > $1.date }
+            .prefix(25)
+            .map { $0 }
     }
     
     // MARK: - Statistics Calculation
     
     private func calculateGroupMonthlyTotals() -> (inflow: Double, outflow: Double) {
-        let transactions = data.transactions.filter { group.accountIDs.contains($0.accountID) }
+        let allAccountIDs = data.allAccountIDs(in: group)
+        let transactions = data.transactions.filter { allAccountIDs.contains($0.accountID) }
+        
         let range = getCurrentFiscalRange()
         let filtered = transactions.filter { $0.date >= range.start && $0.date <= range.end }
         
@@ -202,5 +170,187 @@ struct AccountGroupDetailView: View {
         if Date() < start { start = calendar.date(byAdding: .month, value: -1, to: start) ?? start }
         let end = calendar.date(byAdding: .month, value: 1, to: start)?.addingTimeInterval(-1) ?? Date()
         return (start, end)
+    }
+}
+
+// MARK: - Member Row Struct (Fixes Recursive Type Error)
+
+struct MemberRowView: View {
+    @EnvironmentObject var data: AppData
+    let member: MemberType
+    let depth: Int
+    @Binding var expandedMemberIDs: Set<UUID>
+    @AppStorage("currencySymbol") private var currencySymbol: String = "$"
+    
+    var body: some View {
+        switch member {
+        case .account(let account):
+            accountRow(account)
+        case .group(let group):
+            groupRow(group)
+        }
+    }
+    
+    // MARK: - Account Member Row
+    
+    @ViewBuilder
+    private func accountRow(_ account: Account) -> some View {
+        NavigationLink(destination: AccountDetailView(account: account)) {
+            HStack(spacing: 8) {
+                // Indentation
+                if depth > 0 {
+                    indentationView(depth: depth)
+                }
+                
+                // Account icon
+                AccountTypeIcon(type: account.accountType, size: 28)
+                
+                // Account info
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(account.name)
+                            .font(.body)
+                        
+                        if let badge = account.statusBadge(balance: data.balance(for: account)) {
+                            AccountStatusBadgeView(badge: badge)
+                        }
+                    }
+                    
+                    Text(account.accountType.rawValue)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                // Balance breakdown
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(data.balance(for: account).formattedCurrency(symbol: currencySymbol))
+                        .font(.body)
+                        .fontWeight(.medium)
+                        .foregroundColor(accountBalanceColor(for: account))
+                    
+                    Text(contributionText(for: account))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+    
+    // MARK: - Group Member Row (Recursive)
+    
+    @ViewBuilder
+    private func groupRow(_ childGroup: AccountGroup) -> some View {
+        VStack(spacing: 0) {
+            // Group header (expandable)
+            Button {
+                toggleExpansion(for: childGroup.id)
+            } label: {
+                HStack(spacing: 8) {
+                    // Indentation
+                    if depth > 0 {
+                        indentationView(depth: depth)
+                    }
+                    
+                    // Expansion chevron
+                    Image(systemName: expandedMemberIDs.contains(childGroup.id) ? "chevron.down" : "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .frame(width: 20)
+                    
+                    // Group icon
+                    Image(systemName: "folder.fill")
+                        .font(.title3)
+                        .foregroundColor(.purple)
+                        .frame(width: 28, height: 28)
+                    
+                    // Group info
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(childGroup.name)
+                            .font(.body)
+                            .fontWeight(.medium)
+                            .foregroundColor(.purple)
+                        
+                        Text("\(childGroup.memberIDs.count) members")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                    
+                    // Group balance
+                    Text(data.groupBalance(childGroup).formattedCurrency(symbol: currencySymbol))
+                        .font(.body)
+                        .fontWeight(.medium)
+                        .foregroundColor(.purple)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.vertical, 4)
+            
+            // Expanded children (recursive)
+            // This is now safe because MemberRowView is a struct (concrete type)
+            if expandedMemberIDs.contains(childGroup.id) {
+                ForEach(data.members(for: childGroup), id: \.id) { nestedMember in
+                    MemberRowView(
+                        member: nestedMember,
+                        depth: depth + 1,
+                        expandedMemberIDs: $expandedMemberIDs
+                    )
+                }
+            }
+        }
+    }
+    
+    // MARK: - Helpers
+    
+    @ViewBuilder
+    private func indentationView(depth: Int) -> some View {
+        HStack(spacing: 2) {
+            ForEach(0..<depth, id: \.self) { _ in
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.2))
+                    .frame(width: 2, height: 24)
+                    .padding(.leading, 8)
+            }
+        }
+    }
+    
+    private func toggleExpansion(for id: UUID) {
+        if expandedMemberIDs.contains(id) {
+            expandedMemberIDs.remove(id)
+        } else {
+            expandedMemberIDs.insert(id)
+        }
+    }
+    
+    private func accountBalanceColor(for account: Account) -> Color {
+        let balance = data.balance(for: account)
+        
+        if account.isCredit {
+            if balance > account.initialAmount * 0.9 {
+                return .red
+            } else if balance > account.initialAmount * 0.7 {
+                return .orange
+            }
+        } else {
+            if balance < 0 {
+                return .red
+            }
+        }
+        return .primary
+    }
+    
+    private func contributionText(for account: Account) -> String {
+        let balance = data.balance(for: account)
+        
+        if account.isCredit {
+            return "(\(balance.formattedCurrency(symbol: currencySymbol)))"
+        } else {
+            return "+\(balance.formattedCurrency(symbol: currencySymbol))"
+        }
     }
 }

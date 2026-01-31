@@ -191,8 +191,9 @@ class AppData: ObservableObject {
         save()
     }
     
-    func addAccountGroup(name: String, accountIDs: [UUID]) {
-        let group = AccountGroup(name: name, accountIDs: accountIDs)
+    // UPDATED: Now accepts memberIDs instead of accountIDs
+    func addAccountGroup(name: String, memberIDs: [UUID]) {
+        let group = AccountGroup(name: name, memberIDs: memberIDs)
         accountGroups.append(group)
         save()
     }
@@ -254,8 +255,9 @@ class AppData: ObservableObject {
         accounts.removeAll { $0.id == account.id }
         
         // 2. Scrub reference from virtual groups
+        // UPDATED: Now accesses memberIDs
         for i in 0..<accountGroups.count {
-            accountGroups[i].accountIDs.removeAll { $0 == account.id }
+            accountGroups[i].memberIDs.removeAll { $0 == account.id }
         }
         
         save()
@@ -517,19 +519,7 @@ class AppData: ObservableObject {
         }
     }
     
-    func balance(for group: AccountGroup) -> Double {
-        group.accountIDs.reduce(0) { partialResult, accountID in
-            if let account = accounts.first(where: { $0.id == accountID }) {
-                let accountBalance = balance(for: account)
-                if account.isCredit {
-                    return partialResult - accountBalance
-                } else {
-                    return partialResult + accountBalance
-                }
-            }
-            return partialResult
-        }
-    }
+    // REMOVED: Duplicate `balance(for group:)` method here to fix "Redeclaration" error.
 
     func transactions(for account: Account) -> [Transaction] {
         transactions.filter { $0.accountID == account.id }
@@ -574,5 +564,184 @@ class AppData: ObservableObject {
             monthlyOutflow: totalOutflow / months,
             yearlyOutflow: totalOutflow / years
         )
+    }
+}
+
+// MARK: - Account Group Operations (Enhanced with Nesting Support)
+
+extension AppData {
+    
+    // UPDATED: Renamed to `groupBalance` to fix "Ambiguous use" error
+    /// Calculates balance for a group (supports nested groups)
+    func groupBalance(_ group: AccountGroup) -> Double {
+        recursiveBalance(for: group, visited: [])
+    }
+    
+    /// Recursive balance calculation with cycle detection
+    private func recursiveBalance(for group: AccountGroup, visited: Set<UUID>) -> Double {
+        // Cycle detection: if we've already visited this group, return 0 to prevent infinite loop
+        guard !visited.contains(group.id) else {
+            print("⚠️ Cycle detected in group: \(group.name)")
+            return 0
+        }
+        
+        var newVisited = visited
+        newVisited.insert(group.id)
+        
+        var total: Double = 0
+        
+        // UPDATED: Use memberIDs
+        for memberID in group.memberIDs {
+            // Check if it's an account
+            if let account = accounts.first(where: { $0.id == memberID }) {
+                let accountBalance = balance(for: account)
+                
+                // Credit accounts (debts) subtract from total
+                if account.isCredit {
+                    total -= accountBalance
+                } else {
+                    total += accountBalance
+                }
+            }
+            // Check if it's a nested group
+            else if let childGroup = accountGroups.first(where: { $0.id == memberID }) {
+                total += recursiveBalance(for: childGroup, visited: newVisited)
+            }
+        }
+        
+        return total
+    }
+    
+    /// Returns all members (accounts + groups) for a group
+    func members(for group: AccountGroup) -> [MemberType] {
+        var result: [MemberType] = []
+        
+        // UPDATED: Use memberIDs
+        for memberID in group.memberIDs {
+            if let account = accounts.first(where: { $0.id == memberID }) {
+                result.append(.account(account))
+            } else if let childGroup = accountGroups.first(where: { $0.id == memberID }) {
+                result.append(.group(childGroup))
+            }
+        }
+        
+        return result
+    }
+    
+    /// Safely adds a member to a group (with cycle detection)
+    func addMember(_ memberID: UUID, to groupID: UUID) throws {
+        guard let index = accountGroups.firstIndex(where: { $0.id == groupID }) else {
+            throw GroupError.groupNotFound
+        }
+        
+        var group = accountGroups[index]
+        
+        // Check for cycles if adding a group
+        if accountGroups.contains(where: { $0.id == memberID }) {
+            if group.wouldCreateCycle(byAdding: memberID, in: accountGroups) {
+                throw GroupError.wouldCreateCycle
+            }
+        }
+        
+        // Check for duplicates
+        if group.memberIDs.contains(memberID) {
+            throw GroupError.memberAlreadyExists
+        }
+        
+        group.memberIDs.append(memberID)
+        accountGroups[index] = group
+        save()
+    }
+    
+    /// Removes a member from a group
+    func removeMember(_ memberID: UUID, from groupID: UUID) {
+        guard let index = accountGroups.firstIndex(where: { $0.id == groupID }) else {
+            return
+        }
+        
+        var group = accountGroups[index]
+        group.memberIDs.removeAll { $0 == memberID }
+        accountGroups[index] = group
+        save()
+    }
+    
+    /// Returns the depth of nesting for a group
+    func depth(of group: AccountGroup) -> Int {
+        group.depth(in: accountGroups)
+    }
+    
+    /// Returns all account IDs in a group (flattened, recursive)
+    func allAccountIDs(in group: AccountGroup) -> [UUID] {
+        group.allAccountIDs(in: accountGroups, accounts: accounts)
+    }
+    
+    /// Validates group structure integrity
+    func validateGroupStructure() -> [GroupValidationError] {
+        var errors: [GroupValidationError] = []
+        
+        for group in accountGroups {
+            // Check for cycles
+            for memberID in group.memberIDs {
+                if accountGroups.contains(where: { $0.id == memberID }) {
+                    if group.wouldCreateCycle(byAdding: memberID, in: accountGroups) {
+                        errors.append(.cycle(groupName: group.name))
+                    }
+                }
+            }
+            
+            // Check for orphaned references
+            for memberID in group.memberIDs {
+                let isAccount = accounts.contains(where: { $0.id == memberID })
+                let isGroup = accountGroups.contains(where: { $0.id == memberID })
+                
+                if !isAccount && !isGroup {
+                    errors.append(.orphanedMember(groupName: group.name, memberID: memberID))
+                }
+            }
+        }
+        
+        return errors
+    }
+}
+
+// MARK: - Error Types
+
+enum GroupError: LocalizedError {
+    case groupNotFound
+    case wouldCreateCycle
+    case memberAlreadyExists
+    
+    var errorDescription: String? {
+        switch self {
+        case .groupNotFound:
+            return "Group not found"
+        case .wouldCreateCycle:
+            return "Adding this group would create a circular reference"
+        case .memberAlreadyExists:
+            return "This member is already in the group"
+        }
+    }
+}
+
+enum GroupValidationError: Identifiable {
+    case cycle(groupName: String)
+    case orphanedMember(groupName: String, memberID: UUID)
+    
+    var id: String {
+        switch self {
+        case .cycle(let name):
+            return "cycle-\(name)"
+        case .orphanedMember(let name, let id):
+            return "orphan-\(name)-\(id)"
+        }
+    }
+    
+    var description: String {
+        switch self {
+        case .cycle(let name):
+            return "Circular reference detected in group: \(name)"
+        case .orphanedMember(let name, let id):
+            return "Orphaned member in group '\(name)': \(id)"
+        }
     }
 }

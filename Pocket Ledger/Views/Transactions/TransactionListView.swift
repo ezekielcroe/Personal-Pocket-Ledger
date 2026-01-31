@@ -8,7 +8,6 @@ struct TransactionListView: View {
     
     // MARK: - State
     @State private var transactionToEdit: Transaction?
-    @State private var collapsedDates: Set<Date> = []
     
     // Multi-Selection State
     @State private var selection = Set<Transaction.ID>()
@@ -17,6 +16,14 @@ struct TransactionListView: View {
     // Batch Tagging State
     @State private var isPresentingBatchTagSheet = false
     @State private var batchTagsToAdd: Set<UUID> = []
+    
+    // MARK: - Temporal Grouping State
+    @State private var loadedMonthsCount: Int = 1 // Start with current month
+    @State private var collapsedGroups: Set<TimeGroupID> = []
+    
+    // MARK: - Archive State
+    @AppStorage("showArchivedTransactions") private var showArchivedTransactions: Bool = false
+    @AppStorage("archiveOlderThanMonths") private var archiveOlderThanMonths: Int = 3
 
     var body: some View {
         NavigationStack {
@@ -32,8 +39,28 @@ struct TransactionListView: View {
             .navigationTitle("Transactions")
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    collapseExpandButton
+                    Menu {
+                        Button {
+                            toggleAllGroups()
+                        } label: {
+                            let allCollapsed = collapsedGroups.count == visibleTimeGroups.count
+                            Label(allCollapsed ? "Expand All" : "Collapse All",
+                                  systemImage: allCollapsed ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                        }
+                        
+                        Divider()
+                        
+                        Button {
+                            showArchivedTransactions.toggle()
+                        } label: {
+                            Label(showArchivedTransactions ? "Hide Archived" : "Show Archived",
+                                  systemImage: showArchivedTransactions ? "eye.slash" : "eye")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
                 }
+                
                 ToolbarItem(placement: .navigationBarTrailing) {
                     editButton
                 }
@@ -65,9 +92,16 @@ struct TransactionListView: View {
         List(selection: $selection) {
             if data.transactions.isEmpty {
                 emptyState
+            } else if visibleTransactions.isEmpty && !showArchivedTransactions {
+                archivedOnlyState
             } else {
-                ForEach(groupedTransactions, id: \.date) { group in
-                    transactionSection(for: group)
+                ForEach(visibleTimeGroups, id: \.id) { group in
+                    temporalSection(for: group)
+                }
+                
+                // Pagination: Load More Button
+                if hasMoreToLoad {
+                    loadMoreSection
                 }
             }
             
@@ -93,12 +127,41 @@ struct TransactionListView: View {
         .padding(.vertical, 40)
     }
     
-    // MARK: - Transaction Section (Grouped by Date)
+    @ViewBuilder
+    private var archivedOnlyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "archivebox")
+                .font(.system(size: 48))
+                .foregroundColor(.secondary)
+            Text("All transactions are archived")
+                .font(.headline)
+            Text("Tap the filter icon to show archived transactions")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
+    }
+    
+    // MARK: - Temporal Section
     
     @ViewBuilder
-    private func transactionSection(for group: TransactionGroup) -> some View {
+    private func temporalSection(for group: TimeGroup) -> some View {
+        let isCollapsed = collapsedGroups.contains(group.id)
+        
         DisclosureGroup(
-            isExpanded: binding(for: group.date),
+            isExpanded: Binding(
+                get: { !isCollapsed },
+                set: { isExpanded in
+                    if isExpanded {
+                        collapsedGroups.remove(group.id)
+                    } else {
+                        collapsedGroups.insert(group.id)
+                    }
+                }
+            ),
             content: {
                 ForEach(group.transactions) { transaction in
                     if isEditMode {
@@ -115,12 +178,21 @@ struct TransactionListView: View {
     }
     
     @ViewBuilder
-    private func sectionHeader(for group: TransactionGroup) -> some View {
+    private func sectionHeader(for group: TimeGroup) -> some View {
         HStack {
-            Text(formatHeaderDate(group.date))
-                .font(.headline)
-                .foregroundColor(.primary)
+            HStack(spacing: 6) {
+                if group.period == .archived {
+                    Image(systemName: "archivebox.fill")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Text(group.displayName)
+                    .font(.headline)
+                    .foregroundColor(group.period == .archived ? .secondary : .primary)
+            }
+            
             Spacer()
+            
             Text("\(group.transactions.count)")
                 .font(.caption)
                 .foregroundColor(.secondary)
@@ -176,21 +248,32 @@ struct TransactionListView: View {
         }
     }
     
-    // MARK: - Toolbar Buttons
+    // MARK: - Load More Section
     
     @ViewBuilder
-    private var collapseExpandButton: some View {
-        if !data.transactions.isEmpty {
+    private var loadMoreSection: some View {
+        Section {
             Button {
-                toggleAllSections()
+                loadedMonthsCount += 1
             } label: {
-                let allDates = Set(groupedTransactions.map { $0.date })
-                let allCollapsed = collapsedDates.count == allDates.count && !allDates.isEmpty
-                Image(systemName: allCollapsed ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
-                    .font(.subheadline)
+                HStack {
+                    Spacer()
+                    VStack(spacing: 4) {
+                        Image(systemName: "arrow.down.circle")
+                            .font(.title3)
+                        Text("Load Previous Month")
+                            .font(.subheadline)
+                    }
+                    .foregroundColor(.blue)
+                    Spacer()
+                }
+                .padding(.vertical, 8)
             }
+            .buttonStyle(.plain)
         }
     }
+    
+    // MARK: - Toolbar Buttons
     
     private var editButton: some View {
         Button(isEditMode ? "Done" : "Edit") {
@@ -312,57 +395,120 @@ struct TransactionListView: View {
         .presentationDetents([.medium, .large])
     }
     
-    // MARK: - Data Helpers
+    // MARK: - Temporal Grouping Logic
     
-    private var groupedTransactions: [TransactionGroup] {
-        let grouped = Dictionary(grouping: data.transactions) { transaction in
-            Calendar.current.startOfDay(for: transaction.date)
-        }
-        let sortedDates = grouped.keys.sorted(by: >)
-        return sortedDates.map { date in
-            let transactions = grouped[date] ?? []
-            return TransactionGroup(
-                date: date,
-                transactions: transactions.sorted { $0.date > $1.date }
-            )
-        }
-    }
-    
-    private func binding(for date: Date) -> Binding<Bool> {
-        Binding(
-            get: { !collapsedDates.contains(date) },
-            set: { isExpanded in
-                if isExpanded {
-                    collapsedDates.remove(date)
-                } else {
-                    collapsedDates.insert(date)
-                }
+    private var visibleTransactions: [Transaction] {
+        let cutoffDate = archiveCutoffDate
+        
+        return data.transactions.filter { transaction in
+            if showArchivedTransactions {
+                return true
+            } else {
+                return transaction.date >= cutoffDate
             }
-        )
+        }
     }
     
-    private func formatHeaderDate(_ date: Date) -> String {
+    private var archiveCutoffDate: Date {
+        Calendar.current.date(byAdding: .month, value: -archiveOlderThanMonths, to: Date()) ?? Date.distantPast
+    }
+    
+    private var visibleTimeGroups: [TimeGroup] {
+        let sorted = visibleTransactions.sorted { $0.date > $1.date }
+        
+        var groups: [TimeGroup] = []
         let calendar = Calendar.current
-        if calendar.isDateInToday(date) {
-            return "Today"
-        } else if calendar.isDateInYesterday(date) {
-            return "Yesterday"
-        } else {
-            return Formatters.sectionHeader.string(from: date)
+        let now = Date()
+        
+        // Define time boundaries
+        let startOfToday = calendar.startOfDay(for: now)
+        let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday)!
+        let startOfLastWeek = calendar.date(byAdding: .day, value: -7, to: startOfToday)!
+        let startOfLastMonth = calendar.date(byAdding: .month, value: -1, to: startOfToday)!
+        let paginationCutoff = calendar.date(byAdding: .month, value: -loadedMonthsCount, to: startOfToday)!
+        
+        // Group transactions by time period
+        var futureTransactions: [Transaction] = []
+        var todayTransactions: [Transaction] = []
+        var yesterdayTransactions: [Transaction] = []
+        var lastWeekTransactions: [Transaction] = []
+        var lastMonthTransactions: [Transaction] = []
+        var archivedTransactions: [Transaction] = []
+        var olderTransactionsByMonth: [Date: [Transaction]] = [:]
+        
+        for transaction in sorted {
+            if transaction.date > now {
+                futureTransactions.append(transaction)
+            } else if transaction.date >= startOfToday {
+                todayTransactions.append(transaction)
+            } else if transaction.date >= startOfYesterday {
+                yesterdayTransactions.append(transaction)
+            } else if transaction.date >= startOfLastWeek {
+                lastWeekTransactions.append(transaction)
+            } else if transaction.date >= startOfLastMonth {
+                lastMonthTransactions.append(transaction)
+            } else if transaction.date < archiveCutoffDate {
+                archivedTransactions.append(transaction)
+            } else if transaction.date >= paginationCutoff {
+                // Group by month for pagination
+                let monthStart = calendar.dateInterval(of: .month, for: transaction.date)?.start ?? transaction.date
+                olderTransactionsByMonth[monthStart, default: []].append(transaction)
+            }
+        }
+        
+        // Build groups in order
+        if !futureTransactions.isEmpty {
+            groups.append(TimeGroup(period: .future, transactions: futureTransactions))
+        }
+        if !todayTransactions.isEmpty {
+            groups.append(TimeGroup(period: .today, transactions: todayTransactions))
+        }
+        if !yesterdayTransactions.isEmpty {
+            groups.append(TimeGroup(period: .yesterday, transactions: yesterdayTransactions))
+        }
+        if !lastWeekTransactions.isEmpty {
+            groups.append(TimeGroup(period: .lastWeek, transactions: lastWeekTransactions))
+        }
+        if !lastMonthTransactions.isEmpty {
+            groups.append(TimeGroup(period: .lastMonth, transactions: lastMonthTransactions))
+        }
+        
+        // Add monthly groups in reverse chronological order
+        let sortedMonths = olderTransactionsByMonth.keys.sorted(by: >)
+        for month in sortedMonths {
+            if let transactions = olderTransactionsByMonth[month] {
+                groups.append(TimeGroup(period: .month(month), transactions: transactions))
+            }
+        }
+        
+        // Add archived group if showing archived
+        if showArchivedTransactions && !archivedTransactions.isEmpty {
+            groups.append(TimeGroup(period: .archived, transactions: archivedTransactions))
+        }
+        
+        return groups
+    }
+    
+    private var hasMoreToLoad: Bool {
+        let paginationCutoff = Calendar.current.date(byAdding: .month, value: -loadedMonthsCount, to: Date())!
+        let archiveCutoff = archiveCutoffDate
+        
+        return data.transactions.contains { transaction in
+            transaction.date < paginationCutoff && transaction.date >= archiveCutoff
         }
     }
     
     // MARK: - Actions
     
-    private func toggleAllSections() {
-        let allDates = Set(groupedTransactions.map { $0.date })
-        let allCollapsed = collapsedDates.count == allDates.count
+    private func toggleAllGroups() {
+        let allGroupIDs = Set(visibleTimeGroups.map { $0.id })
+        let allCollapsed = collapsedGroups.count == allGroupIDs.count
         
         withAnimation {
             if allCollapsed {
-                collapsedDates.removeAll()
+                collapsedGroups.removeAll()
             } else {
-                collapsedDates = allDates
+                collapsedGroups = allGroupIDs
             }
         }
     }
@@ -419,9 +565,83 @@ struct TransactionListView: View {
 // MARK: - Supporting Types
 
 extension TransactionListView {
-    struct TransactionGroup {
-        let date: Date
+    enum TimePeriod: Hashable {
+        case future
+        case today
+        case yesterday
+        case lastWeek
+        case lastMonth
+        case month(Date)
+        case archived
+        
+        var displayName: String {
+            switch self {
+            case .future:
+                return "Upcoming"
+            case .today:
+                return "Today"
+            case .yesterday:
+                return "Yesterday"
+            case .lastWeek:
+                return "Last 7 Days"
+            case .lastMonth:
+                return "Last 30 Days"
+            case .month(let date):
+                let formatter = DateFormatter()
+                formatter.dateFormat = "MMMM yyyy"
+                return formatter.string(from: date)
+            case .archived:
+                return "Archived"
+            }
+        }
+        
+        var autoExpand: Bool {
+            switch self {
+            case .future, .today, .yesterday:
+                return true
+            default:
+                return false
+            }
+        }
+    }
+    
+    struct TimeGroup: Identifiable {
+        let id: TimeGroupID
+        let period: TimePeriod
         let transactions: [Transaction]
+        
+        var displayName: String {
+            period.displayName
+        }
+        
+        init(period: TimePeriod, transactions: [Transaction]) {
+            self.period = period
+            self.transactions = transactions
+            
+            // Generate unique ID based on period
+            switch period {
+            case .future:
+                self.id = TimeGroupID(value: "future")
+            case .today:
+                self.id = TimeGroupID(value: "today")
+            case .yesterday:
+                self.id = TimeGroupID(value: "yesterday")
+            case .lastWeek:
+                self.id = TimeGroupID(value: "lastWeek")
+            case .lastMonth:
+                self.id = TimeGroupID(value: "lastMonth")
+            case .month(let date):
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM"
+                self.id = TimeGroupID(value: "month-\(formatter.string(from: date))")
+            case .archived:
+                self.id = TimeGroupID(value: "archived")
+            }
+        }
+    }
+    
+    struct TimeGroupID: Hashable {
+        let value: String
     }
 }
 
@@ -520,17 +740,14 @@ struct BatchTagSelectionContent: View {
     
     private func handleKeyboardSubmit() {
         if searchText.isEmpty {
-            // Empty search + Enter = Apply (if tags selected)
             if !selectedIDs.isEmpty {
                 onApply()
             }
         } else if filteredItems.count == 1 {
-            // Single result + Enter = Select it and clear search
             toggleSelection(filteredItems[0])
             searchText = ""
             isSearchFocused = true
         } else if showCreationRow {
-            // Create row visible + Enter = Create and select
             createAndSelectTag()
         }
     }
