@@ -7,8 +7,7 @@ struct CSVDocument: FileDocument {
 
     var text: String
 
-    // Default init for creating the dummy state
-    init(text: String = "") {
+    init(text: String) {
         self.text = text
     }
 
@@ -45,6 +44,7 @@ struct JSONBackupDocument: FileDocument {
     }
 }
 
+// MARK: - Export View
 struct ExportView: View {
     @EnvironmentObject var data: AppData
     @Environment(\.dismiss) var dismiss
@@ -56,17 +56,25 @@ struct ExportView: View {
     @State private var startDate: Date = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
     @State private var endDate: Date = Date()
     
-    // Exporter State
+    // Exporter Triggers
     @State private var showCSVExporter = false
     @State private var showJSONExporter = false
     
-    // FIX 1: Non-optional State with dummy defaults to prevent "Nothing Happened" bug
-    @State private var csvDocument = CSVDocument()
+    // Alert State
+    @State private var showErrorAlert = false
+    @State private var errorMessage = ""
+    
+    // Documents
+    @State private var csvDocument = CSVDocument(text: "")
     @State private var jsonDocument = JSONBackupDocument(data: SavedData(
         accounts: [],
+        accountGroups: [],
         categories: [],
         tags: [],
-        transactions: []
+        transactions: [],
+        templates: [],
+        reminderTime: nil,
+        insightPresets: []
     ))
 
     enum ExportFormat: String, CaseIterable, Identifiable {
@@ -76,107 +84,113 @@ struct ExportView: View {
     }
 
     var body: some View {
-        Form {
-            Section {
-                Picker("Format", selection: $exportFormat) {
-                    ForEach(ExportFormat.allCases) { format in
-                        Text(format.rawValue).tag(format)
+        NavigationStack {
+            Form {
+                Section {
+                    Picker("Format", selection: $exportFormat) {
+                        ForEach(ExportFormat.allCases) { format in
+                            Text(format.rawValue).tag(format)
+                        }
+                    }
+                    .pickerStyle(SegmentedPickerStyle())
+                }
+                
+                if exportFormat == .csv {
+                    Section(header: Text("Date Range"), footer: Text("Exports visible transactions only.")) {
+                        DatePicker("Start Date", selection: $startDate, displayedComponents: [.date])
+                        DatePicker("End Date", selection: $endDate, displayedComponents: [.date])
+                    }
+                } else {
+                    Section(header: Text("Backup Summary"), footer: Text("Creates a full backup file of all accounts, transactions, and settings.")) {
+                        summaryRow(label: "Transactions", value: "\(data.transactions.count)")
+                        summaryRow(label: "Accounts", value: "\(data.accounts.count)")
+                        summaryRow(label: "Account Groups", value: "\(data.accountGroups.count)")
+                        summaryRow(label: "Categories", value: "\(data.categories.count)")
+                        summaryRow(label: "Tags", value: "\(data.tags.count)")
                     }
                 }
-                .pickerStyle(SegmentedPickerStyle())
-            }
-            
-            if exportFormat == .csv {
-                Section(header: Text("Date Range"), footer: Text("Exports visible transactions only.")) {
-                    DatePicker("Start Date", selection: $startDate, displayedComponents: [.date])
-                    DatePicker("End Date", selection: $endDate, displayedComponents: [.date])
-                }
-            } else {
-                // MARK: - JSON Summary Section
-                Section(header: Text("Backup Summary"), footer: Text("Creates a full backup file of all accounts, transactions, and settings.")) {
-                    HStack {
-                        Text("Transactions")
-                        Spacer()
-                        Text("\(data.transactions.count)")
-                            .foregroundColor(.secondary)
+                
+                Section {
+                    Button {
+                        if exportFormat == .csv {
+                            prepareAndExportCSV()
+                        } else {
+                            prepareAndExportJSON()
+                        }
+                    } label: {
+                        HStack {
+                            Spacer()
+                            Text(exportFormat == .csv ? "Export CSV" : "Export Backup")
+                                .fontWeight(.semibold)
+                            Spacer()
+                        }
                     }
-                    
-                    HStack {
-                        Text("Accounts")
-                        Spacer()
-                        Text("\(data.accounts.count)")
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    HStack {
-                        Text("Account Groups")
-                            .foregroundColor(.purple)
-                        Spacer()
-                        Text("\(data.accountGroups.count)")
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    HStack {
-                        Text("Categories")
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text("\(data.categories.count)")
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    HStack {
-                        Text("Tags")
-                            .foregroundColor(.blue)
-                        Spacer()
-                        Text("\(data.tags.count)")
-                            .foregroundColor(.secondary)
-                    }
+                    .disabled(exportFormat == .csv && endDate < startDate)
                 }
             }
-            
-            Section {
-                Button(action: handleExport) {
-                    HStack {
-                        Spacer()
-                        Text(exportFormat == .csv ? "Export CSV" : "Export Backup")
-                            .fontWeight(.semibold)
-                        Spacer()
+            .navigationTitle("Export Data")
+            // MARK: - Exporters
+            // Attached to background to ensure they persist in view hierarchy
+            .background {
+                EmptyView()
+                    .fileExporter(
+                        isPresented: $showCSVExporter,
+                        document: csvDocument,
+                        contentType: .commaSeparatedText,
+                        defaultFilename: defaultCSVName()
+                    ) { result in
+                        handleResult(result)
                     }
-                }
-                // Only disable for CSV if date range is invalid
-                .disabled(exportFormat == .csv && endDate < startDate)
+            }
+            .background {
+                EmptyView()
+                    .fileExporter(
+                        isPresented: $showJSONExporter,
+                        document: jsonDocument,
+                        contentType: .json,
+                        defaultFilename: defaultJSONName() // FIXED: Uses safe filename
+                    ) { result in
+                        handleResult(result)
+                    }
+            }
+            .alert("Export Failed", isPresented: $showErrorAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(errorMessage)
             }
         }
-        .navigationTitle("Export Data")
-        // CSV Exporter
-        .fileExporter(
-            isPresented: $showCSVExporter,
-            document: csvDocument,
-            contentType: .commaSeparatedText,
-            defaultFilename: defaultCSVName()
-        ) { result in
-            handleResult(result)
-        }
-        // JSON Exporter
-        .fileExporter(
-            isPresented: $showJSONExporter,
-            document: jsonDocument,
-            contentType: .json,
-            defaultFilename: "PocketLedger_Backup_\(Date().formatted(date: .numeric, time: .omitted))"
-        ) { result in
-            handleResult(result)
+    }
+    
+    // MARK: - UI Helpers
+    
+    private func summaryRow(label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            Text(value).foregroundColor(.secondary)
         }
     }
     
     // MARK: - Logic
     
-    private func handleExport() {
-        if exportFormat == .csv {
-            csvDocument = prepareCSVDocument()
-            showCSVExporter = true
-        } else {
-            jsonDocument = prepareJSONDocument()
+    private func prepareAndExportCSV() {
+        csvDocument = prepareCSVDocument()
+        showCSVExporter = true
+    }
+    
+    private func prepareAndExportJSON() {
+        let doc = prepareJSONDocument()
+        do {
+            // Verify encoding works before showing save dialog
+            let encoder = JSONEncoder()
+            _ = try encoder.encode(doc.savedData)
+            
+            jsonDocument = doc
             showJSONExporter = true
+        } catch {
+            print("Encoding Error: \(error)")
+            errorMessage = "Could not prepare backup: \(error.localizedDescription)"
+            showErrorAlert = true
         }
     }
     
@@ -187,13 +201,14 @@ struct ExportView: View {
             dismiss()
         case .failure(let error):
             print("Export failed: \(error.localizedDescription)")
+            errorMessage = error.localizedDescription
+            showErrorAlert = true
         }
     }
     
-    // MARK: - Document Prep
+    // MARK: - Document Builders
     
     private func prepareJSONDocument() -> JSONBackupDocument {
-        // FIX 3: Include accountGroups in backup
         let snapshot = SavedData(
             accounts: data.accounts,
             accountGroups: data.accountGroups,
@@ -225,20 +240,24 @@ struct ExportView: View {
             
             let dateStr = dateFormatter.string(from: tx.date)
             let amountStr = String(format: "%.2f", tx.amount)
-            
-            // Clean strings to prevent CSV breakage
             let safeTags = tagsString.replacingOccurrences(of: ",", with: " ")
-            let safeAccount = accountName.replacingOccurrences(of: ",", with: " ")
-            let safeCategory = categoryName.replacingOccurrences(of: ",", with: " ")
             
-            csv += "\(tx.id),\(dateStr),\(tx.type.rawValue),\(safeAccount),\(safeCategory),\(safeTags),\(amountStr)\n"
+            csv += "\(tx.id),\(dateStr),\(tx.type.rawValue),\(accountName),\(categoryName),\(safeTags),\(amountStr)\n"
         }
         return CSVDocument(text: csv)
     }
+
+    // MARK: - Safe Filenames (Fixes "File doesn't exist" error)
 
     private func defaultCSVName() -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd"
         return "Transactions_\(formatter.string(from: startDate))_\(formatter.string(from: endDate))"
+    }
+    
+    private func defaultJSONName() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd" // Safe dashes instead of slashes
+        return "PocketLedger_Backup_\(formatter.string(from: Date()))"
     }
 }
