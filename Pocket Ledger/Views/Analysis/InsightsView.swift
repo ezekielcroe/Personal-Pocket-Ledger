@@ -14,7 +14,7 @@ struct InsightsView: View {
     @State private var timeRange: TimeRange = .thisMonth
     @State private var breakdownMode: BreakdownMode = .category
     
-    // Anchor Date (defaults to today, could be manipulated for custom months)
+    // Anchor Date (defaults to today)
     @State private var selectedAnchorDate = Date()
 
     // MARK: - Filter State
@@ -92,7 +92,9 @@ struct InsightsView: View {
                                     )
                                     .padding(.vertical, 40)
                                 } else {
-                                    // Fallback on earlier versions
+                                    Text("No spending found for this period.")
+                                        .foregroundColor(.secondary)
+                                        .padding()
                                 }
                             } else {
                                 LazyVStack(spacing: 0) {
@@ -118,6 +120,7 @@ struct InsightsView: View {
                         Label("Filter Data", systemImage: "line.3.horizontal.decrease.circle")
                     }
                     Divider()
+                    // UPDATED: Reconcile Button
                     Button { showingReconcileSheet = true } label: {
                         Label("Reconcile Accounts", systemImage: "checkmark.seal")
                     }
@@ -152,8 +155,10 @@ struct InsightsView: View {
                     onReset: applyReset
                 )
             }
+            // UPDATED: Opens the new Selection View
             .sheet(isPresented: $showingReconcileSheet) {
-                ReconcileView().environmentObject(data)
+                ReconcileSelectionView()
+                    .environmentObject(data)
             }
         }
     }
@@ -168,8 +173,6 @@ struct InsightsView: View {
         switch breakdownMode {
         case .category:
             if let category = data.categories.first(where: { $0.id == item.id }) {
-                // Assuming CategoryDetailView can accept a date, or default to Month
-                // For now, we link to the standard view
                 NavigationLink(destination: CategoryDetailView(category: category, monthContext: currentInterval.start)) {
                     CategoryBarRow(item: item, total: totalExpense, currencySymbol: currencySymbol)
                 }
@@ -184,15 +187,25 @@ struct InsightsView: View {
                 .buttonStyle(.plain)
             }
             
+        case .group:
+            // NEW: Link to Group Details
+            if let group = data.accountGroups.first(where: { $0.id == item.id }) {
+                NavigationLink(destination: AccountGroupDetailView(group: group)) {
+                    CategoryBarRow(item: item, total: totalExpense, currencySymbol: currencySymbol)
+                }
+                .buttonStyle(.plain)
+            } else if item.name == "Ungrouped" {
+                // Non-navigable row for ungrouped items
+                CategoryBarRow(item: item, total: totalExpense, currencySymbol: currencySymbol)
+            }
+            
         case .tag:
-            // LINKED: Now connects to your existing TagDetailView with the correct date filter
             if let tag = data.tags.first(where: { $0.id == item.id }) {
                 NavigationLink(destination: TagDetailView(tag: tag, dateFilter: currentInterval)) {
                     CategoryBarRow(item: item, total: totalExpense, currencySymbol: currencySymbol)
                 }
                 .buttonStyle(.plain)
             } else if item.name == "No Tag" {
-                // Optional: Create a view for untagged transactions or just show row
                 CategoryBarRow(item: item, total: totalExpense, currencySymbol: currencySymbol)
             }
         }
@@ -293,7 +306,7 @@ struct InsightsView: View {
             .filter { $0.type == .outflow && !transferCategoryIDs.contains($0.categoryID) }
             .reduce(0) { $0 + $1.amount }
         
-        // 4. Generate Breakdown (only for expenses usually, but can adapt)
+        // 4. Generate Breakdown
         let outflows = filtered.filter { $0.type == .outflow && !transferCategoryIDs.contains($0.categoryID) }
         var breakdown: [AnalyticsItem] = []
         
@@ -314,8 +327,42 @@ struct InsightsView: View {
                 return AnalyticsItem(id: id, name: acc.name, icon: acc.accountType.icon, amount: amount, color: acc.accountType.color)
             }
             
+        case .group:
+            // NEW: Group Breakdown Logic
+            var dict: [UUID: Double] = [:]
+            var ungroupedAmount: Double = 0
+            
+            // Pre-calculate map of AccountID -> TopLevelGroupID
+            var accountToGroupMap: [UUID: UUID] = [:]
+            
+            // Only consider top-level groups (depth == 0)
+            let topLevelGroups = data.accountGroups.filter { data.depth(of: $0) == 0 }
+            
+            for group in topLevelGroups {
+                let memberAccountIDs = group.allAccountIDs(in: data.accountGroups, accounts: data.accounts)
+                for accID in memberAccountIDs {
+                    accountToGroupMap[accID] = group.id
+                }
+            }
+            
+            for tx in outflows {
+                if let groupID = accountToGroupMap[tx.accountID] {
+                    dict[groupID, default: 0] += tx.amount
+                } else {
+                    ungroupedAmount += tx.amount
+                }
+            }
+            
+            breakdown = dict.compactMap { (id, amount) in
+                guard let group = data.accountGroups.first(where: { $0.id == id }) else { return nil }
+                return AnalyticsItem(id: id, name: group.name, icon: "folder.fill", amount: amount, color: .purple)
+            }
+            
+            if ungroupedAmount > 0 {
+                breakdown.append(AnalyticsItem(id: UUID(), name: "Ungrouped", icon: "building.columns", amount: ungroupedAmount, color: .secondary))
+            }
+            
         case .tag:
-            // Tag logic: If a transaction has 2 tags, add amount to BOTH.
             var dict: [UUID: Double] = [:]
             var untaggedAmount: Double = 0
             
@@ -406,10 +453,12 @@ enum TimeRange: String, CaseIterable {
     }
 }
 
+// UPDATED: Added Group Case
 enum BreakdownMode: String, CaseIterable {
     case category = "Category"
-    case tag = "Tag"
+    case group = "Group"
     case account = "Account"
+    case tag = "Tag"
 }
 
 struct FilterChip: View {

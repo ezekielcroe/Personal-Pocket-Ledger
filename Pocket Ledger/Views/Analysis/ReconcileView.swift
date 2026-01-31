@@ -1,399 +1,285 @@
 import SwiftUI
 
-struct ReconcileView: View {
+struct ReconcileInputView: View {
     @EnvironmentObject var data: AppData
     @Environment(\.dismiss) var dismiss
     @AppStorage("currencySymbol") private var currencySymbol: String = "$"
     
-    // Tracks the user's manual input for each account
-    @State private var actualBalanceInputs: [UUID: String] = [:]
+    let selectedIDs: Set<UUID>
     
-    // State for the adjustment sheet (replaced alert with sheet for more detail)
-    @State private var accountToAdjust: Account?
-    @State private var difference: Double = 0
+    // User Input: Maps Target ID (Account or Group) -> Input String
+    @State private var balanceInputs: [UUID: String] = [:]
+    
+    // Logic: Which target is currently being fixed?
+    @State private var targetToAdjust: ReconcileTarget?
+    @State private var differenceToAdjust: Double = 0
+    
+    // Sheet States
     @State private var showingAdjustmentSheet = false
     
-    // Filter state
-    @State private var showOnlyWithDifferences = false
+    // Model B Logic: If adjusting a group, we need to pick an account
+    @State private var showingGroupTargetPicker = false
+    @State private var selectedAccountForGroupAdjustment: Account?
     
-    // MARK: - Focus State
-    @FocusState private var focusedAccountID: UUID?
-    
-    // MARK: - Filtered Accounts
-    
-    private var displayedAccounts: [Account] {
-        let accounts = data.accounts.sorted { lhs, rhs in
-            // Sort by account type, then alphabetically
-            let typeOrder: [AccountType] = [.debit, .goal, .budget, .debt]
-            let lhsIndex = typeOrder.firstIndex(of: lhs.accountType) ?? 999
-            let rhsIndex = typeOrder.firstIndex(of: rhs.accountType) ?? 999
-            
-            if lhsIndex != rhsIndex {
-                return lhsIndex < rhsIndex
-            }
-            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
-        }
+    // MARK: - Unified Target Model
+    enum ReconcileTarget: Identifiable, Hashable {
+        case account(Account)
+        case group(AccountGroup)
         
-        if showOnlyWithDifferences {
-            return accounts.filter { account in
-                if let diff = calculateDifference(for: account), abs(diff) > 0.01 {
-                    return true
-                }
-                return false
+        var id: UUID {
+            switch self {
+            case .account(let a): return a.id
+            case .group(let g): return g.id
             }
         }
         
-        return accounts
+        var name: String {
+            switch self {
+            case .account(let a): return a.name
+            case .group(let g): return g.name
+            }
+        }
+        
+        // Helper to get system balance
+        func systemBalance(in data: AppData) -> Double {
+            switch self {
+            case .account(let a): return data.balance(for: a)
+            case .group(let g): return data.groupBalance(g)
+            }
+        }
     }
     
-    // MARK: - Grouped Accounts
-    
-    private var accountsByType: [(type: AccountType, accounts: [Account])] {
-        let typeOrder: [AccountType] = [.debit, .goal, .budget, .debt]
+    // Computed list of targets based on selection
+    private var targets: [ReconcileTarget] {
+        var result: [ReconcileTarget] = []
         
-        return typeOrder.compactMap { type in
-            let accountsOfType = displayedAccounts.filter { $0.accountType == type }
-            return accountsOfType.isEmpty ? nil : (type, accountsOfType)
+        for id in selectedIDs {
+            if let group = data.accountGroups.first(where: { $0.id == id }) {
+                result.append(.group(group))
+            } else if let account = data.accounts.first(where: { $0.id == id }) {
+                result.append(.account(account))
+            }
         }
+        // Sort by name
+        return result.sorted { $0.name < $1.name }
     }
 
     var body: some View {
-        NavigationStack {
-            List {
-                // MARK: - Instructions
-                Section {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Enter the actual balance from your bank/wallet for each account.")
-                            .font(.subheadline)
-                            .foregroundColor(.primary)
-                        
-                        Text("Pocket Ledger will create adjustment transactions to sync with reality.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.vertical, 4)
-                }
-                
-                // MARK: - Summary Stats
-                if differenceSummary.count > 0 || differenceSummary.total != 0 {
-                    Section(header: Text("Summary")) {
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text("Accounts with differences")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                Text("\(differenceSummary.count)")
-                                    .font(.title3)
-                                    .fontWeight(.bold)
-                            }
-                            
-                            Spacer()
-                            
-                            VStack(alignment: .trailing) {
-                                Text("Total difference")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                Text(differenceSummary.total.formattedCurrency(symbol: currencySymbol))
-                                    .font(.title3)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(differenceSummary.total > 0 ? .green : .red)
-                            }
-                        }
-                    }
-                }
-                
-                // MARK: - Filter Toggle
-                Section {
-                    Toggle("Show only accounts with differences", isOn: $showOnlyWithDifferences)
-                        .disabled(!hasPendingDifferences)
-                }
-                
-                // MARK: - Account List (Grouped by Type)
-                ForEach(accountsByType, id: \.type) { section in
-                    Section(header: Text(section.type.rawValue)) {
-                        ForEach(Array(section.accounts.enumerated()), id: \.element.id) { index, account in
-                            accountRow(for: account, at: indexInAll(account))
-                        }
-                    }
-                }
+        List {
+            // Instructions
+            Section {
+                Text("Enter the actual total balance for each selected item.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
-            .navigationTitle("Reconcile")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    if hasPendingDifferences {
-                        Button("Fix All") {
-                            fixAllDifferences()
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                }
+            
+            // The Input List
+            ForEach(targets) { target in
+                targetRow(target)
             }
-            .sheet(isPresented: $showingAdjustmentSheet) {
-                if let account = accountToAdjust {
-                    AdjustmentDetailSheet(
-                        account: account,
-                        difference: difference,
-                        currencySymbol: currencySymbol,
-                        onConfirm: { categoryID in
-                            createAdjustment(categoryID: categoryID)
-                        }
-                    )
-                    .environmentObject(data)
-                }
-            }
-            .decimalPadToolbar()
-            .onAppear {
-                // Pre-fill with current balances as starting point
-                for account in data.accounts {
-                    if actualBalanceInputs[account.id] == nil {
-                        actualBalanceInputs[account.id] = String(format: "%.2f", data.balance(for: account))
-                    }
-                }
-                
-                // Auto-focus on first account
-                if let firstAccount = displayedAccounts.first {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        focusedAccountID = firstAccount.id
-                    }
+        }
+        .navigationTitle("Reconcile")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Done") {
+                    dismiss()
                 }
             }
         }
+        // SHEET 1: Adjustment Details (Category, Notes)
+        .sheet(isPresented: $showingAdjustmentSheet) {
+            if let target = targetToAdjust {
+                AdjustmentDetailSheet(
+                    targetName: target.name,
+                    difference: differenceToAdjust,
+                    currencySymbol: currencySymbol,
+                    onConfirm: { categoryID in
+                        finalizeAdjustment(categoryID: categoryID)
+                    }
+                )
+            }
+        }
+        // SHEET 2: Model B Specific - Pick Account for Group Adjustment
+        .confirmationDialog("Apply Adjustment To...", isPresented: $showingGroupTargetPicker, titleVisibility: .visible) {
+            if case .group(let group) = targetToAdjust {
+                let eligibleAccounts = getAccountsRecursive(for: group)
+                
+                ForEach(eligibleAccounts) { account in
+                    Button(account.name) {
+                        selectedAccountForGroupAdjustment = account
+                        // Once account is picked, proceed to standard adjustment sheet
+                        showingAdjustmentSheet = true
+                    }
+                }
+                
+                Button("Cancel", role: .cancel) {
+                    targetToAdjust = nil
+                }
+            }
+        } message: {
+            Text("Since you are reconciling a group, please select which account contains the discrepancy.")
+        }
+        .decimalPadToolbar()
+        .onAppear {
+            initializeInputs()
+        }
     }
     
-    // MARK: - Account Row
+    // MARK: - Row Component
     
     @ViewBuilder
-    private func accountRow(for account: Account, at index: Int) -> some View {
+    private func targetRow(_ target: ReconcileTarget) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Account name with type icon
+            // Header
             HStack {
-                Image(systemName: account.accountType.icon)
-                    .foregroundColor(accountTypeColor(account.accountType))
-                Text(account.name)
-                    .font(.headline)
+                if case .group = target {
+                    Image(systemName: "folder.fill").foregroundColor(.purple)
+                } else {
+                    Image(systemName: "building.columns").foregroundColor(.blue)
+                }
+                Text(target.name).font(.headline)
             }
             
-            // Balance comparison
+            // Input Area
             HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("System Balance")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                    Text(data.balance(for: account).formattedCurrency(symbol: currencySymbol))
+                VStack(alignment: .leading) {
+                    Text("System").font(.caption2).foregroundColor(.secondary)
+                    Text(target.systemBalance(in: data).formattedCurrency(symbol: currencySymbol))
                         .font(.subheadline)
                         .monospacedDigit()
                 }
                 
-                Image(systemName: "arrow.right")
-                    .foregroundColor(.secondary)
-                    .font(.caption)
+                Image(systemName: "arrow.right").font(.caption).foregroundColor(.secondary)
                 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Actual Balance")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
+                VStack(alignment: .leading) {
+                    Text("Actual").font(.caption2).foregroundColor(.secondary)
                     TextField("0.00", text: Binding(
-                        get: { actualBalanceInputs[account.id] ?? "" },
-                        set: { actualBalanceInputs[account.id] = $0 }
+                        get: { balanceInputs[target.id] ?? "" },
+                        set: { balanceInputs[target.id] = $0 }
                     ))
                     .keyboardType(.decimalPad)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 100)
-                    .focused($focusedAccountID, equals: account.id)
-                    .onSubmit {
-                        handleAccountSubmit(currentIndex: index)
-                    }
                 }
                 
                 Spacer()
             }
             
-            // Difference indicator + action
-            if let diff = calculateDifference(for: account), abs(diff) > 0.01 {
+            // Difference & Action
+            if let diff = calculateDifference(for: target), abs(diff) > 0.01 {
                 HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Difference")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                        HStack(spacing: 4) {
-                            Image(systemName: diff > 0 ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
-                                .foregroundColor(diff > 0 ? .green : .red)
-                                .font(.caption)
-                            Text(abs(diff).formattedCurrency(symbol: currencySymbol))
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(diff > 0 ? .green : .red)
-                            Text(diff > 0 ? "(missing inflow)" : "(missing outflow)")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                    }
+                    Text("Diff: \(diff > 0 ? "+" : "")\(diff.formattedCurrency(symbol: currencySymbol))")
+                        .font(.subheadline)
+                        .foregroundColor(diff > 0 ? .green : .red)
                     
                     Spacer()
                     
-                    Button {
-                        accountToAdjust = account
-                        difference = diff
-                        showingAdjustmentSheet = true
-                    } label: {
-                        Text("Fix")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
+                    Button("Fix") {
+                        startFixProcess(for: target, difference: diff)
                     }
                     .buttonStyle(.borderedProminent)
+                    .font(.caption)
                 }
                 .padding(8)
-                .background(diff > 0 ? Color.green.opacity(0.1) : Color.red.opacity(0.1))
+                .background(Color.secondary.opacity(0.1))
                 .cornerRadius(8)
-            } else if actualBalanceInputs[account.id] != nil && !actualBalanceInputs[account.id]!.isEmpty {
-                // Show checkmark if entered and matches
-                HStack {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                    Text("Balanced")
-                        .font(.caption)
-                        .foregroundColor(.green)
-                    Spacer()
+            } else if let input = balanceInputs[target.id], !input.isEmpty {
+                 HStack {
+                    Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
+                    Text("Balanced").font(.caption).foregroundColor(.green)
                 }
             }
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 4)
     }
     
-    // MARK: - Helpers
+    // MARK: - Logic
     
-    private func indexInAll(_ account: Account) -> Int {
-        displayedAccounts.firstIndex(where: { $0.id == account.id }) ?? 0
-    }
-    
-    private func calculateDifference(for account: Account) -> Double? {
-        guard let input = actualBalanceInputs[account.id],
-              !input.isEmpty,
-              let actual = Double(input) else { return nil }
-        let system = data.balance(for: account)
-        return actual - system
-    }
-    
-    private var hasPendingDifferences: Bool {
-        data.accounts.contains { account in
-            if let diff = calculateDifference(for: account), abs(diff) > 0.01 {
-                return true
-            }
-            return false
+    private func initializeInputs() {
+        for target in targets {
+            let balance = target.systemBalance(in: data)
+            balanceInputs[target.id] = String(format: "%.2f", balance)
         }
     }
     
-    private var differenceSummary: (count: Int, total: Double) {
-        var count = 0
-        var total: Double = 0
-        
-        for account in data.accounts {
-            if let diff = calculateDifference(for: account), abs(diff) > 0.01 {
-                count += 1
-                total += diff
-            }
-        }
-        
-        return (count, total)
+    private func calculateDifference(for target: ReconcileTarget) -> Double? {
+        guard let text = balanceInputs[target.id], let actual = Double(text) else { return nil }
+        return actual - target.systemBalance(in: data)
     }
     
-    private func accountTypeColor(_ type: AccountType) -> Color {
-        switch type {
-        case .debit:  return .primary
-        case .goal:   return .blue
-        case .budget: return .purple
-        case .debt:   return .orange
-        }
-    }
-    
-    // MARK: - Focus Chain Logic
-    
-    private func handleAccountSubmit(currentIndex: Int) {
-        let nextIndex = currentIndex + 1
+    private func startFixProcess(for target: ReconcileTarget, difference: Double) {
+        targetToAdjust = target
+        differenceToAdjust = difference
         
-        if nextIndex < displayedAccounts.count {
-            let nextAccount = displayedAccounts[nextIndex]
-            focusedAccountID = nextAccount.id
-        } else {
-            focusedAccountID = nil
-        }
-    }
-    
-    // MARK: - Adjustment Logic
-    
-    private func fixAllDifferences() {
-        for account in data.accounts {
-            if let diff = calculateDifference(for: account), abs(diff) > 0.01 {
-                createAdjustmentFor(account: account, difference: diff, categoryID: nil)
-            }
-        }
-        
-        actualBalanceInputs.removeAll()
-        
-        let generator = UINotificationFeedbackGenerator()
-        generator.notificationOccurred(.success)
-        
-        dismiss()
-    }
-    
-    private func createAdjustment(categoryID: UUID?) {
-        guard let account = accountToAdjust else { return }
-        createAdjustmentFor(account: account, difference: difference, categoryID: categoryID)
-        
-        actualBalanceInputs[account.id] = nil
-        
-        let generator = UINotificationFeedbackGenerator()
-        generator.notificationOccurred(.success)
-    }
-    
-    private func createAdjustmentFor(account: Account, difference: Double, categoryID: UUID?) {
-        let type: TransactionType = difference > 0 ? .inflow : .outflow
-        let amount = abs(difference)
-        
-        // Determine category
-        let finalCategoryID: UUID
-        
-        if let providedID = categoryID {
-            finalCategoryID = providedID
-        } else {
-            // Auto-select category
-            let validCategories = data.categories.filter { $0.type.rawValue == type.rawValue }
+        switch target {
+        case .account(let account):
+            // Simple case: We know the account
+            selectedAccountForGroupAdjustment = account
+            showingAdjustmentSheet = true
             
-            var targetCategory = validCategories.first { $0.name == "Other" }
-            if targetCategory == nil {
-                targetCategory = validCategories.first { $0.name == "Adjustment" }
-            }
-            if targetCategory == nil {
-                targetCategory = validCategories.first
-            }
-            
-            guard let category = targetCategory else { return }
-            finalCategoryID = category.id
+        case .group:
+            // Model B case: We must ask user for the account
+            showingGroupTargetPicker = true
+        }
+    }
+    
+    private func finalizeAdjustment(categoryID: UUID?) {
+        guard let account = selectedAccountForGroupAdjustment else { return }
+        
+        // Create Transaction
+        let type: TransactionType = differenceToAdjust > 0 ? .inflow : .outflow
+        
+        // Auto-category fallback
+        var finalCatID = categoryID
+        if finalCatID == nil {
+            finalCatID = data.categories.first(where: { $0.name == "Adjustment" || $0.name == "Other" })?.id
+            if finalCatID == nil { finalCatID = data.categories.first?.id }
         }
         
-        data.addTransaction(
-            type: type,
-            accountID: account.id,
-            categoryID: finalCategoryID,
-            tagIDs: [],
-            amount: amount,
-            date: Date(),
-            isOutlier: true // Mark reconciliation adjustments as outliers by default
-        )
+        if let catID = finalCatID {
+            data.addTransaction(
+                type: type,
+                accountID: account.id,
+                categoryID: catID,
+                tagIDs: [],
+                amount: abs(differenceToAdjust),
+                date: Date(),
+                isOutlier: true
+            )
+        }
+        
+        // Reset Input for this target to match new reality
+        if let target = targetToAdjust {
+            // We update the input to match the (now corrected) system balance
+            // effectively "clearing" the error visually
+            balanceInputs[target.id] = nil
+        }
+        
+        // Cleanup
+        targetToAdjust = nil
+        selectedAccountForGroupAdjustment = nil
+    }
+    
+    // Recursive helper to find all concrete accounts inside a group
+    private func getAccountsRecursive(for group: AccountGroup) -> [Account] {
+        var results: [Account] = []
+        let allIDs = group.allAccountIDs(in: data.accountGroups, accounts: data.accounts)
+        for id in allIDs {
+            if let acc = data.accounts.first(where: { $0.id == id }) {
+                results.append(acc)
+            }
+        }
+        return results
     }
 }
 
-// MARK: - Adjustment Detail Sheet
-
+// Reuse the existing AdjustmentDetailSheet (it is generic enough)
+// Minor tweak: pass `targetName` string instead of `Account` object to make it compatible
 struct AdjustmentDetailSheet: View {
     @EnvironmentObject var data: AppData
     @Environment(\.dismiss) var dismiss
     
-    let account: Account
+    let targetName: String
     let difference: Double
     let currencySymbol: String
     let onConfirm: (UUID?) -> Void
@@ -405,29 +291,15 @@ struct AdjustmentDetailSheet: View {
         difference > 0 ? .inflow : .outflow
     }
     
-    private var validCategories: [Category] {
-        data.categories.filter { $0.type.rawValue == transactionType.rawValue }
-    }
-    
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Text("Adjustment Details")) {
+                Section(header: Text("Adjustment Summary")) {
                     HStack {
-                        Text("Account")
+                        Text("Target")
                         Spacer()
-                        Text(account.name)
-                            .foregroundColor(.secondary)
+                        Text(targetName).foregroundColor(.secondary)
                     }
-                    
-                    HStack {
-                        Text("Type")
-                        Spacer()
-                        Text(transactionType == .inflow ? "Inflow" : "Outflow")
-                            .foregroundColor(transactionType == .inflow ? .green : .red)
-                            .fontWeight(.semibold)
-                    }
-                    
                     HStack {
                         Text("Amount")
                         Spacer()
@@ -439,61 +311,22 @@ struct AdjustmentDetailSheet: View {
                 Section(header: Text("Category")) {
                     Picker("Category", selection: $selectedCategoryID) {
                         Text("Auto-select").tag(nil as UUID?)
-                        ForEach(validCategories) { category in
-                            HStack {
-                                Text(category.emoji)
-                                Text(category.name)
-                            }
-                            .tag(category.id as UUID?)
+                        ForEach(data.categories.filter { $0.type.rawValue == transactionType.rawValue }) { cat in
+                            Text(cat.emoji + " " + cat.name).tag(cat.id as UUID?)
                         }
-                    }
-                    .pickerStyle(.inline)
-                }
-                
-                Section {
-                    Toggle("Mark as Outlier", isOn: $markAsOutlier)
-                }
-                footer: {
-                    Text("Recommended: Exclude reconciliation adjustments from statistics by marking them as outliers.")
-                }
-                
-                Section {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("What This Does")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                        
-                        Text("Creates a \(transactionType == .inflow ? "inflow" : "outflow") transaction of \(abs(difference).formattedCurrency(symbol: currencySymbol)) to bring '\(account.name)' balance in line with your actual balance.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
                     }
                 }
             }
-            .navigationTitle("Create Adjustment")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("Confirm Adjustment")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Create") {
                         onConfirm(selectedCategoryID)
                         dismiss()
                     }
-                    .buttonStyle(.borderedProminent)
                 }
-            }
-        }
-        .presentationDetents([.medium, .large])
-        .onAppear {
-            // Auto-select "Other" or "Adjustment" category if available
-            if selectedCategoryID == nil {
-                if let other = validCategories.first(where: { $0.name == "Other" }) {
-                    selectedCategoryID = other.id
-                } else if let adjustment = validCategories.first(where: { $0.name == "Adjustment" }) {
-                    selectedCategoryID = adjustment.id
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
                 }
             }
         }
