@@ -7,7 +7,8 @@ struct CSVDocument: FileDocument {
 
     var text: String
 
-    init(text: String) {
+    // Default init for creating the dummy state
+    init(text: String = "") {
         self.text = text
     }
 
@@ -32,7 +33,6 @@ struct JSONBackupDocument: FileDocument {
     }
     
     init(configuration: ReadConfiguration) throws {
-        // FIX: Removed 'try' because regularFileContents does not throw
         let data = configuration.file.regularFileContents ?? Data()
         self.savedData = try JSONDecoder().decode(SavedData.self, from: data)
     }
@@ -60,8 +60,14 @@ struct ExportView: View {
     @State private var showCSVExporter = false
     @State private var showJSONExporter = false
     
-    @State private var csvDocument: CSVDocument?
-    @State private var jsonDocument: JSONBackupDocument?
+    // FIX 1: Non-optional State with dummy defaults to prevent "Nothing Happened" bug
+    @State private var csvDocument = CSVDocument()
+    @State private var jsonDocument = JSONBackupDocument(data: SavedData(
+        accounts: [],
+        categories: [],
+        tags: [],
+        transactions: []
+    ))
 
     enum ExportFormat: String, CaseIterable, Identifiable {
         case csv = "CSV Report"
@@ -86,9 +92,45 @@ struct ExportView: View {
                     DatePicker("End Date", selection: $endDate, displayedComponents: [.date])
                 }
             } else {
-                Section(footer: Text("Creates a full backup file of all accounts, transactions, and settings.")) {
-                    Text("Includes \(data.transactions.count) transactions")
-                        .foregroundColor(.secondary)
+                // MARK: - JSON Summary Section
+                Section(header: Text("Backup Summary"), footer: Text("Creates a full backup file of all accounts, transactions, and settings.")) {
+                    HStack {
+                        Text("Transactions")
+                        Spacer()
+                        Text("\(data.transactions.count)")
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    HStack {
+                        Text("Accounts")
+                        Spacer()
+                        Text("\(data.accounts.count)")
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    HStack {
+                        Text("Account Groups")
+                            .foregroundColor(.purple)
+                        Spacer()
+                        Text("\(data.accountGroups.count)")
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    HStack {
+                        Text("Categories")
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("\(data.categories.count)")
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    HStack {
+                        Text("Tags")
+                            .foregroundColor(.blue)
+                        Spacer()
+                        Text("\(data.tags.count)")
+                            .foregroundColor(.secondary)
+                    }
                 }
             }
             
@@ -151,8 +193,10 @@ struct ExportView: View {
     // MARK: - Document Prep
     
     private func prepareJSONDocument() -> JSONBackupDocument {
+        // FIX 3: Include accountGroups in backup
         let snapshot = SavedData(
             accounts: data.accounts,
+            accountGroups: data.accountGroups,
             categories: data.categories,
             tags: data.tags,
             transactions: data.transactions,
@@ -184,8 +228,10 @@ struct ExportView: View {
             
             // Clean strings to prevent CSV breakage
             let safeTags = tagsString.replacingOccurrences(of: ",", with: " ")
+            let safeAccount = accountName.replacingOccurrences(of: ",", with: " ")
+            let safeCategory = categoryName.replacingOccurrences(of: ",", with: " ")
             
-            csv += "\(tx.id),\(dateStr),\(tx.type.rawValue),\(accountName),\(categoryName),\(safeTags),\(amountStr)\n"
+            csv += "\(tx.id),\(dateStr),\(tx.type.rawValue),\(safeAccount),\(safeCategory),\(safeTags),\(amountStr)\n"
         }
         return CSVDocument(text: csv)
     }
