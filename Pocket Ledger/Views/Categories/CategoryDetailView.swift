@@ -5,11 +5,12 @@ struct CategoryDetailView: View {
     @AppStorage("currencySymbol") private var currencySymbol: String = "$"
     
     let category: Category
-    let monthContext: Date // The month selected in Insights
+    // UPDATED: Now accepts a full range (e.g., "Last Year") instead of just one month
+    let dateFilter: DateInterval
     
     var body: some View {
         List {
-            // Header: Total for this month
+            // Header: Total for this period
             Section {
                 VStack(alignment: .center, spacing: 8) {
                     Text(category.emoji)
@@ -22,8 +23,10 @@ struct CategoryDetailView: View {
                         .font(.system(size: 36, weight: .bold, design: .rounded))
                         .foregroundColor(category.type == .inflow ? .green : .red)
                     
-                    Text(monthString)
+                    // Display the range cleanly
+                    Text(formattedDateRange)
                         .foregroundColor(.secondary)
+                        .font(.subheadline)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical)
@@ -33,7 +36,7 @@ struct CategoryDetailView: View {
             // Transaction List
             Section(header: Text("Transactions")) {
                 if transactions.isEmpty {
-                    Text("No transactions found.")
+                    Text("No transactions found in this period.")
                         .foregroundColor(.secondary)
                 } else {
                     ForEach(transactions) { transaction in
@@ -51,10 +54,9 @@ struct CategoryDetailView: View {
     // MARK: - Logic
     
     private var transactions: [Transaction] {
-        let calendar = Calendar.current
         return data.transactions
             .filter { $0.categoryID == category.id }
-            .filter { calendar.isDate($0.date, equalTo: monthContext, toGranularity: .month) }
+            .filter { dateFilter.contains($0.date) } // UPDATED: Checks the full range
             .sorted { $0.date > $1.date }
     }
     
@@ -62,9 +64,23 @@ struct CategoryDetailView: View {
         transactions.reduce(0) { $0 + $1.amount }
     }
     
-    private var monthString: String {
+    // Smart formatter to handle "Month" vs "Range"
+    private var formattedDateRange: String {
+        let calendar = Calendar.current
+        let start = dateFilter.start
+        let end = dateFilter.end
+        
+        // Check if it looks like a full month (e.g., Jan 1 to Feb 1)
+        if let monthEnd = calendar.date(byAdding: .month, value: 1, to: start),
+           calendar.isDate(monthEnd, equalTo: end, toGranularity: .day) &&
+           calendar.component(.day, from: start) == 1 {
+            return start.formatted(.dateTime.month(.wide).year())
+        }
+        
+        // Otherwise, show range (e.g., "Jan 15 - Feb 14")
         let formatter = DateFormatter()
-        formatter.dateFormat = "MMMM yyyy"
-        return formatter.string(from: monthContext)
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return "\(formatter.string(from: start)) - \(formatter.string(from: end.addingTimeInterval(-1)))"
     }
 }

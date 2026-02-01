@@ -14,6 +14,9 @@ struct InsightsView: View {
     @State private var timeRange: TimeRange = .thisMonth
     @State private var breakdownMode: BreakdownMode = .category
     
+    // NEW: Toggle for Income vs Expense Breakdown
+    @State private var breakdownType: TransactionType = .outflow
+    
     // Anchor Date (defaults to today)
     @State private var selectedAnchorDate = Date()
 
@@ -68,31 +71,48 @@ struct InsightsView: View {
                         
                         // 3. Breakdown Section
                         VStack(alignment: .leading, spacing: 12) {
-                            HStack {
-                                Text("Spending Breakdown")
-                                    .font(.headline)
-                                Spacer()
-                                // Dimension Toggle
-                                Picker("Breakdown", selection: $breakdownMode) {
-                                    ForEach(BreakdownMode.allCases, id: \.self) { mode in
-                                        Text(mode.rawValue).tag(mode)
-                                    }
+                            // Breakdown Header & Controls
+                            VStack(spacing: 12) {
+                                HStack {
+                                    Text(breakdownType == .inflow ? "Income Source" : "Spending Breakdown")
+                                        .font(.headline)
+                                    Spacer()
                                 }
-                                .pickerStyle(.menu)
-                                .labelsHidden()
+                                
+                                HStack {
+                                    // INCOME / EXPENSE TOGGLE
+                                    Picker("Type", selection: $breakdownType) {
+                                        Text("Expense").tag(TransactionType.outflow)
+                                        Text("Income").tag(TransactionType.inflow)
+                                    }
+                                    .pickerStyle(.segmented)
+                                    .fixedSize() // Keeps it compact
+                                    
+                                    Spacer()
+                                    
+                                    // CATEGORY / GROUP / TAG TOGGLE
+                                    Picker("Breakdown", selection: $breakdownMode) {
+                                        ForEach(BreakdownMode.allCases, id: \.self) { mode in
+                                            Text(mode.rawValue).tag(mode)
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                    .labelsHidden()
+                                }
                             }
                             .padding(.horizontal)
                             
+                            // Chart / List
                             if stats.breakdownItems.isEmpty {
                                 if #available(iOS 17.0, *) {
                                     ContentUnavailableView(
                                         "No Data",
-                                        systemImage: "chart.pie",
-                                        description: Text("No spending found for this period/filter.")
+                                        systemImage: breakdownType == .inflow ? "tray.and.arrow.down" : "cart",
+                                        description: Text("No \(breakdownType.rawValue) found for this period.")
                                     )
                                     .padding(.vertical, 40)
                                 } else {
-                                    Text("No spending found for this period.")
+                                    Text("No data found.")
                                         .foregroundColor(.secondary)
                                         .padding()
                                 }
@@ -166,13 +186,16 @@ struct InsightsView: View {
     @ViewBuilder
     private func rowDestination(for item: AnalyticsItem) -> some View {
         let currentInterval = timeRange.dateInterval(relativeTo: selectedAnchorDate, fiscalStartDay: fiscalStartDay)
-        let totalExpense = calculateStats(for: timeRange, offset: 0).expense
+        
+        // Calculate total for percentage bars (based on currently selected type)
+        let totalForType = calculateStats(for: timeRange, offset: 0).totalForBreakdown
         
         switch breakdownMode {
         case .category:
             if let category = data.categories.first(where: { $0.id == item.id }) {
-                NavigationLink(destination: CategoryDetailView(category: category, monthContext: currentInterval.start)) {
-                    CategoryBarRow(item: item, total: totalExpense, currencySymbol: currencySymbol)
+                // FIXED: Passing full date interval
+                NavigationLink(destination: CategoryDetailView(category: category, dateFilter: currentInterval)) {
+                    CategoryBarRow(item: item, total: totalForType, currencySymbol: currencySymbol)
                 }
                 .buttonStyle(.plain)
             }
@@ -180,7 +203,7 @@ struct InsightsView: View {
         case .account:
             if let account = data.accounts.first(where: { $0.id == item.id }) {
                 NavigationLink(destination: AccountDetailView(account: account)) {
-                    CategoryBarRow(item: item, total: totalExpense, currencySymbol: currencySymbol)
+                    CategoryBarRow(item: item, total: totalForType, currencySymbol: currencySymbol)
                 }
                 .buttonStyle(.plain)
             }
@@ -188,21 +211,21 @@ struct InsightsView: View {
         case .group:
             if let group = data.accountGroups.first(where: { $0.id == item.id }) {
                 NavigationLink(destination: AccountGroupDetailView(group: group)) {
-                    CategoryBarRow(item: item, total: totalExpense, currencySymbol: currencySymbol)
+                    CategoryBarRow(item: item, total: totalForType, currencySymbol: currencySymbol)
                 }
                 .buttonStyle(.plain)
             } else if item.name == "Ungrouped" {
-                CategoryBarRow(item: item, total: totalExpense, currencySymbol: currencySymbol)
+                CategoryBarRow(item: item, total: totalForType, currencySymbol: currencySymbol)
             }
             
         case .tag:
             if let tag = data.tags.first(where: { $0.id == item.id }) {
                 NavigationLink(destination: TagDetailView(tag: tag, dateFilter: currentInterval)) {
-                    CategoryBarRow(item: item, total: totalExpense, currencySymbol: currencySymbol)
+                    CategoryBarRow(item: item, total: totalForType, currencySymbol: currencySymbol)
                 }
                 .buttonStyle(.plain)
             } else if item.name == "No Tag" {
-                CategoryBarRow(item: item, total: totalExpense, currencySymbol: currencySymbol)
+                CategoryBarRow(item: item, total: totalForType, currencySymbol: currencySymbol)
             }
         }
     }
@@ -259,6 +282,8 @@ struct InsightsView: View {
         var expense: Double
         var net: Double { income - expense }
         var breakdownItems: [AnalyticsItem]
+        // Helper to pass the total of the current list to the UI for bar sizing
+        var totalForBreakdown: Double
     }
     
     struct AnalyticsItem: Identifiable {
@@ -293,7 +318,7 @@ struct InsightsView: View {
             return true
         }
         
-        // 3. Calculate Totals (excluding transfers)
+        // 3. Calculate Global Totals (Always excludes transfers)
         let income = filtered
             .filter { $0.type == .inflow && !transferCategoryIDs.contains($0.categoryID) }
             .reduce(0) { $0 + $1.amount }
@@ -302,14 +327,20 @@ struct InsightsView: View {
             .filter { $0.type == .outflow && !transferCategoryIDs.contains($0.categoryID) }
             .reduce(0) { $0 + $1.amount }
         
-        // 4. Generate Breakdown
-        let outflows = filtered.filter { $0.type == .outflow && !transferCategoryIDs.contains($0.categoryID) }
+        // 4. Generate Breakdown (Controlled by Income/Expense Toggle)
+        // Select which transactions to visualize in the list
+        let breakdownTransactions = filtered.filter {
+            $0.type == breakdownType && !transferCategoryIDs.contains($0.categoryID)
+        }
+        
+        let breakdownTotal = breakdownTransactions.reduce(0) { $0 + $1.amount }
+        
         var breakdown: [AnalyticsItem] = []
         
         switch breakdownMode {
         case .category:
             var dict: [UUID: Double] = [:]
-            for tx in outflows { dict[tx.categoryID, default: 0] += tx.amount }
+            for tx in breakdownTransactions { dict[tx.categoryID, default: 0] += tx.amount }
             breakdown = dict.compactMap { (id, amount) in
                 guard let cat = data.categories.first(where: { $0.id == id }) else { return nil }
                 return AnalyticsItem(id: id, name: cat.name, icon: cat.emoji, amount: amount, color: nil)
@@ -317,7 +348,7 @@ struct InsightsView: View {
             
         case .account:
             var dict: [UUID: Double] = [:]
-            for tx in outflows { dict[tx.accountID, default: 0] += tx.amount }
+            for tx in breakdownTransactions { dict[tx.accountID, default: 0] += tx.amount }
             breakdown = dict.compactMap { (id, amount) in
                 guard let acc = data.accounts.first(where: { $0.id == id }) else { return nil }
                 return AnalyticsItem(id: id, name: acc.name, icon: acc.accountType.icon, amount: amount, color: acc.accountType.color)
@@ -338,7 +369,7 @@ struct InsightsView: View {
                 }
             }
             
-            for tx in outflows {
+            for tx in breakdownTransactions {
                 if let groupID = accountToGroupMap[tx.accountID] {
                     dict[groupID, default: 0] += tx.amount
                 } else {
@@ -359,7 +390,7 @@ struct InsightsView: View {
             var dict: [UUID: Double] = [:]
             var untaggedAmount: Double = 0
             
-            for tx in outflows {
+            for tx in breakdownTransactions {
                 if tx.tagIDs.isEmpty {
                     untaggedAmount += tx.amount
                 } else {
@@ -380,7 +411,8 @@ struct InsightsView: View {
         return AnalyticsStats(
             income: income,
             expense: expense,
-            breakdownItems: breakdown.sorted { $0.amount > $1.amount }
+            breakdownItems: breakdown.sorted { $0.amount > $1.amount },
+            totalForBreakdown: breakdownTotal
         )
     }
 }

@@ -218,7 +218,8 @@ struct TransactionListView: View {
             }
             .swipeActions(edge: .trailing) {
                 Button(role: .destructive) {
-                    deleteTransaction(transaction)
+                    // FIX: Use central data logic
+                    data.deleteTransaction(transaction)
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
@@ -241,7 +242,8 @@ struct TransactionListView: View {
         }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
-                deleteTransaction(transaction)
+                // FIX: Use central data logic
+                data.deleteTransaction(transaction)
             } label: {
                 Label("Delete", systemImage: "trash")
             }
@@ -513,17 +515,21 @@ struct TransactionListView: View {
         }
     }
 
-    private func deleteTransaction(_ transaction: Transaction) {
-        if let index = data.transactions.firstIndex(where: { $0.id == transaction.id }) {
-            data.transactions.remove(at: index)
-            data.save()
-        }
-    }
-    
     private func deleteSelectedTransactions() {
         withAnimation {
+            // UPDATED: Include linked transactions in selection
+            var idsToDelete = selection
+            
+            for id in selection {
+                if let tx = data.transactions.first(where: { $0.id == id }),
+                   let linkedID = tx.linkedTransactionID,
+                   let linkedTx = data.transactions.first(where: { $0.id == linkedID }) {
+                    idsToDelete.insert(linkedTx.id)
+                }
+            }
+            
             data.transactions.removeAll { transaction in
-                selection.contains(transaction.id)
+                idsToDelete.contains(transaction.id)
             }
             
             data.save()
