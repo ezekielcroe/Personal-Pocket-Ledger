@@ -301,7 +301,7 @@ struct AccountsListView: View {
     }
 }
 
-// MARK: - Enhanced Account Row
+// MARK: - Account Row
 
 struct AccountRow: View {
     @EnvironmentObject var data: AppData
@@ -309,29 +309,42 @@ struct AccountRow: View {
     let account: Account
 
     var body: some View {
-        HStack(spacing: 12) {
-            AccountTypeIcon(type: account.accountType, size: 36)
-            
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: 8) {
+            // 1. LEFT SIDE: Name & Type
+            VStack(alignment: .leading, spacing: 3) {
+                // Row A: Name + Badge
                 HStack(spacing: 6) {
                     Text(account.name)
-                        .font(.headline)
+                        .font(.body)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
                     
                     if let badge = account.statusBadge(balance: currentBalance) {
                         AccountStatusBadgeView(badge: badge)
+                            .scaleEffect(0.75)
                     }
                 }
                 
-                Text(accountTypeLabel)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                // Row B: Icon + Label (Color Restored)
+                HStack(spacing: 4) {
+                    // FIX: Apply the specific type color to the icon
+                    Image(systemName: account.accountType.icon)
+                        .foregroundColor(account.accountType.color)
+                    
+                    Text(accountTypeLabel)
+                        .foregroundColor(.secondary)
+                }
+                .font(.caption)
             }
             
             Spacer()
             
+            // 2. RIGHT SIDE: Balance
             balanceView
+                .font(.system(.body, design: .monospaced))
+                .multilineTextAlignment(.trailing)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
     }
     
     // MARK: - Balance View
@@ -346,35 +359,36 @@ struct AccountRow: View {
         case .goal:
             if let target = account.targetAmount {
                 let isMet = currentBalance >= target
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(currentBalance.formattedCurrency(symbol: currencySymbol)) / \(target.formattedCurrency(symbol: currencySymbol))")
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text(currentBalance.formattedCurrency(symbol: currencySymbol))
                         .foregroundColor(isMet ? .green : .primary)
-                        .fontWeight(isMet ? .semibold : .regular)
-                    let percentage = min((currentBalance / target) * 100, 100)
-                    Text("\(Int(percentage))%")
+                    
+                    Text("of \(target.formattedCurrency(symbol: currencySymbol))")
                         .font(.caption2)
-                        .foregroundColor(isMet ? .green : .secondary)
+                        .foregroundColor(.secondary)
                 }
+            } else {
+                 Text(currentBalance.formattedCurrency(symbol: currencySymbol))
             }
             
         case .budget:
             if let target = account.targetAmount {
                 let isOverBudget = currentBalance > target
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(currentBalance.formattedCurrency(symbol: currencySymbol)) / \(target.formattedCurrency(symbol: currencySymbol))")
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text(currentBalance.formattedCurrency(symbol: currencySymbol))
                         .foregroundColor(isOverBudget ? .red : .primary)
-                        .fontWeight(isOverBudget ? .semibold : .regular)
-                    let percentage = (currentBalance / target) * 100
-                    Text("\(Int(percentage))% used")
+                    
+                    Text("/ \(target.formattedCurrency(symbol: currencySymbol))")
                         .font(.caption2)
-                        .foregroundColor(isOverBudget ? .red : .secondary)
+                        .foregroundColor(.secondary)
                 }
+            } else {
+                Text(currentBalance.formattedCurrency(symbol: currencySymbol))
             }
             
         case .debt:
             Text(currentBalance.formattedCurrency(symbol: currencySymbol))
                 .foregroundColor(currentBalance > 0 ? .orange : .green)
-                .fontWeight(currentBalance > 0 ? .semibold : .regular)
         }
     }
     
@@ -385,7 +399,7 @@ struct AccountRow: View {
     }
     
     private var accountTypeLabel: String {
-        account.accountType.rawValue.capitalized + " Account"
+        account.accountType.rawValue.capitalized
     }
     
     private var balanceColor: Color {

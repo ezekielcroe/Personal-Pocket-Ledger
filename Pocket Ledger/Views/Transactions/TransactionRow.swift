@@ -31,6 +31,13 @@ struct TransactionRow: View {
                     if let accName = accountName {
                         Text(accName)
                     }
+                    
+                    if transaction.linkedTransactionID != nil {
+                        Image(systemName: "link")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    
                 }
                 .font(.caption)
                 .foregroundColor(.secondary)

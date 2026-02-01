@@ -191,7 +191,6 @@ class AppData: ObservableObject {
         save()
     }
     
-    // UPDATED: Now accepts memberIDs instead of accountIDs
     func addAccountGroup(name: String, memberIDs: [UUID]) {
         let group = AccountGroup(name: name, memberIDs: memberIDs)
         accountGroups.append(group)
@@ -204,20 +203,25 @@ class AppData: ObservableObject {
         save()
     }
 
-    func addTag(name: String) {
-        let tag = Tag(name: name)
+    func addTag(name: String, keywords: [String] = []) {
+        let tag = Tag(name: name, keywords: keywords)
         tags.append(tag)
         save()
     }
 
-    func addTransaction(type: TransactionType,
+    // UPDATED: Added id and linkedTransactionID support for Transfer Safety
+    func addTransaction(id: String? = nil,
+                        linkedTransactionID: String? = nil,
+                        type: TransactionType,
                         accountID: UUID,
                         categoryID: UUID,
                         tagIDs: [UUID],
                         amount: Double,
                         date: Date,
                         isOutlier: Bool = false) {
-        let transaction = Transaction(type: type,
+        let transaction = Transaction(id: id,
+                                      linkedTransactionID: linkedTransactionID,
+                                      type: type,
                                       accountID: accountID,
                                       categoryID: categoryID,
                                       tagIDs: tagIDs,
@@ -255,7 +259,6 @@ class AppData: ObservableObject {
         accounts.removeAll { $0.id == account.id }
         
         // 2. Scrub reference from virtual groups
-        // UPDATED: Now accesses memberIDs
         for i in 0..<accountGroups.count {
             accountGroups[i].memberIDs.removeAll { $0 == account.id }
         }
@@ -286,22 +289,56 @@ class AppData: ObservableObject {
         }
     }
 
-    func updateTag(id: UUID, name: String) {
+    func updateTag(id: UUID, name: String, keywords: [String]) {
         if let index = tags.firstIndex(where: { $0.id == id }) {
             tags[index].name = name
+            tags[index].keywords = keywords
             save()
         }
     }
     
+    // UPDATED: Now synchronizes linked transfers
     func updateTransaction(_ transaction: Transaction) {
         if let index = transactions.firstIndex(where: { $0.id == transaction.id }) {
             transactions[index] = transaction
+            
+            // Sync logic: Update partner if linked
+            if let linkedID = transaction.linkedTransactionID,
+               let linkedIndex = transactions.firstIndex(where: { $0.id == linkedID }) {
+                
+                var partner = transactions[linkedIndex]
+                
+                // Sync shared properties (Amount, Date, Tags, Outlier Status)
+                partner.amount = transaction.amount
+                partner.date = transaction.date
+                partner.tagIDs = transaction.tagIDs
+                partner.isOutlier = transaction.isOutlier
+                
+                // Save partner update
+                transactions[linkedIndex] = partner
+            }
             
             // Auto-Unarchive: Check the account in case it was changed to an archived one
             unarchiveAccountIfNeeded(id: transaction.accountID)
             
             save()
         }
+    }
+    
+    // NEW: Handles safe deletion of linked pairs
+    func deleteTransaction(_ transaction: Transaction) {
+        // 1. Remove the target transaction
+        if let index = transactions.firstIndex(where: { $0.id == transaction.id }) {
+            transactions.remove(at: index)
+        }
+        
+        // 2. Remove the linked partner if it exists
+        if let linkedID = transaction.linkedTransactionID,
+           let linkedIndex = transactions.firstIndex(where: { $0.id == linkedID }) {
+            transactions.remove(at: linkedIndex)
+        }
+        
+        save()
     }
 
     func removeTagFromTransactions(tagID: UUID) {
@@ -518,8 +555,6 @@ class AppData: ObservableObject {
             return account.initialAmount + inflow - outflow
         }
     }
-    
-    // REMOVED: Duplicate `balance(for group:)` method here to fix "Redeclaration" error.
 
     func transactions(for account: Account) -> [Transaction] {
         transactions.filter { $0.accountID == account.id }
@@ -571,7 +606,6 @@ class AppData: ObservableObject {
 
 extension AppData {
     
-    // UPDATED: Renamed to `groupBalance` to fix "Ambiguous use" error
     /// Calculates balance for a group (supports nested groups)
     func groupBalance(_ group: AccountGroup) -> Double {
         recursiveBalance(for: group, visited: [])
@@ -590,7 +624,6 @@ extension AppData {
         
         var total: Double = 0
         
-        // UPDATED: Use memberIDs
         for memberID in group.memberIDs {
             // Check if it's an account
             if let account = accounts.first(where: { $0.id == memberID }) {
@@ -616,7 +649,6 @@ extension AppData {
     func members(for group: AccountGroup) -> [MemberType] {
         var result: [MemberType] = []
         
-        // UPDATED: Use memberIDs
         for memberID in group.memberIDs {
             if let account = accounts.first(where: { $0.id == memberID }) {
                 result.append(.account(account))

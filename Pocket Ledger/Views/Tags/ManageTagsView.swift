@@ -3,59 +3,55 @@ import SwiftUI
 struct ManageTagsView: View {
     @EnvironmentObject var data: AppData
     @State private var searchText = ""
-    @State private var showingAddSheet = false  // Changed from alert to sheet
-    @State private var tagToRename: Tag?
-    @State private var renameText = ""
+    @State private var showingAddSheet = false
+    @State private var tagToEdit: Tag? // Changed from Rename to Edit
 
-    // SORTED + FILTERED
+    // UPDATED: Filter logic checks keywords
     var filteredTags: [Tag] {
-        let list = searchText.isEmpty ? data.tags : data.tags.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
-        return list.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        if searchText.isEmpty {
+            return data.tags.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        } else {
+            return data.tags.filter { tag in
+                tag.name.localizedCaseInsensitiveContains(searchText) ||
+                tag.keywords.contains { $0.localizedCaseInsensitiveContains(searchText) }
+            }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        }
     }
 
     var body: some View {
         ZStack {
             List {
                 ForEach(filteredTags) { tag in
-                    Text(tag.name)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                        .onTapGesture { prepareRename(tag) }
-                        .swipeActions(edge: .leading) {
-                            Button { prepareRename(tag) } label: { Label("Rename", systemImage: "pencil") }.tint(.blue)
+                    VStack(alignment: .leading) {
+                        Text(tag.name)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        
+                        // NEW: Show "Matches: [Keyword]" if matched by alias
+                        if !searchText.isEmpty,
+                           !tag.name.localizedCaseInsensitiveContains(searchText),
+                           let match = tag.keywords.first(where: { $0.localizedCaseInsensitiveContains(searchText) }) {
+                            Text("Matches: \"\(match)\"")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
-                        .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) { deleteTag(tag) } label: { Label("Delete", systemImage: "trash") }
-                        }
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture { tagToEdit = tag }
+                    .swipeActions(edge: .leading) {
+                        Button { tagToEdit = tag } label: { Label("Edit", systemImage: "pencil") }.tint(.blue)
+                    }
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) { deleteTag(tag) } label: { Label("Delete", systemImage: "trash") }
+                    }
                 }
             }
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always))
             .navigationTitle("Tags")
-            // REMOVED: Toolbar button for add
-            .sheet(isPresented: $showingAddSheet) {
-                AddTagView()
-            }
-            .alert("Rename Tag", isPresented: Binding(get: { tagToRename != nil }, set: { if !$0 { tagToRename = nil } })) {
-                TextField("New Name", text: $renameText)
-                Button("Cancel", role: .cancel) { tagToRename = nil }
-                Button("Save") {
-                    if let tag = tagToRename, !renameText.isEmpty {
-                        data.updateTag(id: tag.id, name: renameText)
-                    }
-                    tagToRename = nil
-                }
-            }
-            
-            // ADDED: FAB for adding tags (bottom-right)
-            .floatingAddButton {
-                showingAddSheet = true
-            }
+            .sheet(isPresented: $showingAddSheet) { AddTagView() }
+            .sheet(item: $tagToEdit) { tag in EditTagView(tag: tag) }
+            .floatingAddButton { showingAddSheet = true }
         }
-    }
-    
-    private func prepareRename(_ tag: Tag) {
-        renameText = tag.name
-        tagToRename = tag
     }
     
     private func deleteTag(_ tag: Tag) {

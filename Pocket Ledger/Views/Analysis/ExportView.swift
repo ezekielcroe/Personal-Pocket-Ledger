@@ -101,10 +101,10 @@ struct ExportView: View {
                         DatePicker("End Date", selection: $endDate, displayedComponents: [.date])
                     }
                 } else {
-                    Section(header: Text("Backup Summary"), footer: Text("Creates a full backup file of all accounts, transactions, and settings.")) {
+                    Section(header: Text("Backup Summary"), footer: Text("Creates a full backup file of all accounts, transactions, templates, and settings.")) {
                         summaryRow(label: "Transactions", value: "\(data.transactions.count)")
                         summaryRow(label: "Accounts", value: "\(data.accounts.count)")
-                        summaryRow(label: "Account Groups", value: "\(data.accountGroups.count)")
+                        summaryRow(label: "Templates", value: "\(data.templates.count)")
                         summaryRow(label: "Categories", value: "\(data.categories.count)")
                         summaryRow(label: "Tags", value: "\(data.tags.count)")
                     }
@@ -130,7 +130,6 @@ struct ExportView: View {
             }
             .navigationTitle("Export Data")
             // MARK: - Exporters
-            // Attached to background to ensure they persist in view hierarchy
             .background {
                 EmptyView()
                     .fileExporter(
@@ -148,7 +147,7 @@ struct ExportView: View {
                         isPresented: $showJSONExporter,
                         document: jsonDocument,
                         contentType: .json,
-                        defaultFilename: defaultJSONName() // FIXED: Uses safe filename
+                        defaultFilename: defaultJSONName()
                     ) { result in
                         handleResult(result)
                     }
@@ -179,12 +178,11 @@ struct ExportView: View {
     }
     
     private func prepareAndExportJSON() {
+        // Ensure templates are included in the snapshot
         let doc = prepareJSONDocument()
         do {
-            // Verify encoding works before showing save dialog
             let encoder = JSONEncoder()
             _ = try encoder.encode(doc.savedData)
-            
             jsonDocument = doc
             showJSONExporter = true
         } catch {
@@ -215,7 +213,7 @@ struct ExportView: View {
             categories: data.categories,
             tags: data.tags,
             transactions: data.transactions,
-            templates: data.templates,
+            templates: data.templates, // ENSURED: Templates are passed here
             reminderTime: data.reminderTime,
             insightPresets: data.insightPresets
         )
@@ -247,7 +245,7 @@ struct ExportView: View {
         return CSVDocument(text: csv)
     }
 
-    // MARK: - Safe Filenames (Fixes "File doesn't exist" error)
+    // MARK: - Safe Filenames
 
     private func defaultCSVName() -> String {
         let formatter = DateFormatter()
@@ -257,7 +255,7 @@ struct ExportView: View {
     
     private func defaultJSONName() -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd" // Safe dashes instead of slashes
+        formatter.dateFormat = "yyyy-MM-dd"
         return "PocketLedger_Backup_\(formatter.string(from: Date()))"
     }
 }

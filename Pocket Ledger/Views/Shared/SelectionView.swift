@@ -293,9 +293,16 @@ struct MultiSelectionView: View {
     @FocusState private var isSearchFocused: Bool
     
     var filteredItems: [Tag] {
-        let list = searchText.isEmpty
-            ? items
-            : items.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        let list: [Tag]
+        if searchText.isEmpty {
+            list = items
+        } else {
+            // Check both name and keywords
+            list = items.filter { tag in
+                tag.name.localizedCaseInsensitiveContains(searchText) ||
+                tag.keywords.contains { $0.localizedCaseInsensitiveContains(searchText) }
+            }
+        }
         return list.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
     
@@ -319,7 +326,19 @@ struct MultiSelectionView: View {
                         toggleSelection(item)
                     } label: {
                         HStack {
-                            Text(item.name)
+                            VStack(alignment: .leading) {
+                                Text(item.name)
+                                    .foregroundColor(.primary)
+                                
+                                // Show why it matched if using a keyword
+                                if !searchText.isEmpty,
+                                   !item.name.localizedCaseInsensitiveContains(searchText),
+                                   let match = item.keywords.first(where: { $0.localizedCaseInsensitiveContains(searchText) }) {
+                                    Text("Matches: \"\(match)\"")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
                             Spacer()
                             if selectedIDs.contains(item.id) {
                                 Image(systemName: "checkmark").foregroundColor(.blue)
@@ -345,9 +364,7 @@ struct MultiSelectionView: View {
             TextField("Find or create tags...", text: $searchText)
                 .focused($isSearchFocused)
                 .submitLabel(.done)
-                .onSubmit {
-                    handleKeyboardSubmit()
-                }
+                .onSubmit { handleKeyboardSubmit() }
             if !searchText.isEmpty {
                 Button { searchText = "" } label: {
                     Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)

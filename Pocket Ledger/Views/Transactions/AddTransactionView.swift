@@ -9,6 +9,8 @@ struct AddTransactionView: View {
     let initialType: TransactionType?
     let template: TransactionTemplate?
     let editingTransaction: Transaction?
+    // NEW: We hold the linked transaction if we are editing a transfer
+    @State private var linkedTransaction: Transaction?
 
     // MARK: - Form State
     @State private var type: TransactionType
@@ -67,6 +69,7 @@ struct AddTransactionView: View {
             _amountString = State(initialValue: String(format: "%.2f", edit.amount))
             _date = State(initialValue: edit.date)
             _isOutlier = State(initialValue: edit.isOutlier)
+            // Note: Transfer target is loaded in onAppear via findLinkedTransaction
         } else if let tpl = template {
             _accountID = State(initialValue: tpl.accountID)
             _categoryID = State(initialValue: tpl.categoryID)
@@ -81,7 +84,7 @@ struct AddTransactionView: View {
     var body: some View {
         NavigationStack {
             Form {
-                // SECTION 1: AMOUNT (Color Coded)
+                // SECTION 1: AMOUNT
                 Section(header: Text("Amount")) {
                     TextField("0.00", text: $amountString)
                         .keyboardType(.numbersAndPunctuation)
@@ -104,6 +107,17 @@ struct AddTransactionView: View {
                             }
                         }
                         .pickerStyle(SegmentedPickerStyle())
+                    } else if let _ = linkedTransaction {
+                        // If editing a linked transfer, show a locked label
+                        HStack {
+                            Text("Transaction Type")
+                            Spacer()
+                            HStack {
+                                Image(systemName: "link")
+                                Text("Linked Transfer")
+                            }
+                            .foregroundColor(.secondary)
+                        }
                     }
                     
                     // ACCOUNT SELECTION
@@ -217,7 +231,7 @@ struct AddTransactionView: View {
                     DatePicker("Date", selection: $date, displayedComponents: [.date])
                 }
 
-                // SECTION 6: OPTIONS (INSTALLMENTS REMOVED)
+                // SECTION 6: OPTIONS
                 Section(header: Text("Options")) {
                     Toggle("Flag as Outlier", isOn: $isOutlier)
                     
@@ -238,7 +252,6 @@ struct AddTransactionView: View {
                 onCancel: { dismiss() },
                 onSaveAndNew: editingTransaction == nil ? { saveAndAddAnother() } : nil
             )
-            // MARK: - Alert for transaction
             .alert("Save Template", isPresented: $isShowingTemplateSheet) {
                 TextField("Template Name", text: $templateName)
                 Button("Save") { saveTemplate() }
@@ -246,7 +259,6 @@ struct AddTransactionView: View {
             } message: {
                 Text("Enter a name for this template.")
             }
-            // MARK: - Half-Menu Sheets
             .sheet(isPresented: $showAccountPicker) {
                 advanceAfterAccountSelection()
             } content: {
@@ -281,13 +293,20 @@ struct AddTransactionView: View {
                 if amountString.isEmpty && editingTransaction == nil {
                     focusedField = .amount
                 }
+                // NEW: If editing, try to find the linked transaction to populate "Target Account"
+                if let edit = editingTransaction,
+                   let linkedID = edit.linkedTransactionID,
+                   let partner = data.transactions.first(where: { $0.id == linkedID }) {
+                    self.linkedTransaction = partner
+                    self.transferTargetAccountID = partner.accountID
+                    self.type = .transfer // Ensure UI shows as transfer
+                }
             }
             .decimalPadToolbar()
         }
     }
     
-    // MARK: - Helpers
-    
+    // ... Helpers (amountColor, navTitle) ...
     private var amountColor: Color {
         switch type {
         case .inflow: return .green
@@ -300,9 +319,10 @@ struct AddTransactionView: View {
         if let _ = editingTransaction { return "Edit Transaction" }
         return type == .transfer ? "New Transfer" : "New Transaction"
     }
-    
+
     // MARK: - Logic
     
+    // ... Existing logic for templates, filtering categories, names ...
     private func saveTemplate() {
         let name = templateName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
@@ -336,6 +356,7 @@ struct AddTransactionView: View {
     }
     
     private func calculateAmount(_ input: String) -> Double {
+        // ... same existing calculation logic ...
         let allowed = CharacterSet(charactersIn: "0123456789.+-*/")
         let sanitized = input.components(separatedBy: allowed.inverted).joined()
         if sanitized.isEmpty { return 0 }
@@ -362,8 +383,7 @@ struct AddTransactionView: View {
         }
     }
     
-    // MARK: - Focus Chain Logic
-    
+    // ... Focus chain logic (checkAndPresentNextField, etc) ...
     private enum NavigationStep {
         case account
         case secondary
@@ -449,10 +469,55 @@ struct AddTransactionView: View {
             let outCatID = ensureTransferCategory(type: .outflow)
             let inCatID = ensureTransferCategory(type: .inflow)
             
-            data.addTransaction(type: .outflow, accountID: fromAcc, categoryID: outCatID, tagIDs: tags, amount: amount, date: date, isOutlier: isOutlier)
-            data.addTransaction(type: .inflow, accountID: toAcc, categoryID: inCatID, tagIDs: tags, amount: amount, date: date, isOutlier: isOutlier)
+            if var existing = editingTransaction, let linkedID = existing.linkedTransactionID {
+                // UPDATE EXISTING LINKED PAIR
+                
+                // Update "From" (This transaction, if it's the source) or find which is which
+                // Note: Current view logic implies editingTransaction is the one we tapped.
+                
+                // 1. Update the transaction we are editing
+                existing.accountID = fromAcc
+                existing.amount = amount
+                existing.date = date
+                existing.tagIDs = tags
+                existing.isOutlier = isOutlier
+                data.updateTransaction(existing)
+                
+                // 2. Update the linked partner
+                if var partner = data.transactions.first(where: { $0.id == linkedID }) {
+                    partner.accountID = toAcc // The partner gets the 'Target' account
+                    partner.amount = amount
+                    partner.date = date
+                    partner.tagIDs = tags
+                    partner.isOutlier = isOutlier
+                    data.updateTransaction(partner)
+                }
+                
+            } else {
+                // CREATE NEW LINKED PAIR
+                // Manually generate IDs to link them
+                // Note: Since 'Transaction.init' generates an ID if nil, we can't get the ID before init easily unless we modify init or use a helper.
+                // Hack: We rely on the AppData to handle the save, but here we construct them.
+                
+                // Let's create the objects here to get their IDs
+                let id1 = Transaction.generateUniqueTimestampID()
+                
+                // Slightly delay id2 to ensure unique timestamp suffix if random collides (unlikely but safe)
+                // actually generateUniqueTimestampID uses random suffix, so just call again.
+                let id2 = Transaction.generateUniqueTimestampID() + "-2" // appending suffix to guarantee uniqueness from same millisecond
+                
+                let outflow = Transaction(id: id1, linkedTransactionID: id2, type: .outflow, accountID: fromAcc, categoryID: outCatID, tagIDs: tags, amount: amount, date: date, isOutlier: isOutlier)
+                
+                let inflow = Transaction(id: id2, linkedTransactionID: id1, type: .inflow, accountID: toAcc, categoryID: inCatID, tagIDs: tags, amount: amount, date: date, isOutlier: isOutlier)
+                
+                // We access the data.transactions array directly or use a raw add method
+                data.transactions.append(outflow)
+                data.transactions.append(inflow)
+                data.save()
+            }
             
         } else {
+            // NORMAL TRANSACTION
             guard let accountID = accountID, let categoryID = categoryID else { return }
             
             if let existing = editingTransaction {
@@ -466,7 +531,6 @@ struct AddTransactionView: View {
                 updated.isOutlier = isOutlier
                 data.updateTransaction(updated)
             } else {
-                // INSTALLMENT LOGIC REMOVED - Single transaction only
                 data.addTransaction(type: type, accountID: accountID, categoryID: categoryID, tagIDs: tags, amount: amount, date: date, isOutlier: isOutlier)
             }
         }

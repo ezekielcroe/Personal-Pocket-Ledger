@@ -1,14 +1,15 @@
 import SwiftUI
 
-/// Form to create a new tag which can later be attached to transactions.
 struct AddTagView: View {
     @EnvironmentObject var data: AppData
     @Environment(\.dismiss) var dismiss
     @State private var name: String = ""
+    @State private var keywordsString: String = ""
     
-    // MARK: - Focus State
+    // 1. Update Focus Enum
     enum Field: Hashable {
         case name
+        case keywords
     }
     
     @FocusState private var focusedField: Field?
@@ -19,8 +20,20 @@ struct AddTagView: View {
                 Section(header: Text("Name")) {
                     TextField("Tag Name", text: $name)
                         .focused($focusedField, equals: .name)
+                        .submitLabel(.next) // Visual cue
                         .onSubmit {
-                            // When user taps Return, save and add another
+                            // 2. Pressing Enter on Name jumps to Keywords
+                            focusedField = .keywords
+                        }
+                }
+                
+                Section(header: Text("Keywords / Aliases"), footer: Text("Comma-separated words that help find this tag.")) {
+                    TextField("e.g. 'japan' for trip; 'rent' for housing", text: $keywordsString)
+                        .autocorrectionDisabled()
+                        .focused($focusedField, equals: .keywords)
+                        .submitLabel(.done) // Visual cue
+                        .onSubmit {
+                            // 3. Pressing Enter on Keywords saves & restarts
                             if canSave {
                                 saveAndAddAnother()
                             }
@@ -30,18 +43,11 @@ struct AddTagView: View {
             .formToolbar(
                 title: "New Tag",
                 canSave: canSave,
-                onSave: {
-                    saveTag(shouldDismiss: true)
-                },
-                onCancel: {
-                    dismiss()
-                },
-                onSaveAndNew: {
-                    saveAndAddAnother()
-                }
+                onSave: { saveTag(shouldDismiss: true) },
+                onCancel: { dismiss() },
+                onSaveAndNew: { saveAndAddAnother() }
             )
             .onAppear {
-                // Auto-focus on Name field when view appears
                 focusedField = .name
             }
         }
@@ -53,14 +59,23 @@ struct AddTagView: View {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
     
+    private func parseKeywords() -> [String] {
+        keywordsString
+            .components(separatedBy: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+    
     private func saveAndAddAnother() {
         saveTag(shouldDismiss: false)
         
-        // Clear the field and refocus for next entry
+        // Reset fields
         name = ""
+        keywordsString = ""
+        
+        // 4. Reset focus back to the top for the next tag
         focusedField = .name
         
-        // Haptic feedback
         let generator = UINotificationFeedbackGenerator()
         generator.notificationOccurred(.success)
     }
@@ -69,7 +84,7 @@ struct AddTagView: View {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else { return }
         
-        data.addTag(name: trimmedName)
+        data.addTag(name: trimmedName, keywords: parseKeywords())
         
         if shouldDismiss {
             dismiss()

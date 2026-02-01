@@ -9,6 +9,8 @@ enum TransactionType: String, Codable, CaseIterable, Identifiable, Sendable {
 
 struct Transaction: Identifiable, Codable, Hashable, Sendable {
     let id: String
+    // NEW: Points to the other side of the transfer
+    var linkedTransactionID: String?
     var type: TransactionType
     var accountID: UUID
     var categoryID: UUID
@@ -19,6 +21,7 @@ struct Transaction: Identifiable, Codable, Hashable, Sendable {
 
     init(
         id: String? = nil,
+        linkedTransactionID: String? = nil, // NEW
         type: TransactionType,
         accountID: UUID,
         categoryID: UUID,
@@ -28,6 +31,7 @@ struct Transaction: Identifiable, Codable, Hashable, Sendable {
         isOutlier: Bool = false
     ) {
         self.id = id ?? Transaction.generateUniqueTimestampID()
+        self.linkedTransactionID = linkedTransactionID
         self.type = type
         self.accountID = accountID
         self.categoryID = categoryID
@@ -38,7 +42,7 @@ struct Transaction: Identifiable, Codable, Hashable, Sendable {
     }
 
     // MARK: - Safe ID Generation
-    private static func generateUniqueTimestampID() -> String {
+    static func generateUniqueTimestampID() -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMddHHmmSSS"
         

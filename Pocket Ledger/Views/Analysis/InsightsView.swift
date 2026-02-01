@@ -120,7 +120,6 @@ struct InsightsView: View {
                         Label("Filter Data", systemImage: "line.3.horizontal.decrease.circle")
                     }
                     Divider()
-                    // UPDATED: Reconcile Button
                     Button { showingReconcileSheet = true } label: {
                         Label("Reconcile Accounts", systemImage: "checkmark.seal")
                     }
@@ -155,7 +154,6 @@ struct InsightsView: View {
                     onReset: applyReset
                 )
             }
-            // UPDATED: Opens the new Selection View
             .sheet(isPresented: $showingReconcileSheet) {
                 ReconcileSelectionView()
                     .environmentObject(data)
@@ -188,14 +186,12 @@ struct InsightsView: View {
             }
             
         case .group:
-            // NEW: Link to Group Details
             if let group = data.accountGroups.first(where: { $0.id == item.id }) {
                 NavigationLink(destination: AccountGroupDetailView(group: group)) {
                     CategoryBarRow(item: item, total: totalExpense, currencySymbol: currencySymbol)
                 }
                 .buttonStyle(.plain)
             } else if item.name == "Ungrouped" {
-                // Non-navigable row for ungrouped items
                 CategoryBarRow(item: item, total: totalExpense, currencySymbol: currencySymbol)
             }
             
@@ -328,14 +324,11 @@ struct InsightsView: View {
             }
             
         case .group:
-            // NEW: Group Breakdown Logic
             var dict: [UUID: Double] = [:]
             var ungroupedAmount: Double = 0
             
             // Pre-calculate map of AccountID -> TopLevelGroupID
             var accountToGroupMap: [UUID: UUID] = [:]
-            
-            // Only consider top-level groups (depth == 0)
             let topLevelGroups = data.accountGroups.filter { data.depth(of: $0) == 0 }
             
             for group in topLevelGroups {
@@ -402,49 +395,69 @@ enum TimeRange: String, CaseIterable {
     case lastYear = "Last Year"
     case allTime = "All Time"
     
+    /// Calculates the date interval based on a fiscal start day.
     func dateInterval(relativeTo anchor: Date, fiscalStartDay: Int, offset: Int = 0) -> DateInterval {
         let calendar = Calendar.current
+        
+        // 1. Determine "Fiscal Month Start" for the anchor date
         var components = calendar.dateComponents([.year, .month], from: anchor)
         components.day = fiscalStartDay
         
-        // Calculate the "Current Month Start" based on fiscal day
-        var currentMonthStart = calendar.date(from: components)!
-        if anchor < currentMonthStart {
-            currentMonthStart = calendar.date(byAdding: .month, value: -1, to: currentMonthStart)!
+        // If today is Jan 10, but fiscal starts Jan 15, we are in the 'December' fiscal month.
+        var fiscalMonthStart = calendar.date(from: components)!
+        if anchor < fiscalMonthStart {
+            fiscalMonthStart = calendar.date(byAdding: .month, value: -1, to: fiscalMonthStart)!
         }
         
         switch self {
         case .thisMonth:
-            let start = calendar.date(byAdding: .month, value: offset, to: currentMonthStart)!
+            let start = calendar.date(byAdding: .month, value: offset, to: fiscalMonthStart)!
             let end = calendar.date(byAdding: .month, value: 1, to: start)!
             return DateInterval(start: start, end: end)
             
         case .lastMonth:
-            let baseStart = calendar.date(byAdding: .month, value: -1, to: currentMonthStart)!
-            let start = calendar.date(byAdding: .month, value: offset, to: baseStart)!
+            let start = calendar.date(byAdding: .month, value: -1 + offset, to: fiscalMonthStart)!
             let end = calendar.date(byAdding: .month, value: 1, to: start)!
             return DateInterval(start: start, end: end)
             
         case .last3Months:
-            let durationMonths = 3
-            let shift = offset * durationMonths
-            let currentMonthEnd = calendar.date(byAdding: .month, value: 1, to: currentMonthStart)!
-            let windowEnd = calendar.date(byAdding: .month, value: shift, to: currentMonthEnd)!
-            let windowStart = calendar.date(byAdding: .month, value: -durationMonths, to: windowEnd)!
+            let duration = 3
+            // End of current fiscal month (exclusive)
+            let currentMonthEnd = calendar.date(byAdding: .month, value: 1, to: fiscalMonthStart)!
+            // Shift back by offset (if any)
+            let windowEnd = calendar.date(byAdding: .month, value: offset * duration, to: currentMonthEnd)!
+            let windowStart = calendar.date(byAdding: .month, value: -duration, to: windowEnd)!
             return DateInterval(start: windowStart, end: windowEnd)
             
         case .ytd:
-            let currentYearStart = calendar.date(from: DateComponents(year: calendar.component(.year, from: anchor), month: 1, day: 1))!
-            let yearShift = offset
-            let start = calendar.date(byAdding: .year, value: yearShift, to: currentYearStart)!
-            let end = calendar.date(byAdding: .year, value: yearShift, to: Date())!
+            // Calculate Start of Fiscal Year (Jan {fiscalStartDay})
+            var yearStartComps = calendar.dateComponents([.year], from: fiscalMonthStart)
+            yearStartComps.month = 1
+            yearStartComps.day = fiscalStartDay
+            let fiscalYearStart = calendar.date(from: yearStartComps)!
+            
+            // Adjust for offset (e.g., Previous YTD)
+            let start = calendar.date(byAdding: .year, value: offset, to: fiscalYearStart)!
+            
+            let end: Date
+            if offset == 0 {
+                end = anchor // Up to today
+            } else {
+                end = calendar.date(byAdding: .year, value: offset, to: anchor)!
+            }
             return DateInterval(start: start, end: end)
             
         case .lastYear:
-            let currentYear = calendar.component(.year, from: anchor)
-            let targetYear = currentYear - 1 + offset
-            let start = calendar.date(from: DateComponents(year: targetYear, month: 1, day: 1))!
-            let end = calendar.date(from: DateComponents(year: targetYear + 1, month: 1, day: 1))!
+            // Full Previous Fiscal Year
+            // Start: Jan {fiscalStartDay} of (Year - 1 + offset)
+            var yearStartComps = calendar.dateComponents([.year], from: fiscalMonthStart)
+            yearStartComps.year! -= 1
+            yearStartComps.year! += offset
+            yearStartComps.month = 1
+            yearStartComps.day = fiscalStartDay
+            
+            let start = calendar.date(from: yearStartComps)!
+            let end = calendar.date(byAdding: .year, value: 1, to: start)!
             return DateInterval(start: start, end: end)
             
         case .allTime:
@@ -453,7 +466,6 @@ enum TimeRange: String, CaseIterable {
     }
 }
 
-// UPDATED: Added Group Case
 enum BreakdownMode: String, CaseIterable {
     case category = "Category"
     case group = "Group"
