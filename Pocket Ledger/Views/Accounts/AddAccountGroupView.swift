@@ -49,7 +49,7 @@ struct AddAccountGroupView: View {
             Form {
                 // MARK: - Name Section
                 Section(header: Text("Group Name")) {
-                    TextField("E.g., Net Worth, Liquid Cash", text: $name)
+                    TextField("e.g., Total Cash, Net Worth", text: $name)
                         .focused($focusedField, equals: .name)
                         .submitLabel(.next)
                         .onSubmit {
@@ -57,377 +57,217 @@ struct AddAccountGroupView: View {
                         }
                 }
                 
-                // MARK: - Display Mode Filter
-                Section {
-                    Picker("Show", selection: $displayMode) {
-                        ForEach(DisplayMode.allCases, id: \.self) { mode in
-                            Text(mode.rawValue).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                }
-                
-                // MARK: - Search Section
-                Section(header: Text("Add Members")) {
-                    HStack {
-                        Image(systemName: "magnifyingglass")
+                // MARK: - Members Section
+                Section(header: memberSectionHeader) {
+                    if availableAccounts.isEmpty && availableGroups.isEmpty {
+                        Text("No accounts or groups available.")
                             .foregroundColor(.secondary)
-                        
-                        TextField("Filter accounts and groups...", text: $searchText)
-                            .focused($focusedField, equals: .search)
-                            .submitLabel(searchText.isEmpty ? .done : (filteredMembers.count == 1 ? .join : .search))
-                            .onSubmit {
-                                handleSearchSubmit()
-                            }
-                        
-                        if !searchText.isEmpty {
-                            Button {
-                                searchText = ""
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-                
-                // MARK: - Available Accounts
-                if shouldShowAccounts && !filteredAccounts.isEmpty {
-                    Section(header: HStack {
-                        Image(systemName: "building.columns")
-                            .foregroundColor(.blue)
-                        Text("Accounts")
-                    }) {
-                        ForEach(accountsByType, id: \.type) { section in
-                            accountTypeSection(section)
-                        }
-                    }
-                }
-                
-                // MARK: - Available Groups
-                if shouldShowGroups && !availableGroups.isEmpty {
-                    Section(header: HStack {
-                        Image(systemName: "folder")
-                            .foregroundColor(.purple)
-                        Text("Groups")
-                    }, footer: Text("Groups can contain other groups for hierarchical organization")) {
-                        ForEach(availableGroups) { group in
-                            groupRow(for: group)
-                        }
-                    }
-                }
-                
-                // MARK: - Empty State
-                if filteredMembers.isEmpty {
-                    Section {
-                        Text("No members found")
-                            .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding()
-                    }
-                }
-                
-                // MARK: - Current Members Preview
-                if !selectedMemberIDs.isEmpty {
-                    Section(header: Text("Selected Members (\(selectedMemberIDs.count))")) {
-                        ForEach(selectedMembers, id: \.id) { member in
-                            memberPreviewRow(member)
-                        }
+                    } else {
+                        memberList
                     }
                 }
             }
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { saveGroup() }
-                        .disabled(!canSave)
-                }
-            }
-            .navigationTitle(groupToEdit == nil ? "New Group" : "Edit Group")
-            .navigationBarTitleDisplayMode(.inline)
-            .onAppear {
-                if groupToEdit == nil {
-                    focusedField = .name
-                }
-            }
+            .formToolbar(
+                title: groupToEdit == nil ? "New Group" : "Edit Group",
+                canSave: canSave,
+                onSave: { saveGroup() },
+                onCancel: { dismiss() }
+            )
             .alert("Cannot Add Group", isPresented: $showingCycleAlert) {
                 Button("OK", role: .cancel) { }
             } message: {
                 Text(cycleAlertMessage)
             }
+            .onAppear {
+                if groupToEdit == nil {
+                    focusedField = .name
+                }
+            }
         }
     }
     
-    // MARK: - Account Type Section
+    // MARK: - View Components
     
-    @ViewBuilder
-    private func accountTypeSection(_ section: (type: AccountType, accounts: [Account])) -> some View {
-        DisclosureGroup(
-            isExpanded: Binding(
-                get: { true },  // Always expanded for easier selection
-                set: { _ in }
-            )
-        ) {
-            ForEach(section.accounts) { account in
-                accountRow(for: account)
-            }
-        } label: {
+    private var memberSectionHeader: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Members")
+            
+            // Search Bar
             HStack {
-                Image(systemName: section.type.icon)
-                    .foregroundColor(section.type.color)
-                    .font(.caption)
-                Text(section.type.sectionName)
-                    .font(.subheadline)
-                Spacer()
-                Text("\(section.accounts.count)")
-                    .font(.caption)
+                Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
-            }
-        }
-    }
-    
-    // MARK: - Account Row
-    
-    @ViewBuilder
-    private func accountRow(for account: Account) -> some View {
-        Button {
-            toggleSelection(for: account.id)
-        } label: {
-            HStack(spacing: 12) {
-                AccountTypeIcon(type: account.accountType, size: 32)
+                TextField("Search accounts...", text: $searchText)
+                    .focused($focusedField, equals: .search)
+                    .submitLabel(.done)
+                    .onSubmit { handleSearchSubmit() }
                 
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Text(account.name)
-                            .foregroundColor(.primary)
-                        
-                        if let badge = account.statusBadge(balance: data.balance(for: account)) {
-                            AccountStatusBadgeView(badge: badge)
-                        }
-                    }
-                    
-                    Text(account.accountType.rawValue.capitalized)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
-                Spacer()
-                
-                Text(data.balance(for: account).formattedCurrency(symbol: currencySymbol))
-                    .font(.subheadline)
-                    .foregroundColor(balanceColor(for: account))
-                
-                if selectedMemberIDs.contains(account.id) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.blue)
-                        .fontWeight(.bold)
-                } else {
-                    Image(systemName: "circle")
-                        .foregroundColor(.secondary.opacity(0.3))
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-    
-    // MARK: - Group Row
-    
-    @ViewBuilder
-    private func groupRow(for group: AccountGroup) -> some View {
-        // Calculate depth here to avoid scope error
-        let depth = data.depth(of: group)
-        
-        Button {
-            attemptToggleGroup(group)
-        } label: {
-            HStack(spacing: 12) {
-                // Group icon with nesting indicator
-                ZStack(alignment: .bottomTrailing) {
-                    Image(systemName: "folder.fill")
-                        .font(.title2)
-                        .foregroundColor(.purple)
-                    
-                    // Show depth indicator if nested
-                    if depth > 0 {
-                        Text("\(depth)")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(2)
-                            .background(Color.purple)
-                            .clipShape(Circle())
-                            .offset(x: 4, y: 4)
-                    }
-                }
-                .frame(width: 32, height: 32)
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(group.name)
-                        .foregroundColor(.primary)
-                    
-                    HStack(spacing: 4) {
-                        Text("\(group.memberIDs.count) members")
-                            .font(.caption)
+                if !searchText.isEmpty {
+                    Button { searchText = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.secondary)
-                        
-                        if depth > 0 {
-                            Text("•")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text("Depth: \(depth)")
-                                .font(.caption)
-                                .foregroundColor(.purple)
+                    }
+                }
+            }
+            .padding(8)
+            .background(Color(.secondarySystemBackground))
+            .cornerRadius(8)
+            
+            // Filter Segments
+            Picker("Display", selection: $displayMode) {
+                ForEach(DisplayMode.allCases, id: \.self) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+        .padding(.bottom, 4)
+    }
+    
+    private var memberList: some View {
+        Group {
+            // 1. Groups List
+            if displayMode != .accounts {
+                ForEach(filteredGroups) { group in
+                    Button {
+                        attemptToggleGroup(group)
+                    } label: {
+                        HStack {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.purple.opacity(0.1))
+                                    .frame(width: 32, height: 32)
+                                Image(systemName: "folder.fill")
+                                    .foregroundColor(.purple)
+                                    .font(.caption)
+                            }
+                            
+                            VStack(alignment: .leading) {
+                                Text(group.name)
+                                    .foregroundColor(.primary)
+                                Text("\(group.memberIDs.count) members")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Spacer()
+                            
+                            if selectedMemberIDs.contains(group.id) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.blue)
+                                    .font(.title3)
+                            } else {
+                                Image(systemName: "circle")
+                                    .foregroundColor(.secondary.opacity(0.3))
+                                    .font(.title3)
+                            }
                         }
                     }
                 }
-                
-                Spacer()
-                
-                // FIXED: Use groupBalance(group) instead of balance(for: group)
-                Text(data.groupBalance(group).formattedCurrency(symbol: currencySymbol))
-                    .font(.subheadline)
-                    .foregroundColor(.primary)
-                
-                if selectedMemberIDs.contains(group.id) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.blue)
-                        .fontWeight(.bold)
-                } else {
-                    Image(systemName: "circle")
-                        .foregroundColor(.secondary.opacity(0.3))
+            }
+            
+            // 2. Accounts List
+            if displayMode != .groups {
+                ForEach(filteredAccounts) { account in
+                    let isIndirect = indirectlySelectedMemberIDs.contains(account.id)
+                    let isDirect = selectedMemberIDs.contains(account.id)
+                    
+                    Button {
+                        if !isIndirect {
+                            toggleSelection(for: account.id)
+                        }
+                    } label: {
+                        HStack {
+                            AccountTypeIcon(type: account.accountType, size: 32)
+                            
+                            VStack(alignment: .leading) {
+                                Text(account.name)
+                                    .foregroundColor(isIndirect ? .secondary : .primary)
+                                
+                                if isIndirect {
+                                    Text("Included via group")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                        .italic()
+                                } else {
+                                    Text(data.balance(for: account).formattedCurrency(symbol: currencySymbol))
+                                        .font(.caption)
+                                        .foregroundColor(balanceColor(for: account))
+                                }
+                            }
+                            
+                            Spacer()
+                            
+                            if isDirect {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.blue)
+                                    .font(.title3)
+                            } else if isIndirect {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.gray.opacity(0.5)) // Gray checkmark for implicit inclusion
+                                    .font(.title3)
+                            } else {
+                                Image(systemName: "circle")
+                                    .foregroundColor(.secondary.opacity(0.3))
+                                    .font(.title3)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .disabled(isIndirect) // Prevent selecting if already included
                 }
             }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-    
-    // MARK: - Member Preview Row
-    
-    @ViewBuilder
-    private func memberPreviewRow(_ member: MemberType) -> some View {
-        HStack {
-            switch member {
-            case .account(let account):
-                Image(systemName: account.accountType.icon)
-                    .foregroundColor(account.accountType.color)
-                Text(account.name)
-                
-            case .group(let group):
-                Image(systemName: "folder.fill")
-                    .foregroundColor(.purple)
-                Text(group.name)
-                
-                let depth = data.depth(of: group)
-                if depth > 0 {
-                    Text("(Depth: \(depth))")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-            
-            Spacer()
-            
-            Button {
-                selectedMemberIDs.remove(member.id)
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(.secondary)
-            }
-            .buttonStyle(.plain)
         }
     }
     
-    // MARK: - Filter Logic
-    
-    private var shouldShowAccounts: Bool {
-        displayMode == .all || displayMode == .accounts
-    }
-    
-    private var shouldShowGroups: Bool {
-        displayMode == .all || displayMode == .groups
-    }
-    
-    private var filteredAccounts: [Account] {
-        guard shouldShowAccounts else { return [] }
-        
-        let all = data.accounts.filter { !$0.isArchived }
-        
-        let filtered = searchText.isEmpty ? all : all.filter {
-            $0.name.localizedCaseInsensitiveContains(searchText)
-        }
-        
-        return filtered.sorted { lhs, rhs in
-            let typeOrder: [AccountType] = [.debit, .goal, .budget, .debt]
-            let lhsIndex = typeOrder.firstIndex(of: lhs.accountType) ?? 999
-            let rhsIndex = typeOrder.firstIndex(of: rhs.accountType) ?? 999
-            
-            if lhsIndex != rhsIndex {
-                return lhsIndex < rhsIndex
-            }
-            
-            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
-        }
-    }
-    
-    private var availableGroups: [AccountGroup] {
-        guard shouldShowGroups else { return [] }
-        
-        // Filter out the group being edited (can't add to itself)
-        let filtered = data.accountGroups.filter { group in
-            // Exclude self
-            if let editingGroup = groupToEdit, group.id == editingGroup.id {
-                return false
-            }
-            
-            // Apply search filter
-            if !searchText.isEmpty && !group.name.localizedCaseInsensitiveContains(searchText) {
-                return false
-            }
-            
-            return true
-        }
-        
-        return filtered.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-    }
-    
-    private var filteredMembers: [Any] {
-        var result: [Any] = []
-        result.append(contentsOf: filteredAccounts)
-        result.append(contentsOf: availableGroups)
-        return result
-    }
-    
-    private var accountsByType: [(type: AccountType, accounts: [Account])] {
-        let typeOrder: [AccountType] = [.debit, .goal, .budget, .debt]
-        
-        return typeOrder.compactMap { type in
-            let accountsOfType = filteredAccounts.filter { $0.accountType == type }
-            return accountsOfType.isEmpty ? nil : (type, accountsOfType)
-        }
-    }
-    
-    private var selectedMembers: [MemberType] {
-        var result: [MemberType] = []
-        
-        for id in selectedMemberIDs {
-            if let account = data.accounts.first(where: { $0.id == id }) {
-                result.append(.account(account))
-            } else if let group = data.accountGroups.first(where: { $0.id == id }) {
-                result.append(.group(group))
-            }
-        }
-        
-        return result.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-    }
-    
-    // MARK: - Helpers
+    // MARK: - Logic & Helpers
     
     private var canSave: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty && !selectedMemberIDs.isEmpty
+    }
+    
+    private var availableAccounts: [Account] {
+        data.accounts.filter { !$0.isArchived }
+            .sorted { $0.name < $1.name }
+    }
+    
+    private var availableGroups: [AccountGroup] {
+        data.accountGroups
+            .filter { $0.id != groupToEdit?.id } // Cannot add self
+            .sorted { $0.name < $1.name }
+    }
+    
+    private var filteredAccounts: [Account] {
+        if searchText.isEmpty { return availableAccounts }
+        return availableAccounts.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
+    
+    private var filteredGroups: [AccountGroup] {
+        if searchText.isEmpty { return availableGroups }
+        return availableGroups.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
+    
+    // MARK: - Smart Selection Logic
+    
+    /// Returns IDs of accounts that are already included inside the GROUPS currently selected.
+    /// Used to disable/gray out individual accounts to prevent redundancy.
+    private var indirectlySelectedMemberIDs: Set<UUID> {
+        var indirectIDs = Set<UUID>()
+        
+        // 1. Identify which selected IDs are actually Groups
+        let selectedGroupIDs = selectedMemberIDs.filter { id in
+            data.accountGroups.contains(where: { $0.id == id })
+        }
+        
+        // 2. Harvest all children from those groups
+        for groupID in selectedGroupIDs {
+            if let group = data.accountGroups.first(where: { $0.id == groupID }) {
+                // Use our new recursive helper from AppData/AccountGroup
+                let children = group.allAccountIDs(in: data.accountGroups, accounts: data.accounts)
+                indirectIDs.formUnion(children)
+            }
+        }
+        
+        return indirectIDs
     }
     
     private func toggleSelection(for id: UUID) {
@@ -438,22 +278,37 @@ struct AddAccountGroupView: View {
         }
     }
     
-    private func attemptToggleGroup(_ group: AccountGroup) {
-        // Create a temporary group to test for cycles
-        let tempGroup = groupToEdit ?? AccountGroup(name: name)
-        
-        if selectedMemberIDs.contains(group.id) {
-            // Removing is always safe
-            selectedMemberIDs.remove(group.id)
-        } else {
-            // Adding requires cycle check
-            if tempGroup.wouldCreateCycle(byAdding: group.id, in: data.accountGroups) {
-                cycleAlertMessage = "Adding '\(group.name)' would create a circular reference. A group cannot contain itself directly or indirectly."
-                showingCycleAlert = true
-            } else {
-                selectedMemberIDs.insert(group.id)
-            }
+    private func attemptToggleGroup(_ candidate: AccountGroup) {
+        // 1. Deselection is always safe
+        if selectedMemberIDs.contains(candidate.id) {
+            selectedMemberIDs.remove(candidate.id)
+            return
         }
+        
+        // 2. Cycle Detection
+        // Create a temporary version of the group we are building to check for cycles
+        let currentGroupID = groupToEdit?.id ?? UUID()
+        let tempGroup = AccountGroup(id: currentGroupID, name: name, memberIDs: Array(selectedMemberIDs))
+        
+        if tempGroup.wouldCreateCycle(byAdding: candidate.id, in: data.accountGroups) {
+            cycleAlertMessage = "Adding '\(candidate.name)' would create a circular reference (it already contains this group)."
+            showingCycleAlert = true
+            return
+        }
+        
+        // 3. Redundancy Cleanup
+        // If we add this group, we should remove any individual accounts currently selected
+        // that are INSIDE this candidate group, to prevent double-listing.
+        let childrenOfCandidate = candidate.allAccountIDs(in: data.accountGroups, accounts: data.accounts)
+        
+        // Remove direct account selections if they are covered by this new group
+        let redundancy = selectedMemberIDs.intersection(childrenOfCandidate)
+        if !redundancy.isEmpty {
+            selectedMemberIDs.subtract(redundancy)
+        }
+        
+        // 4. Add the group
+        selectedMemberIDs.insert(candidate.id)
     }
     
     private func handleSearchSubmit() {
@@ -461,10 +316,13 @@ struct AddAccountGroupView: View {
             if canSave {
                 saveGroup()
             }
-        } else if filteredMembers.count == 1 {
+        } else if filteredAccounts.count + filteredGroups.count == 1 {
+            // Auto-select single result
             if let account = filteredAccounts.first {
-                toggleSelection(for: account.id)
-            } else if let group = availableGroups.first {
+                if !indirectlySelectedMemberIDs.contains(account.id) {
+                    toggleSelection(for: account.id)
+                }
+            } else if let group = filteredGroups.first {
                 attemptToggleGroup(group)
             }
             searchText = ""

@@ -209,7 +209,6 @@ class AppData: ObservableObject {
         save()
     }
 
-    // UPDATED: Added id and linkedTransactionID support for Transfer Safety
     func addTransaction(id: String? = nil,
                         linkedTransactionID: String? = nil,
                         type: TransactionType,
@@ -297,7 +296,6 @@ class AppData: ObservableObject {
         }
     }
     
-    // UPDATED: Now synchronizes linked transfers
     func updateTransaction(_ transaction: Transaction) {
         if let index = transactions.firstIndex(where: { $0.id == transaction.id }) {
             transactions[index] = transaction
@@ -325,7 +323,6 @@ class AppData: ObservableObject {
         }
     }
     
-    // NEW: Handles safe deletion of linked pairs
     func deleteTransaction(_ transaction: Transaction) {
         // 1. Remove the target transaction
         if let index = transactions.firstIndex(where: { $0.id == transaction.id }) {
@@ -602,43 +599,30 @@ class AppData: ObservableObject {
     }
 }
 
-// MARK: - Account Group Operations (Enhanced with Nesting Support)
+// MARK: - Account Group Operations (Fixed Double-Counting)
 
 extension AppData {
     
-    /// Calculates balance for a group (supports nested groups)
+    /// Calculates balance for a group by summing unique member accounts.
+    /// This fixes double-counting by flattening the hierarchy into a unique set of accounts.
     func groupBalance(_ group: AccountGroup) -> Double {
-        recursiveBalance(for: group, visited: [])
-    }
-    
-    /// Recursive balance calculation with cycle detection
-    private func recursiveBalance(for group: AccountGroup, visited: Set<UUID>) -> Double {
-        // Cycle detection: if we've already visited this group, return 0 to prevent infinite loop
-        guard !visited.contains(group.id) else {
-            print("⚠️ Cycle detected in group: \(group.name)")
-            return 0
-        }
-        
-        var newVisited = visited
-        newVisited.insert(group.id)
+        // 1. Get all unique account IDs in this group hierarchy
+        // (Requires the updated AccountGroup.swift which returns a Set)
+        let uniqueAccountIDs = group.allAccountIDs(in: accountGroups, accounts: accounts)
         
         var total: Double = 0
         
-        for memberID in group.memberIDs {
-            // Check if it's an account
-            if let account = accounts.first(where: { $0.id == memberID }) {
+        // 2. Sum them up (applying Debit vs Credit logic)
+        for accountID in uniqueAccountIDs {
+            if let account = accounts.first(where: { $0.id == accountID }) {
                 let accountBalance = balance(for: account)
                 
-                // Credit accounts (debts) subtract from total
+                // Credit accounts (debts) subtract from total wealth
                 if account.isCredit {
                     total -= accountBalance
                 } else {
                     total += accountBalance
                 }
-            }
-            // Check if it's a nested group
-            else if let childGroup = accountGroups.first(where: { $0.id == memberID }) {
-                total += recursiveBalance(for: childGroup, visited: newVisited)
             }
         }
         
@@ -704,7 +688,8 @@ extension AppData {
     
     /// Returns all account IDs in a group (flattened, recursive)
     func allAccountIDs(in group: AccountGroup) -> [UUID] {
-        group.allAccountIDs(in: accountGroups, accounts: accounts)
+        // Convert the Set (from updated AccountGroup.swift) back to Array
+        Array(group.allAccountIDs(in: accountGroups, accounts: accounts))
     }
     
     /// Validates group structure integrity

@@ -63,18 +63,26 @@ extension AccountGroup {
         return maxDepth
     }
     
-    /// Returns all account IDs contained in this group (recursive)
-    func allAccountIDs(in allGroups: [AccountGroup], accounts: [Account]) -> [UUID] {
-        var result: [UUID] = []
+    /// Returns all UNIQUE account IDs contained in this group (recursive)
+    /// Returns a Set to prevent double-counting
+    func allAccountIDs(in allGroups: [AccountGroup], accounts: [Account], visited: Set<UUID> = []) -> Set<UUID> {
+        var result: Set<UUID> = []
+        
+        // Cycle safety
+        var newVisited = visited
+        newVisited.insert(self.id)
         
         for memberID in memberIDs {
             // Check if it's an account
             if accounts.contains(where: { $0.id == memberID }) {
-                result.append(memberID)
+                result.insert(memberID)
             }
             // Check if it's a group (recurse)
             else if let childGroup = allGroups.first(where: { $0.id == memberID }) {
-                result.append(contentsOf: childGroup.allAccountIDs(in: allGroups, accounts: accounts))
+                // Only recurse if we haven't visited this group in this chain
+                if !visited.contains(childGroup.id) {
+                    result.formUnion(childGroup.allAccountIDs(in: allGroups, accounts: accounts, visited: newVisited))
+                }
             }
         }
         
