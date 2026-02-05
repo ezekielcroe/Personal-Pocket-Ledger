@@ -200,7 +200,7 @@ struct AddAccountView: View {
     }
     
     private var targetSectionFooter: String {
-        let target = calculateAmount(targetAmountString)
+        let target = MathParser.calculate(targetAmountString)
         
         if isCredit {
             if target > 0 {
@@ -222,7 +222,7 @@ struct AddAccountView: View {
     }
     
     private var shouldShowInstallmentSection: Bool {
-        let target = calculateAmount(targetAmountString)
+        let target = MathParser.calculate(targetAmountString)
         
         if isCredit {
             // Show for debt accounts (target = 0) or budgets (target > 0)
@@ -246,7 +246,7 @@ struct AddAccountView: View {
     }
     
     private var accountTypeIcon: String {
-        let target = calculateAmount(targetAmountString)
+        let target = MathParser.calculate(targetAmountString)
         
         switch (isCredit, target > 0) {
         case (false, false): return "dollarsign.circle.fill"
@@ -257,7 +257,7 @@ struct AddAccountView: View {
     }
     
     private var accountTypeColor: Color {
-        let target = calculateAmount(targetAmountString)
+        let target = MathParser.calculate(targetAmountString)
         
         switch (isCredit, target > 0) {
         case (false, false): return .primary
@@ -268,7 +268,7 @@ struct AddAccountView: View {
     }
     
     private var accountTypeName: String {
-        let target = calculateAmount(targetAmountString)
+        let target = MathParser.calculate(targetAmountString)
         
         switch (isCredit, target > 0) {
         case (false, false): return "Debit Account"
@@ -284,39 +284,13 @@ struct AddAccountView: View {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
     }
     
-    // MARK: - Math Engine
-    
-    /// Parses a string that may contain math expressions (e.g., "100+50") into a Double.
-    private func calculateAmount(_ input: String) -> Double {
-        // 1. Filter allowed characters
-        let allowed = CharacterSet(charactersIn: "0123456789.+-*/")
-        let sanitized = input.components(separatedBy: allowed.inverted).joined()
-        
-        if sanitized.isEmpty { return 0 }
-        
-        // 2. If it ends in a math symbol, just parse the safe part to avoid crash
-        if let lastChar = sanitized.last, !lastChar.isNumber {
-            return Double(sanitized.dropLast()) ?? 0
-        }
-        
-        // 3. Evaluate expression
-        let expression = NSExpression(format: sanitized)
-        if let result = expression.expressionValue(with: nil, context: nil) as? Double {
-            return result
-        } else if let intResult = expression.expressionValue(with: nil, context: nil) as? Int {
-            return Double(intResult)
-        }
-        
-        return Double(sanitized) ?? 0
-    }
-    
     // MARK: - Calculations
     
     private func calculatePreview() -> (periods: Int, amountPerPeriod: Double)? {
         guard hasTargetDate else { return nil }
         
-        let initial = calculateAmount(initialAmountString)
-        let target = calculateAmount(targetAmountString)
+        let initial = MathParser.calculate(initialAmountString)
+        let target = MathParser.calculate(targetAmountString)
         
         let today = Date()
         guard targetDate > today else { return nil }
@@ -354,8 +328,8 @@ struct AddAccountView: View {
     }
     
     private func saveAccount() {
-        let amount = calculateAmount(initialAmountString)
-        let targetRaw = calculateAmount(targetAmountString)
+        let amount = MathParser.calculate(initialAmountString)
+        let targetRaw = MathParser.calculate(targetAmountString)
         
         // Logic for Target:
         // If Debt (isCredit=true): target can be 0 (payoff goal) or >0 (budget limit).

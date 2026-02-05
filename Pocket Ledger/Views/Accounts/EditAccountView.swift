@@ -239,7 +239,7 @@ struct EditAccountView: View {
         case .budget:
             return false // Budgets don't use installment plans (they're monthly)
         case .debit:
-            let target = calculateAmount(targetAmountString)
+            let target = MathParser.calculate(targetAmountString)
             return target > 0 // Only show if user adds a target
         }
     }
@@ -281,7 +281,7 @@ struct EditAccountView: View {
     }
     
     private var progressText: String {
-        let target = calculateAmount(targetAmountString)
+        let target = MathParser.calculate(targetAmountString)
         guard target > 0 else { return "" }
         
         let current = data.balance(for: account)
@@ -309,38 +309,13 @@ struct EditAccountView: View {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
     }
     
-    // MARK: - Math Engine
-    
-    private func calculateAmount(_ input: String) -> Double {
-        // 1. Filter allowed characters
-        let allowed = CharacterSet(charactersIn: "0123456789.+-*/")
-        let sanitized = input.components(separatedBy: allowed.inverted).joined()
-        
-        if sanitized.isEmpty { return 0 }
-        
-        // 2. If it ends in a math symbol, just parse the safe part to avoid crash
-        if let lastChar = sanitized.last, !lastChar.isNumber {
-            return Double(sanitized.dropLast()) ?? 0
-        }
-        
-        // 3. Evaluate expression
-        let expression = NSExpression(format: sanitized)
-        if let result = expression.expressionValue(with: nil, context: nil) as? Double {
-            return result
-        } else if let intResult = expression.expressionValue(with: nil, context: nil) as? Int {
-            return Double(intResult)
-        }
-        
-        return Double(sanitized) ?? 0
-    }
-    
     // MARK: - Calculations
     
     private func calculatePreview() -> (periods: Int, amountPerPeriod: Double)? {
         guard hasTargetDate else { return nil }
         
         let current = data.balance(for: account)
-        let target = calculateAmount(targetAmountString)
+        let target = MathParser.calculate(targetAmountString)
         
         let today = Date()
         guard targetDate > today else { return nil }
@@ -368,8 +343,8 @@ struct EditAccountView: View {
     // MARK: - Actions
     
     private func saveChanges() {
-        let amount = calculateAmount(initialAmountString)
-        let targetRaw = calculateAmount(targetAmountString)
+        let amount = MathParser.calculate(initialAmountString)
+        let targetRaw = MathParser.calculate(targetAmountString)
         
         // Parse target: empty string or "0" → nil for debt accounts
         let target: Double?

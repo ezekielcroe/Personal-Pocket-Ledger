@@ -49,12 +49,17 @@ enum MemberType {
 // MARK: - Helper Functions
 
 extension AccountGroup {
+    // CONSTANT: Safety limit to prevent stack overflows
+    private static let maxRecursionDepth = 5
+    
     /// Returns the depth of nesting for this group (0 = top-level)
     func depth(in allGroups: [AccountGroup]) -> Int {
         var maxDepth = 0
         
         for memberID in memberIDs {
             if let childGroup = allGroups.first(where: { $0.id == memberID }) {
+                // Note: Simple depth check doesn't strictly need the limit guard
+                // as much as the recursive collector, but good to be aware.
                 let childDepth = childGroup.depth(in: allGroups)
                 maxDepth = max(maxDepth, childDepth + 1)
             }
@@ -65,7 +70,17 @@ extension AccountGroup {
     
     /// Returns all UNIQUE account IDs contained in this group (recursive)
     /// Returns a Set to prevent double-counting
-    func allAccountIDs(in allGroups: [AccountGroup], accounts: [Account], visited: Set<UUID> = []) -> Set<UUID> {
+    func allAccountIDs(in allGroups: [AccountGroup],
+                       accounts: [Account],
+                       visited: Set<UUID> = [],
+                       currentDepth: Int = 0) -> Set<UUID> {
+        
+        // SAFETY GUARD: Stop recursion if we hit the limit
+        guard currentDepth < AccountGroup.maxRecursionDepth else {
+            print("⚠️ Max group depth reached for \(name). Stopping recursion.")
+            return []
+        }
+        
         var result: Set<UUID> = []
         
         // Cycle safety
@@ -81,7 +96,11 @@ extension AccountGroup {
             else if let childGroup = allGroups.first(where: { $0.id == memberID }) {
                 // Only recurse if we haven't visited this group in this chain
                 if !visited.contains(childGroup.id) {
-                    result.formUnion(childGroup.allAccountIDs(in: allGroups, accounts: accounts, visited: newVisited))
+                    // Pass incremented depth
+                    result.formUnion(childGroup.allAccountIDs(in: allGroups,
+                                                              accounts: accounts,
+                                                              visited: newVisited,
+                                                              currentDepth: currentDepth + 1))
                 }
             }
         }

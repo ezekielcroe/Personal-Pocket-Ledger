@@ -355,25 +355,8 @@ struct AddTransactionView: View {
         return data.categories.first(where: { $0.id == id })?.name
     }
     
-    private func calculateAmount(_ input: String) -> Double {
-        // ... same existing calculation logic ...
-        let allowed = CharacterSet(charactersIn: "0123456789.+-*/")
-        let sanitized = input.components(separatedBy: allowed.inverted).joined()
-        if sanitized.isEmpty { return 0 }
-        guard let lastChar = sanitized.last, lastChar.isNumber else {
-            return Double(sanitized) ?? 0
-        }
-        let expression = NSExpression(format: sanitized)
-        if let result = expression.expressionValue(with: nil, context: nil) as? Double {
-            return result
-        } else if let intResult = expression.expressionValue(with: nil, context: nil) as? Int {
-            return Double(intResult)
-        }
-        return Double(sanitized) ?? 0
-    }
-
     private var canSave: Bool {
-        let amount = calculateAmount(amountString)
+        let amount = MathParser.calculate(amountString)
         guard amount > 0 else { return false }
         
         if type == .transfer {
@@ -460,7 +443,7 @@ struct AddTransactionView: View {
     }
 
     private func saveTransaction(shouldDismiss: Bool = true) {
-        let amount = calculateAmount(amountString)
+        let amount = MathParser.calculate(amountString)
         let tags = Array(selectedTagIDs)
 
         if type == .transfer {

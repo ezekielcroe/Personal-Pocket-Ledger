@@ -1,6 +1,6 @@
 import Foundation
 import Combine
-import UserNotifications
+@preconcurrency import UserNotifications
 
 // MARK: - Data Models
 
@@ -425,47 +425,80 @@ class AppData: ObservableObject {
 
     // MARK: - Reminder Logic
 
-    func updateReminders() {
-        let center = UNUserNotificationCenter.current()
-        center.removeAllPendingNotificationRequests()
-        
-        for template in templates {
-            if let schedule = template.reminderSchedule {
-                scheduleNotification(for: template, schedule: schedule)
+        func updateReminders() {
+            // Guard: We need an active book to know which reminders to manage
+            guard let currentBook = activeBook else { return }
+            
+            let center = UNUserNotificationCenter.current()
+            
+            // 1. Fetch all pending requests asynchronously
+            center.getPendingNotificationRequests { requests in
+                
+                // 2. Identify the prefix for THIS book
+                let currentBookPrefix = currentBook.id.uuidString + "_"
+                
+                // 3. Filter for notifications belonging ONLY to this book
+                let idsToRemove = requests
+                    .filter { $0.identifier.hasPrefix(currentBookPrefix) }
+                    .map { $0.identifier }
+                
+                // 4. Remove only this book's old notifications
+                center.removePendingNotificationRequests(withIdentifiers: idsToRemove)
+                
+                // 5. Re-schedule current templates on the main thread
+                Task { @MainActor in
+                    for template in self.templates {
+                        if let schedule = template.reminderSchedule {
+                            self.scheduleNotification(for: template, schedule: schedule)
+                        }
+                    }
+                }
             }
         }
-    }
 
-    private func scheduleNotification(for template: TransactionTemplate, schedule: ReminderSchedule) {
-        let center = UNUserNotificationCenter.current()
-        
-        let content = UNMutableNotificationContent()
-        content.title = "Record Transaction"
-        content.body = "Time to record: \(template.name)"
-        content.sound = .default
-        
-        var dateComponents = DateComponents()
-        dateComponents.hour = schedule.time.hour
-        dateComponents.minute = schedule.time.minute
-        
-        switch schedule.frequency {
-        case .daily:
-            break
-        case .weekly:
-            dateComponents.weekday = schedule.dayOfWeek
-        case .monthly:
-            dateComponents.day = schedule.dayOfMonth
-        }
-        
-        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
-        let request = UNNotificationRequest(identifier: template.id.uuidString, content: content, trigger: trigger)
-        
-        center.add(request) { error in
-            if let error = error {
-                print("Error scheduling notification: \(error.localizedDescription)")
+        private func scheduleNotification(for template: TransactionTemplate, schedule: ReminderSchedule) {
+            guard let currentBook = activeBook else { return }
+            let center = UNUserNotificationCenter.current()
+            
+            let content = UNMutableNotificationContent()
+            content.title = "Record Transaction"
+            content.body = "Time to record: \(template.name)"
+            content.sound = .default
+            
+            // Store metadata for future deep-linking capability
+            content.userInfo = [
+                "bookID": currentBook.id.uuidString,
+                "templateID": template.id.uuidString
+            ]
+            
+            var dateComponents = DateComponents()
+            dateComponents.hour = schedule.time.hour
+            dateComponents.minute = schedule.time.minute
+            
+            switch schedule.frequency {
+            case .daily:
+                break
+            case .weekly:
+                dateComponents.weekday = schedule.dayOfWeek
+            case .monthly:
+                // Safety: If day is > 28, this might not fire in Feb.
+                // Ideally, user UI should handle this, or we default to day 1 or 28.
+                dateComponents.day = schedule.dayOfMonth
+            }
+            
+            let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
+            
+            // KEY CHANGE: ID is now "BookID_TemplateID"
+            let identifier = "\(currentBook.id.uuidString)_\(template.id.uuidString)"
+            
+            let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+            
+            center.add(request) { error in
+                if let error = error {
+                    print("Error scheduling notification: \(error.localizedDescription)")
+                }
             }
         }
-    }
 
     // MARK: - Data Management
 
