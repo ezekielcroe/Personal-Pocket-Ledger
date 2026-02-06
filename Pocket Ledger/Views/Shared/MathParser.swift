@@ -5,7 +5,6 @@
 //  Created by Zhi Zheng Yeo on 5/2/26.
 //
 
-
 import Foundation
 
 struct MathParser {
@@ -17,36 +16,45 @@ struct MathParser {
         let sanitized = input.components(separatedBy: allowed.inverted).joined()
         
         // 2. Early exit for empty input
-        guard !sanitized.trimmingCharacters(in: .whitespaces).isEmpty else { return 0 }
+        let trimmed = sanitized.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return 0 }
         
         // 3. Validate: Must contain at least one digit
-        let hasDigit = sanitized.contains(where: { $0.isNumber })
-        guard hasDigit else { return 0 }
+        guard trimmed.contains(where: { $0.isNumber }) else { return 0 }
         
-        // 4. Recursive Cleanup: Handle trailing operators (e.g., "50+" -> "50")
-        let trimmed = sanitized.trimmingCharacters(in: .whitespaces)
-        let operators = CharacterSet(charactersIn: "+-*/")
-        if let lastChar = trimmed.last,
-           operators.contains(Unicode.Scalar(String(lastChar))!) {
-            let withoutLast = String(trimmed.dropLast())
-            return calculate(withoutLast) // Recursive call
+        // 4. Strip trailing non-digit characters (operators and dots)
+        // This handles cases like "50+", "10.", "5+-", etc.
+        let trailingJunk = CharacterSet(charactersIn: "+-*/.() ")
+        let cleaned = trimmed.trimmingCharacters(in: trailingJunk)
+        
+        // After cleaning, check we still have content
+        guard !cleaned.isEmpty, cleaned.contains(where: { $0.isNumber }) else { return 0 }
+        
+        // 5. Also strip leading operators (but keep minus for negative numbers)
+        let leadingJunk = CharacterSet(charactersIn: "+*/. ")
+        var expression = cleaned.trimmingCharacters(in: leadingJunk)
+        
+        // Handle edge case: expression starts with multiple operators like "--5"
+        // Keep at most one leading minus
+        while expression.hasPrefix("--") {
+            expression = String(expression.dropFirst(2))
         }
         
-        // 5. Evaluate
-        // Note: NSExpression does not throw Swift errors, so we removed the do-catch.
-        let expression = NSExpression(format: sanitized)
+        guard !expression.isEmpty, expression.contains(where: { $0.isNumber }) else { return 0 }
         
-        if let result = expression.expressionValue(with: nil, context: nil) as? Double {
+        // 6. Evaluate using NSExpression
+        let nsExpression = NSExpression(format: expression)
+        
+        if let result = nsExpression.expressionValue(with: nil, context: nil) as? Double {
             // Guard against Division by Zero (Infinity/NaN)
             guard result.isFinite else { return 0 }
-            
             // Round to 2 decimal places
             return (result * 100).rounded() / 100
-        } else if let intResult = expression.expressionValue(with: nil, context: nil) as? Int {
+        } else if let intResult = nsExpression.expressionValue(with: nil, context: nil) as? Int {
             return Double(intResult)
         }
         
-        // 6. Fallback
-        return Double(sanitized) ?? 0
+        // 7. Fallback: Try simple Double parsing
+        return Double(expression) ?? 0
     }
 }
