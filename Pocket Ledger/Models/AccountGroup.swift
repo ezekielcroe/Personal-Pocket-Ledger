@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct AccountGroup: Identifiable, Codable, Hashable {
+struct AccountGroup: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
     var name: String
     
@@ -23,7 +23,7 @@ struct AccountGroup: Identifiable, Codable, Hashable {
 
 // MARK: - Member Type Identification
 
-enum MemberType {
+enum MemberType: Sendable {
     case account(Account)
     case group(AccountGroup)
     

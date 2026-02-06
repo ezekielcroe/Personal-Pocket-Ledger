@@ -477,8 +477,6 @@ struct AddTransactionView: View {
                 }
                 
             } else {
-                // CREATE NEW LINKED PAIR
-                // Manually generate IDs to link them
                 // Note: Since 'Transaction.init' generates an ID if nil, we can't get the ID before init easily unless we modify init or use a helper.
                 // Hack: We rely on the AppData to handle the save, but here we construct them.
                 

@@ -1,5 +1,4 @@
 import Foundation
-import SwiftUI
 
 /// Represents a financial container such as a bank account, credit card, savings goal, or debt.
 ///
@@ -84,7 +83,7 @@ struct Account: Identifiable, Codable, Hashable, Sendable {
 
 // MARK: - Supporting Enums
 
-enum AccountType: String, Codable {
+enum AccountType: String, Codable, Sendable {
     case debit = "Debit"
     case goal = "Goal"
     case budget = "Budget"
@@ -100,23 +99,13 @@ enum AccountType: String, Codable {
         }
     }
     
-    /// SwiftUI Color for each account type
-    var color: Color {
-        switch self {
-        case .debit:  return .green
-        case .goal:   return .blue
-        case .budget: return .purple
-        case .debt:   return .orange
-        }
-    }
-    
     /// Section header name (for grouping)
     var sectionName: String {
         self.rawValue
     }
 }
 
-enum PaymentFrequency: String, Codable, CaseIterable, Identifiable {
+enum PaymentFrequency: String, Codable, CaseIterable, Identifiable, Sendable {
     case weekly = "Weekly"
     case biweekly = "Bi-weekly"
     case monthly = "Monthly"
