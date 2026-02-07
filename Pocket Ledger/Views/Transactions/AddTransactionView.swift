@@ -263,7 +263,12 @@ struct AddTransactionView: View {
                 advanceAfterAccountSelection()
             } content: {
                 NavigationStack {
-                    SelectionView(title: type == .transfer ? "From Account" : "Account", items: data.accounts, selectedID: $accountID)
+                    // Filter accounts based on transaction type
+                    SelectionView(
+                        title: type == .transfer ? "From Account" : "Account",
+                        items: accountsForSourceSelection,
+                        selectedID: $accountID
+                    )
                 }
                 .presentationDetents([.medium, .large])
             }
@@ -271,7 +276,12 @@ struct AddTransactionView: View {
                 advanceAfterTransferTargetSelection()
             } content: {
                 NavigationStack {
-                    SelectionView(title: "To Account", items: data.accounts.filter { $0.id != accountID }, selectedID: $transferTargetAccountID)
+                    // All accounts except the source (Debt accounts ARE valid targets)
+                    SelectionView(
+                        title: "To Account",
+                        items: data.accounts.filter { $0.id != accountID && !$0.isArchived },
+                        selectedID: $transferTargetAccountID
+                    )
                 }
                 .presentationDetents([.medium, .large])
             }
@@ -306,7 +316,28 @@ struct AddTransactionView: View {
         }
     }
     
-    // ... Helpers (amountColor, navTitle) ...
+    // MARK: - Account Filtering
+    
+    /// Accounts available for selection as transaction source.
+    /// - Inflow: All non-archived accounts (money can come INTO any account)
+    /// - Outflow: Excludes pure Debt accounts (can't spend FROM a mortgage)
+    /// - Transfer (From): Excludes pure Debt accounts (can't transfer FROM a mortgage)
+    private var accountsForSourceSelection: [Account] {
+        let activeAccounts = data.accounts.filter { !$0.isArchived }
+        
+        switch type {
+        case .inflow:
+            // Money can flow INTO any account
+            return activeAccounts
+        case .outflow, .transfer:
+            // Can't spend FROM or transfer FROM a pure Debt account
+            // (Debt accounts only receive payments, they don't originate spending)
+            return activeAccounts.filter { $0.accountType != .debt }
+        }
+    }
+    
+    // MARK: - Helpers
+    
     private var amountColor: Color {
         switch type {
         case .inflow: return .green
@@ -322,7 +353,6 @@ struct AddTransactionView: View {
 
     // MARK: - Logic
     
-    // ... Existing logic for templates, filtering categories, names ...
     private func saveTemplate() {
         let name = templateName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
@@ -366,7 +396,6 @@ struct AddTransactionView: View {
         }
     }
     
-    // ... Focus chain logic (checkAndPresentNextField, etc) ...
     private enum NavigationStep {
         case account
         case secondary
@@ -455,9 +484,6 @@ struct AddTransactionView: View {
             if var existing = editingTransaction, let linkedID = existing.linkedTransactionID {
                 // UPDATE EXISTING LINKED PAIR
                 
-                // Update "From" (This transaction, if it's the source) or find which is which
-                // Note: Current view logic implies editingTransaction is the one we tapped.
-                
                 // 1. Update the transaction we are editing
                 existing.accountID = fromAcc
                 existing.amount = amount
@@ -468,7 +494,7 @@ struct AddTransactionView: View {
                 
                 // 2. Update the linked partner
                 if var partner = data.transactions.first(where: { $0.id == linkedID }) {
-                    partner.accountID = toAcc // The partner gets the 'Target' account
+                    partner.accountID = toAcc
                     partner.amount = amount
                     partner.date = date
                     partner.tagIDs = tags
@@ -477,21 +503,14 @@ struct AddTransactionView: View {
                 }
                 
             } else {
-                // Note: Since 'Transaction.init' generates an ID if nil, we can't get the ID before init easily unless we modify init or use a helper.
-                // Hack: We rely on the AppData to handle the save, but here we construct them.
-                
-                // Let's create the objects here to get their IDs
+                // CREATE NEW LINKED PAIR
                 let id1 = Transaction.generateUniqueTimestampID()
-                
-                // Slightly delay id2 to ensure unique timestamp suffix if random collides (unlikely but safe)
-                // actually generateUniqueTimestampID uses random suffix, so just call again.
-                let id2 = Transaction.generateUniqueTimestampID() + "-2" // appending suffix to guarantee uniqueness from same millisecond
+                let id2 = Transaction.generateUniqueTimestampID() + "-2"
                 
                 let outflow = Transaction(id: id1, linkedTransactionID: id2, type: .outflow, accountID: fromAcc, categoryID: outCatID, tagIDs: tags, amount: amount, date: date, isOutlier: isOutlier)
                 
                 let inflow = Transaction(id: id2, linkedTransactionID: id1, type: .inflow, accountID: toAcc, categoryID: inCatID, tagIDs: tags, amount: amount, date: date, isOutlier: isOutlier)
                 
-                // We access the data.transactions array directly or use a raw add method
                 data.transactions.append(outflow)
                 data.transactions.append(inflow)
                 data.save()

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TransactionListView: View {
     @EnvironmentObject var data: AppData
+    @AppStorage("currencySymbol") private var currencySymbol: String = "$"
     
     // Binding from ContentView for Shortcut support
     @Binding var globalAddTransactionTrigger: Bool
@@ -18,12 +19,15 @@ struct TransactionListView: View {
     @State private var batchTagsToAdd: Set<UUID> = []
     
     // MARK: - Temporal Grouping State
-    @State private var loadedMonthsCount: Int = 1 // Start with current month
     @State private var collapsedGroups: Set<TimeGroupID> = []
     
     // MARK: - Archive State
     @AppStorage("showArchivedTransactions") private var showArchivedTransactions: Bool = false
-    @AppStorage("archiveOlderThanMonths") private var archiveOlderThanMonths: Int = 3
+    
+    // MARK: - Search State
+    @State private var searchText: String = ""
+    @State private var isSearchActive: Bool = false
+    @FocusState private var isSearchFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -31,8 +35,8 @@ struct TransactionListView: View {
                 // Main List
                 transactionList
                 
-                // Floating Add Button (only when not in edit mode)
-                if !isEditMode {
+                // Floating Add Button (only when not in edit mode and not searching)
+                if !isEditMode && !isSearchActive {
                     floatingAddButton
                 }
             }
@@ -62,12 +66,31 @@ struct TransactionListView: View {
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    editButton
+                    HStack(spacing: 16) {
+                        // Search toggle button
+                        Button {
+                            withAnimation {
+                                isSearchActive.toggle()
+                                if isSearchActive {
+                                    isSearchFocused = true
+                                } else {
+                                    searchText = ""
+                                    isSearchFocused = false
+                                }
+                            }
+                        } label: {
+                            Image(systemName: isSearchActive ? "xmark" : "magnifyingglass")
+                        }
+                        
+                        editButton
+                    }
                 }
             }
             .safeAreaInset(edge: .bottom) {
                 if isEditMode && !selection.isEmpty {
                     multiSelectActionBar
+                } else if isSearchActive {
+                    searchBar
                 }
             }
             // Sheets
@@ -85,6 +108,50 @@ struct TransactionListView: View {
         }
     }
     
+    // MARK: - Search Bar
+    
+    private var searchBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            
+            HStack(spacing: 12) {
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
+                    
+                    TextField("Search tags, categories, accounts, amounts...", text: $searchText)
+                        .focused($isSearchFocused)
+                        .submitLabel(.search)
+                        .autocorrectionDisabled()
+                    
+                    if !searchText.isEmpty {
+                        Button {
+                            searchText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .padding(10)
+                .background(Color(.secondarySystemBackground))
+                .cornerRadius(10)
+                
+                Button("Cancel") {
+                    withAnimation {
+                        searchText = ""
+                        isSearchActive = false
+                        isSearchFocused = false
+                    }
+                }
+                .foregroundColor(.blue)
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 10)
+            .background(Color(UIColor.systemBackground))
+        }
+    }
+    
     // MARK: - Main List
     
     @ViewBuilder
@@ -92,21 +159,27 @@ struct TransactionListView: View {
         List(selection: $selection) {
             if data.transactions.isEmpty {
                 emptyState
-            } else if visibleTransactions.isEmpty && !showArchivedTransactions {
-                archivedOnlyState
+            } else if filteredTransactions.isEmpty {
+                if isSearchActive && !searchText.isEmpty {
+                    noSearchResultsState
+                } else if !showArchivedTransactions && visibleTransactions.isEmpty {
+                    archivedOnlyState
+                } else {
+                    emptyState
+                }
             } else {
                 ForEach(visibleTimeGroups, id: \.id) { group in
                     temporalSection(for: group)
                 }
                 
-                // Pagination: Load More Button
-                if hasMoreToLoad {
-                    loadMoreSection
+                // Pagination: Load Archived Button
+                if hasArchivedTransactions && !showArchivedTransactions && !isSearchActive {
+                    loadArchivedSection
                 }
             }
             
-            // Spacer for FAB/action bar
-            Color.clear.frame(height: 80).listRowBackground(Color.clear)
+            // Spacer for FAB/action bar/search bar
+            Color.clear.frame(height: 100).listRowBackground(Color.clear)
         }
         .environment(\.editMode, .constant(isEditMode ? .active : .inactive))
     }
@@ -128,6 +201,24 @@ struct TransactionListView: View {
     }
     
     @ViewBuilder
+    private var noSearchResultsState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 48))
+                .foregroundColor(.secondary)
+            Text("No results for \"\(searchText)\"")
+                .font(.headline)
+            Text("Try searching for tags, categories, accounts, or amounts")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
+    }
+    
+    @ViewBuilder
     private var archivedOnlyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "archivebox")
@@ -135,7 +226,7 @@ struct TransactionListView: View {
                 .foregroundColor(.secondary)
             Text("All transactions are archived")
                 .font(.headline)
-            Text("Tap the filter icon to show archived transactions")
+            Text("Tap the menu to show archived transactions")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -193,13 +284,27 @@ struct TransactionListView: View {
             
             Spacer()
             
-            Text("\(group.transactions.count)")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 2)
-                .background(Color(.secondarySystemBackground))
-                .clipShape(Capsule())
+            // Net flow + count
+            HStack(spacing: 8) {
+                // Net flow indicator
+                let netFlow = group.netFlow
+                if netFlow != 0 {
+                    Text(netFlow >= 0 ? "+\(netFlow.formattedCurrency(symbol: currencySymbol))" : netFlow.formattedCurrency(symbol: currencySymbol))
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .monospacedDigit()
+                        .foregroundColor(netFlow >= 0 ? .green : .red)
+                }
+                
+                // Transaction count
+                Text("\(group.transactions.count)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(Capsule())
+            }
         }
     }
     
@@ -218,7 +323,6 @@ struct TransactionListView: View {
             }
             .swipeActions(edge: .trailing) {
                 Button(role: .destructive) {
-                    // FIX: Use central data logic
                     data.deleteTransaction(transaction)
                 } label: {
                     Label("Delete", systemImage: "trash")
@@ -242,7 +346,6 @@ struct TransactionListView: View {
         }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
-                // FIX: Use central data logic
                 data.deleteTransaction(transaction)
             } label: {
                 Label("Delete", systemImage: "trash")
@@ -250,20 +353,20 @@ struct TransactionListView: View {
         }
     }
     
-    // MARK: - Load More Section
+    // MARK: - Load Archived Section
     
     @ViewBuilder
-    private var loadMoreSection: some View {
+    private var loadArchivedSection: some View {
         Section {
             Button {
-                loadedMonthsCount += 1
+                showArchivedTransactions = true
             } label: {
                 HStack {
                     Spacer()
                     VStack(spacing: 4) {
-                        Image(systemName: "arrow.down.circle")
+                        Image(systemName: "archivebox")
                             .font(.title3)
-                        Text("Load Previous Month")
+                        Text("Show Archived Transactions")
                             .font(.subheadline)
                     }
                     .foregroundColor(.blue)
@@ -397,8 +500,57 @@ struct TransactionListView: View {
         .presentationDetents([.medium, .large])
     }
     
+    // MARK: - Search Logic
+    
+    /// Checks if a transaction matches the search query
+    private func transactionMatchesSearch(_ transaction: Transaction, query: String) -> Bool {
+        let lowercasedQuery = query.lowercased()
+        
+        // Match against tags
+        let tagNames = transaction.tagIDs.compactMap { tagID in
+            data.tags.first(where: { $0.id == tagID })?.name.lowercased()
+        }
+        if tagNames.contains(where: { $0.contains(lowercasedQuery) }) {
+            return true
+        }
+        
+        // Match against category
+        if let category = data.categories.first(where: { $0.id == transaction.categoryID }) {
+            if category.name.lowercased().contains(lowercasedQuery) {
+                return true
+            }
+        }
+        
+        // Match against account
+        if let account = data.accounts.first(where: { $0.id == transaction.accountID }) {
+            if account.name.lowercased().contains(lowercasedQuery) {
+                return true
+            }
+        }
+        
+        // Match against amount (as string)
+        let amountString = String(format: "%.2f", transaction.amount)
+        if amountString.contains(lowercasedQuery) {
+            return true
+        }
+        
+        // Match against whole number amount
+        let wholeAmount = String(Int(transaction.amount))
+        if wholeAmount == lowercasedQuery || amountString.hasPrefix(lowercasedQuery) {
+            return true
+        }
+        
+        return false
+    }
+    
     // MARK: - Temporal Grouping Logic
     
+    /// Archive cutoff: 3 months ago
+    private var archiveCutoffDate: Date {
+        Calendar.current.date(byAdding: .month, value: -3, to: Date()) ?? Date.distantPast
+    }
+    
+    /// All transactions that pass the archive filter (but not search filter)
     private var visibleTransactions: [Transaction] {
         let cutoffDate = archiveCutoffDate
         
@@ -411,12 +563,24 @@ struct TransactionListView: View {
         }
     }
     
-    private var archiveCutoffDate: Date {
-        Calendar.current.date(byAdding: .month, value: -archiveOlderThanMonths, to: Date()) ?? Date.distantPast
+    /// Transactions filtered by both archive AND search
+    private var filteredTransactions: [Transaction] {
+        let base = visibleTransactions
+        
+        guard isSearchActive && !searchText.isEmpty else {
+            return base
+        }
+        
+        return base.filter { transactionMatchesSearch($0, query: searchText) }
+    }
+    
+    private var hasArchivedTransactions: Bool {
+        data.transactions.contains { $0.date < archiveCutoffDate }
     }
     
     private var visibleTimeGroups: [TimeGroup] {
-        let sorted = visibleTransactions.sorted { $0.date > $1.date }
+        // Use filtered transactions (includes search filtering)
+        let sorted = filteredTransactions.sorted { $0.date > $1.date }
         
         var groups: [TimeGroup] = []
         let calendar = Calendar.current
@@ -425,36 +589,56 @@ struct TransactionListView: View {
         // Define time boundaries
         let startOfToday = calendar.startOfDay(for: now)
         let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday)!
-        let startOfLastWeek = calendar.date(byAdding: .day, value: -7, to: startOfToday)!
-        let startOfLastMonth = calendar.date(byAdding: .month, value: -1, to: startOfToday)!
-        let paginationCutoff = calendar.date(byAdding: .month, value: -loadedMonthsCount, to: startOfToday)!
+        let startOfThisWeek = calendar.date(byAdding: .day, value: -7, to: startOfToday)!
+        let startOfThisMonth = calendar.dateInterval(of: .month, for: now)?.start ?? startOfToday
+        
+        // Last month boundaries
+        let lastMonthDate = calendar.date(byAdding: .month, value: -1, to: now)!
+        let startOfLastMonth = calendar.dateInterval(of: .month, for: lastMonthDate)?.start ?? lastMonthDate
+        let endOfLastMonth = calendar.dateInterval(of: .month, for: lastMonthDate)?.end ?? lastMonthDate
+        
+        // Two months ago boundaries
+        let twoMonthsAgoDate = calendar.date(byAdding: .month, value: -2, to: now)!
+        let startOfTwoMonthsAgo = calendar.dateInterval(of: .month, for: twoMonthsAgoDate)?.start ?? twoMonthsAgoDate
+        let endOfTwoMonthsAgo = calendar.dateInterval(of: .month, for: twoMonthsAgoDate)?.end ?? twoMonthsAgoDate
         
         // Group transactions by time period
         var futureTransactions: [Transaction] = []
         var todayTransactions: [Transaction] = []
         var yesterdayTransactions: [Transaction] = []
-        var lastWeekTransactions: [Transaction] = []
+        var thisWeekTransactions: [Transaction] = []  // 2 days ago to 7 days ago
+        var thisMonthTransactions: [Transaction] = [] // After this week, within this month
         var lastMonthTransactions: [Transaction] = []
+        var twoMonthsAgoTransactions: [Transaction] = []
         var archivedTransactions: [Transaction] = []
-        var olderTransactionsByMonth: [Date: [Transaction]] = [:]
         
         for transaction in sorted {
-            if transaction.date > now {
+            let txDate = transaction.date
+            
+            if txDate > now {
+                // Future
                 futureTransactions.append(transaction)
-            } else if transaction.date >= startOfToday {
+            } else if txDate >= startOfToday {
+                // Today
                 todayTransactions.append(transaction)
-            } else if transaction.date >= startOfYesterday {
+            } else if txDate >= startOfYesterday {
+                // Yesterday
                 yesterdayTransactions.append(transaction)
-            } else if transaction.date >= startOfLastWeek {
-                lastWeekTransactions.append(transaction)
-            } else if transaction.date >= startOfLastMonth {
+            } else if txDate >= startOfThisWeek {
+                // This Week (2 days ago to 7 days ago)
+                thisWeekTransactions.append(transaction)
+            } else if txDate >= startOfThisMonth {
+                // This Month (after this week but still in current month)
+                thisMonthTransactions.append(transaction)
+            } else if txDate >= startOfLastMonth && txDate < endOfLastMonth {
+                // Last Month
                 lastMonthTransactions.append(transaction)
-            } else if transaction.date < archiveCutoffDate {
+            } else if txDate >= startOfTwoMonthsAgo && txDate < endOfTwoMonthsAgo {
+                // Two Months Ago
+                twoMonthsAgoTransactions.append(transaction)
+            } else {
+                // Archived (3+ months old)
                 archivedTransactions.append(transaction)
-            } else if transaction.date >= paginationCutoff {
-                // Group by month for pagination
-                let monthStart = calendar.dateInterval(of: .month, for: transaction.date)?.start ?? transaction.date
-                olderTransactionsByMonth[monthStart, default: []].append(transaction)
             }
         }
         
@@ -468,19 +652,17 @@ struct TransactionListView: View {
         if !yesterdayTransactions.isEmpty {
             groups.append(TimeGroup(period: .yesterday, transactions: yesterdayTransactions))
         }
-        if !lastWeekTransactions.isEmpty {
-            groups.append(TimeGroup(period: .lastWeek, transactions: lastWeekTransactions))
+        if !thisWeekTransactions.isEmpty {
+            groups.append(TimeGroup(period: .thisWeek, transactions: thisWeekTransactions))
+        }
+        if !thisMonthTransactions.isEmpty {
+            groups.append(TimeGroup(period: .thisMonth, transactions: thisMonthTransactions))
         }
         if !lastMonthTransactions.isEmpty {
-            groups.append(TimeGroup(period: .lastMonth, transactions: lastMonthTransactions))
+            groups.append(TimeGroup(period: .lastMonth(lastMonthDate), transactions: lastMonthTransactions))
         }
-        
-        // Add monthly groups in reverse chronological order
-        let sortedMonths = olderTransactionsByMonth.keys.sorted(by: >)
-        for month in sortedMonths {
-            if let transactions = olderTransactionsByMonth[month] {
-                groups.append(TimeGroup(period: .month(month), transactions: transactions))
-            }
+        if !twoMonthsAgoTransactions.isEmpty {
+            groups.append(TimeGroup(period: .twoMonthsAgo(twoMonthsAgoDate), transactions: twoMonthsAgoTransactions))
         }
         
         // Add archived group if showing archived
@@ -489,15 +671,6 @@ struct TransactionListView: View {
         }
         
         return groups
-    }
-    
-    private var hasMoreToLoad: Bool {
-        let paginationCutoff = Calendar.current.date(byAdding: .month, value: -loadedMonthsCount, to: Date())!
-        let archiveCutoff = archiveCutoffDate
-        
-        return data.transactions.contains { transaction in
-            transaction.date < paginationCutoff && transaction.date >= archiveCutoff
-        }
     }
     
     // MARK: - Actions
@@ -517,7 +690,7 @@ struct TransactionListView: View {
 
     private func deleteSelectedTransactions() {
         withAnimation {
-            // UPDATED: Include linked transactions in selection
+            // Include linked transactions in selection
             var idsToDelete = selection
             
             for id in selection {
@@ -575,12 +748,16 @@ extension TransactionListView {
         case future
         case today
         case yesterday
-        case lastWeek
-        case lastMonth
-        case month(Date)
-        case archived
+        case thisWeek           // 2 days ago through 7 days ago
+        case thisMonth          // Earlier this month (after this week)
+        case lastMonth(Date)    // Previous calendar month
+        case twoMonthsAgo(Date) // Two calendar months ago
+        case archived           // 3+ months old
         
         var displayName: String {
+            let monthFormatter = DateFormatter()
+            monthFormatter.dateFormat = "MMMM"
+            
             switch self {
             case .future:
                 return "Upcoming"
@@ -588,14 +765,14 @@ extension TransactionListView {
                 return "Today"
             case .yesterday:
                 return "Yesterday"
-            case .lastWeek:
-                return "Last 7 Days"
-            case .lastMonth:
-                return "Last 30 Days"
-            case .month(let date):
-                let formatter = DateFormatter()
-                formatter.dateFormat = "MMMM yyyy"
-                return formatter.string(from: date)
+            case .thisWeek:
+                return "This Week"
+            case .thisMonth:
+                return "This Month"
+            case .lastMonth(let date):
+                return monthFormatter.string(from: date)
+            case .twoMonthsAgo(let date):
+                return monthFormatter.string(from: date)
             case .archived:
                 return "Archived"
             }
@@ -603,7 +780,7 @@ extension TransactionListView {
         
         var autoExpand: Bool {
             switch self {
-            case .future, .today, .yesterday:
+            case .future, .today, .yesterday, .thisWeek:
                 return true
             default:
                 return false
@@ -620,6 +797,23 @@ extension TransactionListView {
             period.displayName
         }
         
+        /// Net flow: inflows - outflows (transfers excluded)
+        var netFlow: Double {
+            var total: Double = 0
+            for tx in transactions {
+                switch tx.type {
+                case .inflow:
+                    total += tx.amount
+                case .outflow:
+                    total -= tx.amount
+                case .transfer:
+                    // Transfers are net-zero, skip
+                    break
+                }
+            }
+            return total
+        }
+        
         init(period: TimePeriod, transactions: [Transaction]) {
             self.period = period
             self.transactions = transactions
@@ -632,14 +826,18 @@ extension TransactionListView {
                 self.id = TimeGroupID(value: "today")
             case .yesterday:
                 self.id = TimeGroupID(value: "yesterday")
-            case .lastWeek:
-                self.id = TimeGroupID(value: "lastWeek")
-            case .lastMonth:
-                self.id = TimeGroupID(value: "lastMonth")
-            case .month(let date):
+            case .thisWeek:
+                self.id = TimeGroupID(value: "thisWeek")
+            case .thisMonth:
+                self.id = TimeGroupID(value: "thisMonth")
+            case .lastMonth(let date):
                 let formatter = DateFormatter()
                 formatter.dateFormat = "yyyy-MM"
-                self.id = TimeGroupID(value: "month-\(formatter.string(from: date))")
+                self.id = TimeGroupID(value: "lastMonth-\(formatter.string(from: date))")
+            case .twoMonthsAgo(let date):
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM"
+                self.id = TimeGroupID(value: "twoMonthsAgo-\(formatter.string(from: date))")
             case .archived:
                 self.id = TimeGroupID(value: "archived")
             }

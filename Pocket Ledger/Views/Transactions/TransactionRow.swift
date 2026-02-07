@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Enhanced transaction row with category emoji and account type icon
+/// Transaction row displaying: emoji | category + tags | amount
 struct TransactionRow: View {
     @EnvironmentObject var data: AppData
     @AppStorage("currencySymbol") private var currencySymbol: String = "$"
@@ -16,28 +16,34 @@ struct TransactionRow: View {
                 .clipShape(Circle())
             
             VStack(alignment: .leading, spacing: 4) {
-                // Primary: Category Name
-                Text(categoryName)
-                    .font(.body)
-                    .foregroundColor(.primary)
+                // Primary: Tags (or account name if no tags)
+                if !transaction.tagIDs.isEmpty {
+                    Text(tagsDisplayString)
+                        .font(.body)
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                } else if let accName = accountName {
+                    Text(accName)
+                        .font(.body)
+                        .foregroundColor(.primary)
+                } else {
+                    Text(categoryName)
+                        .font(.body)
+                        .foregroundColor(.primary)
+                }
                 
-                // Secondary: Account Type Icon + Account Name
+                // Secondary: Account Type Icon + Account Name + Link Indicator
                 HStack(spacing: 4) {
-                    // VISUAL: Account Type Icon (compact)
                     if let account = account {
                         AccountTypeIcon(type: account.accountType, size: 14)
-                    }
-                    
-                    if let accName = accountName {
-                        Text(accName)
+                        Text(account.name)
                     }
                     
                     if transaction.linkedTransactionID != nil {
                         Image(systemName: "link")
                             .font(.caption2)
-                            .foregroundColor(.secondary)
                     }
-                    
                 }
                 .font(.caption)
                 .foregroundColor(.secondary)
@@ -45,17 +51,15 @@ struct TransactionRow: View {
             
             Spacer()
             
-            VStack(alignment: .trailing, spacing: 2) {
-                // Amount with Sign
-                HStack(spacing: 2) {
-                    Text(transaction.type == .inflow ? "+" : "-")
-                        .foregroundColor(amountColor)
-                    
-                    Text(transaction.amount.formattedCurrency(symbol: currencySymbol))
-                        .monospacedDigit()
-                        .foregroundColor(amountColor)
-                }
+            // Amount with Sign (monospaced for alignment)
+            HStack(spacing: 2) {
+                Text(transaction.type == .inflow ? "+" : "-")
+                    .foregroundColor(amountColor)
+                
+                Text(transaction.amount.formattedCurrency(symbol: currencySymbol))
+                    .foregroundColor(amountColor)
             }
+            .font(.body.monospacedDigit())
         }
         .padding(.vertical, 4)
     }
@@ -75,11 +79,19 @@ struct TransactionRow: View {
     }
     
     private var categoryEmoji: String {
-        category?.emoji ?? "❓"
+        category?.emoji ?? "📝"
     }
     
     private var accountName: String? {
         account?.name
+    }
+    
+    /// Builds a comma-separated string of tag names
+    private var tagsDisplayString: String {
+        let tagNames = transaction.tagIDs.compactMap { tagID in
+            data.tags.first(where: { $0.id == tagID })?.name
+        }
+        return tagNames.joined(separator: ", ")
     }
     
     // Logic to distinguish Transfers visually

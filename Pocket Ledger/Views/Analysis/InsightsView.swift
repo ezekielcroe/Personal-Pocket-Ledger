@@ -14,7 +14,7 @@ struct InsightsView: View {
     @State private var timeRange: TimeRange = .thisMonth
     @State private var breakdownMode: BreakdownMode = .category
     
-    // NEW: Toggle for Income vs Expense Breakdown
+    // Toggle for Income vs Expense Breakdown
     @State private var breakdownType: TransactionType = .outflow
     
     // Anchor Date (defaults to today)
@@ -86,7 +86,7 @@ struct InsightsView: View {
                                         Text("Income").tag(TransactionType.inflow)
                                     }
                                     .pickerStyle(.segmented)
-                                    .fixedSize() // Keeps it compact
+                                    .fixedSize()
                                     
                                     Spacer()
                                     
@@ -186,14 +186,11 @@ struct InsightsView: View {
     @ViewBuilder
     private func rowDestination(for item: AnalyticsItem) -> some View {
         let currentInterval = timeRange.dateInterval(relativeTo: selectedAnchorDate, fiscalStartDay: fiscalStartDay)
-        
-        // Calculate total for percentage bars (based on currently selected type)
         let totalForType = calculateStats(for: timeRange, offset: 0).totalForBreakdown
         
         switch breakdownMode {
         case .category:
             if let category = data.categories.first(where: { $0.id == item.id }) {
-                // FIXED: Passing full date interval
                 NavigationLink(destination: CategoryDetailView(category: category, dateFilter: currentInterval)) {
                     CategoryBarRow(item: item, total: totalForType, currencySymbol: currencySymbol)
                 }
@@ -282,55 +279,105 @@ struct InsightsView: View {
         var expense: Double
         var net: Double { income - expense }
         var breakdownItems: [AnalyticsItem]
-        // Helper to pass the total of the current list to the UI for bar sizing
         var totalForBreakdown: Double
     }
     
     struct AnalyticsItem: Identifiable {
         let id: UUID
         let name: String
-        let icon: String // Emoji or SF Symbol name
+        let icon: String
         let amount: Double
-        let color: Color? // Optional override
+        let color: Color?
     }
     
     private func calculateStats(for range: TimeRange, offset: Int) -> AnalyticsStats {
         let dateInterval = range.dateInterval(relativeTo: selectedAnchorDate, fiscalStartDay: fiscalStartDay, offset: offset)
         
-        // 1. Identify "Transfer" categories to exclude from Income/Expense
+        // 1. Build lookup sets for smart transfer handling
         let transferCategoryIDs = Set(data.categories.filter { $0.name == "Transfer" }.map { $0.id })
         
-        // 2. Filter Transactions
+        // Only pure DEBT accounts trigger the "transfer = expense" logic
+        // Budget accounts (credit cards) record spending as outflows, so their payments are just internal transfers
+        let pureDebtAccountIDs = Set(data.accounts.filter { $0.accountType == .debt }.map { $0.id })
+        
+        // 2. Filter Transactions (basic filters)
         let filtered = data.transactions.filter { tx in
-            // Time Filter
             if !dateInterval.contains(tx.date) { return false }
-            
-            // Standard Filters
             if excludeOutliers && tx.isOutlier { return false }
             if excludedAccountIDs.contains(tx.accountID) { return false }
             if excludedCategoryIDs.contains(tx.categoryID) { return false }
             if !tx.tagIDs.isEmpty && !Set(tx.tagIDs).isDisjoint(with: excludedTagIDs) { return false }
-            
-            // Amount Filter
             if let min = minimumAmount, tx.amount < min { return false }
             if let max = maximumAmount, tx.amount > max { return false }
-            
             return true
         }
         
-        // 3. Calculate Global Totals (Always excludes transfers)
-        let income = filtered
-            .filter { $0.type == .inflow && !transferCategoryIDs.contains($0.categoryID) }
-            .reduce(0) { $0 + $1.amount }
+        // 3. Calculate Global Totals with SMART TRANSFER HANDLING
+        //
+        // Account Type Logic:
+        // - Debit/Goal: Normal accounts (checking, savings)
+        // - Budget: Credit cards - spending recorded as outflows, payments are internal transfers
+        // - Debt: Mortgages/loans - can't spend FROM them, transfers TO them ARE expenses
+        //
+        // Transfer Rules:
+        // - Transfer TO a pure Debt account: counts as EXPENSE (paying mortgage/loan)
+        // - All other transfers: excluded (internal movement or paying credit card balance)
         
-        let expense = filtered
-            .filter { $0.type == .outflow && !transferCategoryIDs.contains($0.categoryID) }
-            .reduce(0) { $0 + $1.amount }
+        var income: Double = 0
+        var expense: Double = 0
         
-        // 4. Generate Breakdown (Controlled by Income/Expense Toggle)
-        // Select which transactions to visualize in the list
-        let breakdownTransactions = filtered.filter {
-            $0.type == breakdownType && !transferCategoryIDs.contains($0.categoryID)
+        for tx in filtered {
+            let isTransferCategory = transferCategoryIDs.contains(tx.categoryID)
+            
+            if isTransferCategory {
+                // Smart transfer logic - only transfers TO pure Debt accounts count as expense
+                // We look at the INFLOW side of the transfer to see where money went
+                if tx.type == .inflow && pureDebtAccountIDs.contains(tx.accountID) {
+                    // Money flowing INTO a Debt account (mortgage payment, loan payment)
+                    if let linkedID = tx.linkedTransactionID,
+                       let linkedTx = data.transactions.first(where: { $0.id == linkedID }) {
+                        if !pureDebtAccountIDs.contains(linkedTx.accountID) {
+                            // Money came FROM non-debt TO debt = expense (loan payment)
+                            expense += tx.amount
+                        }
+                    }
+                }
+                // All other transfer scenarios: exclude from income/expense totals
+            } else {
+                // Regular transaction (not a transfer)
+                if tx.type == .inflow {
+                    income += tx.amount
+                } else if tx.type == .outflow {
+                    expense += tx.amount
+                }
+            }
+        }
+        
+        // 4. Generate Breakdown
+        var breakdownTransactions: [Transaction] = []
+        
+        for tx in filtered {
+            let isTransferCategory = transferCategoryIDs.contains(tx.categoryID)
+            
+            if breakdownType == .outflow {
+                // Include: regular outflows + transfers TO pure Debt accounts
+                if tx.type == .outflow && !isTransferCategory {
+                    breakdownTransactions.append(tx)
+                } else if isTransferCategory && tx.type == .inflow && pureDebtAccountIDs.contains(tx.accountID) {
+                    // Payment TO a Debt account
+                    if let linkedID = tx.linkedTransactionID,
+                       let linkedTx = data.transactions.first(where: { $0.id == linkedID }) {
+                        if !pureDebtAccountIDs.contains(linkedTx.accountID) {
+                            breakdownTransactions.append(tx)
+                        }
+                    }
+                }
+            } else {
+                // Income: regular inflows only
+                if tx.type == .inflow && !isTransferCategory {
+                    breakdownTransactions.append(tx)
+                }
+            }
         }
         
         let breakdownTotal = breakdownTransactions.reduce(0) { $0 + $1.amount }
@@ -358,7 +405,6 @@ struct InsightsView: View {
             var dict: [UUID: Double] = [:]
             var ungroupedAmount: Double = 0
             
-            // Pre-calculate map of AccountID -> TopLevelGroupID
             var accountToGroupMap: [UUID: UUID] = [:]
             let topLevelGroups = data.accountGroups.filter { data.depth(of: $0) == 0 }
             
@@ -427,15 +473,12 @@ enum TimeRange: String, CaseIterable {
     case lastYear = "Last Year"
     case allTime = "All Time"
     
-    /// Calculates the date interval based on a fiscal start day.
     func dateInterval(relativeTo anchor: Date, fiscalStartDay: Int, offset: Int = 0) -> DateInterval {
         let calendar = Calendar.current
         
-        // 1. Determine "Fiscal Month Start" for the anchor date
         var components = calendar.dateComponents([.year, .month], from: anchor)
         components.day = fiscalStartDay
         
-        // If today is Jan 10, but fiscal starts Jan 15, we are in the 'December' fiscal month.
         var fiscalMonthStart = calendar.date(from: components)!
         if anchor < fiscalMonthStart {
             fiscalMonthStart = calendar.date(byAdding: .month, value: -1, to: fiscalMonthStart)!
@@ -454,34 +497,22 @@ enum TimeRange: String, CaseIterable {
             
         case .last3Months:
             let duration = 3
-            // End of current fiscal month (exclusive)
             let currentMonthEnd = calendar.date(byAdding: .month, value: 1, to: fiscalMonthStart)!
-            // Shift back by offset (if any)
             let windowEnd = calendar.date(byAdding: .month, value: offset * duration, to: currentMonthEnd)!
             let windowStart = calendar.date(byAdding: .month, value: -duration, to: windowEnd)!
             return DateInterval(start: windowStart, end: windowEnd)
             
         case .ytd:
-            // Calculate Start of Fiscal Year (Jan {fiscalStartDay})
             var yearStartComps = calendar.dateComponents([.year], from: fiscalMonthStart)
             yearStartComps.month = 1
             yearStartComps.day = fiscalStartDay
             let fiscalYearStart = calendar.date(from: yearStartComps)!
             
-            // Adjust for offset (e.g., Previous YTD)
             let start = calendar.date(byAdding: .year, value: offset, to: fiscalYearStart)!
-            
-            let end: Date
-            if offset == 0 {
-                end = anchor // Up to today
-            } else {
-                end = calendar.date(byAdding: .year, value: offset, to: anchor)!
-            }
+            let end: Date = offset == 0 ? anchor : calendar.date(byAdding: .year, value: offset, to: anchor)!
             return DateInterval(start: start, end: end)
             
         case .lastYear:
-            // Full Previous Fiscal Year
-            // Start: Jan {fiscalStartDay} of (Year - 1 + offset)
             var yearStartComps = calendar.dateComponents([.year], from: fiscalMonthStart)
             yearStartComps.year! -= 1
             yearStartComps.year! += offset
@@ -533,7 +564,6 @@ struct TrendHeaderCard: View {
     
     var body: some View {
         VStack(spacing: 16) {
-            // Net Flow Main Stat
             VStack(spacing: 4) {
                 Text("Net Cash Flow")
                     .font(.caption)
@@ -545,7 +575,6 @@ struct TrendHeaderCard: View {
                     .font(.system(size: 34, weight: .bold, design: .rounded))
                     .foregroundColor(net >= 0 ? .primary : .red)
                 
-                // Comparison Logic
                 if previous.net != 0 {
                     let diff = net - previous.net
                     let icon = diff >= 0 ? "arrow.up" : "arrow.down"
@@ -566,25 +595,10 @@ struct TrendHeaderCard: View {
             
             Divider()
             
-            // Income vs Expense Row
             HStack {
-                StatColumn(
-                    title: "Income",
-                    amount: current.income,
-                    prevAmount: previous.income,
-                    color: .green,
-                    symbol: currencySymbol
-                )
-                
+                StatColumn(title: "Income", amount: current.income, prevAmount: previous.income, color: .green, symbol: currencySymbol)
                 Divider()
-                
-                StatColumn(
-                    title: "Expenses",
-                    amount: current.expense,
-                    prevAmount: previous.expense,
-                    color: .red,
-                    symbol: currencySymbol
-                )
+                StatColumn(title: "Expenses", amount: current.expense, prevAmount: previous.expense, color: .red, symbol: currencySymbol)
             }
         }
         .padding()
@@ -613,11 +627,9 @@ struct StatColumn: View {
                 .font(.headline)
                 .foregroundColor(color)
             
-            // Percentage Change
             if prevAmount > 0 {
                 let pct = ((amount - prevAmount) / prevAmount) * 100
                 let isUp = pct > 0
-                // For Expense: Up is Red (Bad). For Income: Up is Green (Good).
                 let indicatorColor: Color = (title == "Expenses" ? (isUp ? .red : .green) : (isUp ? .green : .red))
                 
                 HStack(spacing: 2) {
@@ -644,10 +656,9 @@ struct CategoryBarRow: View {
     var body: some View {
         VStack(spacing: 6) {
             HStack {
-                // Icon / Emoji
-                if item.icon.count == 1 { // Emoji
+                if item.icon.count == 1 {
                     Text(item.icon)
-                } else { // SF Symbol
+                } else {
                     Image(systemName: item.icon)
                         .foregroundColor(item.color ?? .primary)
                 }
@@ -710,7 +721,6 @@ struct PresetPickerSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                // Section 1: Default "All Data" View
                 Section {
                     Button {
                         onReset()
@@ -730,7 +740,6 @@ struct PresetPickerSheet: View {
                     }
                 }
                 
-                // Section 2: User Saved Views
                 if !data.insightPresets.isEmpty {
                     Section(header: Text("Saved Views")) {
                         ForEach(data.insightPresets) { preset in
@@ -751,9 +760,7 @@ struct PresetPickerSheet: View {
                                 }
                             }
                             .swipeActions(edge: .leading) {
-                                Button {
-                                    presetToEdit = preset
-                                } label: {
+                                Button { presetToEdit = preset } label: {
                                     Label("Edit", systemImage: "pencil")
                                 }
                                 .tint(.blue)
@@ -761,9 +768,7 @@ struct PresetPickerSheet: View {
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
                                     data.deletePreset(preset)
-                                    if selectedPresetID == preset.id {
-                                        onReset()
-                                    }
+                                    if selectedPresetID == preset.id { onReset() }
                                 } label: {
                                     Label("Delete", systemImage: "trash")
                                 }
@@ -782,9 +787,7 @@ struct PresetPickerSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        dismiss()
-                    }
+                    Button("Done") { dismiss() }
                 }
             }
             .sheet(item: $presetToEdit) { preset in
@@ -818,11 +821,7 @@ struct EditPresetSheet: View {
                     TextField("View Name", text: $presetName)
                         .focused($isNameFieldFocused)
                         .submitLabel(.done)
-                        .onSubmit {
-                            if canSave {
-                                saveChanges()
-                            }
-                        }
+                        .onSubmit { if canSave { saveChanges() } }
                 }
                 
                 Section(header: Text("Filter Summary"), footer: Text("To change filters, apply the view and modify filters from the main screen.")) {
@@ -868,21 +867,15 @@ struct EditPresetSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
+                    Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        saveChanges()
-                    }
-                    .disabled(!canSave)
-                    .fontWeight(.semibold)
+                    Button("Save") { saveChanges() }
+                        .disabled(!canSave)
+                        .fontWeight(.semibold)
                 }
             }
-            .onAppear {
-                isNameFieldFocused = true
-            }
+            .onAppear { isNameFieldFocused = true }
         }
         .presentationDetents([.medium])
     }
