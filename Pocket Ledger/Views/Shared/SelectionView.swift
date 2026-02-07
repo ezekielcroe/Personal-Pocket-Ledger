@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - Single Selection View (Enhanced)
+// MARK: - Single Selection View
 
 /// A generic searchable list for single selection (Accounts/Categories) with visual enhancements
 struct SelectionView<T: Identifiable>: View where T: Hashable {

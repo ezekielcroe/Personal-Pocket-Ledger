@@ -156,14 +156,35 @@ struct CurrencyField: View {
 // MARK: - Keyboard Helpers
 
 extension View {
-    /// Adds a "Done" button to the keyboard toolbar.
-    func decimalPadToolbar() -> some View {
+    /// Adds a toolbar with Math operators (+ - * /) and a Done button.
+    /// - Parameter text: The binding to the specific text field string to append to.
+    func mathPadToolbar(for text: Binding<String>) -> some View {
         toolbar {
             ToolbarItemGroup(placement: .keyboard) {
+                // Math Operators Group
+                HStack(spacing: 15) {
+                    Button { text.wrappedValue.append("+") } label: {
+                        Image(systemName: "plus")
+                    }
+                    Button { text.wrappedValue.append("-") } label: {
+                        Image(systemName: "minus")
+                    }
+                    Button { text.wrappedValue.append("*") } label: {
+                        Image(systemName: "multiply")
+                    }
+                    Button { text.wrappedValue.append("/") } label: {
+                        Image(systemName: "divide")
+                    }
+                }
+                .font(.body.weight(.bold))
+                
                 Spacer()
+                
+                // Done Button
                 Button("Done") {
                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                 }
+                .fontWeight(.bold)
             }
         }
     }

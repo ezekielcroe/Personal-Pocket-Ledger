@@ -265,15 +265,216 @@ struct ContentView: View {
 
 
 ==================================================
+FILE: Pocket Ledger/ViewModels/AppData+Persistence.swift
+==================================================
+
+import Foundation
+import Combine
+@preconcurrency import UserNotifications
+
+extension AppData {
+    
+    // MARK: - File Paths
+    var documentsDirectory: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    }
+    
+    var indexURL: URL {
+        documentsDirectory.appendingPathComponent("book_index.json")
+    }
+    
+    func dataURL(for book: BookMetadata) -> URL {
+        documentsDirectory.appendingPathComponent(book.fileName)
+    }
+    
+    // MARK: - Index Operations
+
+    func saveIndex() {
+        let index = BookIndex(books: availableBooks, lastActiveBookID: activeBook?.id)
+        
+        Task {
+            do {
+                // 1. Encode on Main Actor
+                let data = try JSONEncoder().encode(index)
+                // 2. Write on Background Actor
+                try await storage.write(data, to: indexURL)
+            } catch {
+                print("Failed to save book index: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func loadIndex() async {
+        do {
+            guard let data = try await storage.read(from: indexURL) else {
+                await createDefaultBook()
+                return
+            }
+            let index = try JSONDecoder().decode(BookIndex.self, from: data)
+            self.availableBooks = index.books
+            
+            if let lastID = index.lastActiveBookID,
+               let match = index.books.first(where: { $0.id == lastID }) {
+                await loadBook(match)
+            } else if let firstBook = index.books.first {
+                await loadBook(firstBook)
+            } else {
+                await createDefaultBook()
+            }
+        } catch {
+            await createDefaultBook()
+        }
+    }
+
+    func createDefaultBook() async {
+        let defaultBook = BookMetadata(name: "My Ledger")
+        self.availableBooks = [defaultBook]
+        saveIndex()
+        await loadBook(defaultBook)
+    }
+
+    // MARK: - Book Loading & Saving
+
+    func loadBook(_ book: BookMetadata) async {
+        self.activeBook = book
+        let url = dataURL(for: book)
+        
+        if let index = availableBooks.firstIndex(where: { $0.id == book.id }) {
+            availableBooks[index].lastOpened = Date()
+            saveIndex()
+        }
+        
+        do {
+            guard let data = try await storage.read(from: url) else {
+                resetToEmpty()
+                await initializeDefaultsIfNeeded()
+                return
+            }
+            let decoded = try JSONDecoder().decode(SavedData.self, from: data)
+            
+            self.accounts = decoded.accounts
+            self.accountGroups = decoded.accountGroups ?? []
+            self.categories = decoded.categories
+            self.tags = decoded.tags
+            self.transactions = decoded.transactions
+            self.templates = decoded.templates ?? []
+            self.insightPresets = decoded.insightPresets ?? []
+            self.reminderTime = decoded.reminderTime ?? DateComponents(hour: 21, minute: 0)
+            updateReminders()
+            
+        } catch {
+            print("Error decoding book data: \(error.localizedDescription)")
+            resetToEmpty()
+            await initializeDefaultsIfNeeded()
+        }
+    }
+
+    func save() {
+        guard let currentBook = activeBook else { return }
+        let url = dataURL(for: currentBook)
+        
+        let snapshot = SavedData(
+            accounts: accounts,
+            accountGroups: accountGroups,
+            categories: categories,
+            tags: tags,
+            transactions: transactions,
+            templates: templates,
+            reminderTime: reminderTime,
+            insightPresets: insightPresets
+        )
+        
+        Task {
+            do {
+                let data = try JSONEncoder().encode(snapshot)
+                try await storage.write(data, to: url)
+            } catch {
+                print("Error saving data: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    // MARK: - Data Management
+
+    func resetAllData() {
+        resetToEmpty()
+        save()
+        Task { await initializeDefaultsIfNeeded() }
+    }
+    
+    func resetToEmpty() {
+        accounts = []
+        accountGroups = []
+        categories = []
+        tags = []
+        transactions = []
+        templates = []
+        insightPresets = []
+        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+    }
+    
+    func restoreFromBackup(url: URL) throws {
+        Task {
+            do {
+                let data = try await storage.readSecureData(from: url)
+                let decoded = try JSONDecoder().decode(SavedData.self, from: data)
+                
+                self.accounts = decoded.accounts
+                self.accountGroups = decoded.accountGroups ?? []
+                self.categories = decoded.categories
+                self.tags = decoded.tags
+                self.transactions = decoded.transactions
+                self.templates = decoded.templates ?? []
+                self.insightPresets = decoded.insightPresets ?? []
+                self.reminderTime = decoded.reminderTime ?? DateComponents(hour: 21, minute: 0)
+                
+                self.save()
+                self.updateReminders()
+            } catch {
+                print("Restore failed: \(error)")
+            }
+        }
+    }
+    
+    @MainActor
+    func initializeDefaultsIfNeeded() async {
+        if accounts.isEmpty {
+            addAccount(name: "Cash", initialAmount: 0.0)
+            addAccount(name: "Bank", initialAmount: 0.0)
+        }
+        
+        if categories.isEmpty {
+            addCategory(name: "Food", type: .outflow, emoji: "🍽")
+            addCategory(name: "Housing", type: .outflow, emoji: "🏠")
+            addCategory(name: "Transportation", type: .outflow, emoji: "🚗")
+            addCategory(name: "Utilities", type: .outflow, emoji: "💡")
+            addCategory(name: "Entertainment", type: .outflow, emoji: "🎮")
+            addCategory(name: "Shopping", type: .outflow, emoji: "🛍")
+            addCategory(name: "Health", type: .outflow, emoji: "💊")
+            addCategory(name: "Gifts", type: .outflow, emoji: "🎁")
+            addCategory(name: "Other", type: .outflow, emoji: "📦")
+            addCategory(name: "Salary", type: .inflow, emoji: "💼")
+            addCategory(name: "Bonus", type: .inflow, emoji: "💰")
+            addCategory(name: "Other Income", type: .inflow, emoji: "📥")
+        }
+        
+        if tags.isEmpty {
+            addTag(name: "Mandatory")
+            addTag(name: "Discretionary")
+        }
+    }
+}
+
+
+==================================================
 FILE: Pocket Ledger/ViewModels/AppData.swift
 ==================================================
 
 import Foundation
 import Combine
-import UserNotifications
+@preconcurrency import UserNotifications
 
 // MARK: - Data Models
-
 struct AccountStats {
     var totalInflow: Double
     var totalOutflow: Double
@@ -288,12 +489,10 @@ struct AccountStats {
 }
 
 // MARK: - AppData Store
-
-/// Central store for all user data in the budgeting app.
 @MainActor
 class AppData: ObservableObject {
     
-    // MARK: - Published Properties (Current Book Data)
+    // MARK: - Published Properties
     @Published var accounts: [Account] = []
     @Published var accountGroups: [AccountGroup] = []
     @Published var categories: [Category] = []
@@ -307,140 +506,386 @@ class AppData: ObservableObject {
     @Published var availableBooks: [BookMetadata] = []
     @Published var activeBook: BookMetadata?
 
-    // MARK: - File Paths
-    
-    private var indexURL: URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("book_index.json")
-    }
-    
-    private func dataURL(for book: BookMetadata) -> URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent(book.fileName)
-    }
+    // MARK: - Services
+    let storage = StorageService()
 
     init() {
         Task {
             await loadIndex()
         }
     }
-    
-    // MARK: - Index Operations
-    
-    private func saveIndex() {
-        let index = BookIndex(books: availableBooks, lastActiveBookID: activeBook?.id)
-        
-        Task.detached(priority: .background) {
-            let url = await self.indexURL
-            do {
-                let data = try JSONEncoder().encode(index)
-                try data.write(to: url, options: [.atomic])
-            } catch {
-                print("Failed to save book index: \(error.localizedDescription)")
-            }
-        }
-    }
-    
-    private func loadIndex() async {
-        let url = indexURL
-        
-        let loadedIndex = await Task.detached(priority: .userInitiated) { () -> BookIndex? in
-            guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-            do {
-                let data = try Data(contentsOf: url)
-                return try JSONDecoder().decode(BookIndex.self, from: data)
-            } catch {
-                return nil
-            }
-        }.value
-        
-        if let index = loadedIndex {
-            self.availableBooks = index.books
-            
-            if let lastID = index.lastActiveBookID,
-               let match = index.books.first(where: { $0.id == lastID }) {
-                await loadBook(match)
-            } else if let firstBook = index.books.first {
-                await loadBook(firstBook)
-            } else {
-                await createDefaultBook()
-            }
-        } else {
-            await createDefaultBook()
-        }
-    }
-    
-    private func createDefaultBook() async {
-        let defaultBook = BookMetadata(name: "My Ledger")
-        self.availableBooks = [defaultBook]
-        saveIndex()
-        await loadBook(defaultBook)
-    }
+}
 
-    // MARK: - Book Loading & Saving
 
-    func loadBook(_ book: BookMetadata) async {
-        self.activeBook = book
-        
-        if let index = availableBooks.firstIndex(where: { $0.id == book.id }) {
-            availableBooks[index].lastOpened = Date()
-            saveIndex()
-        }
-        
-        let url = dataURL(for: book)
-        
-        let loadedData = await Task.detached(priority: .userInitiated) { () -> SavedData? in
-            do {
-                guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-                let data = try Data(contentsOf: url)
-                return try JSONDecoder().decode(SavedData.self, from: data)
-            } catch {
-                print("Error decoding book data: \(error.localizedDescription)")
-                return nil
-            }
-        }.value
-        
-        if let decoded = loadedData {
-            self.accounts = decoded.accounts
-            self.accountGroups = decoded.accountGroups ?? []
-            self.categories = decoded.categories
-            self.tags = decoded.tags
-            self.transactions = decoded.transactions
-            self.templates = decoded.templates ?? []
-            self.insightPresets = decoded.insightPresets ?? []
-            self.reminderTime = decoded.reminderTime ?? DateComponents(hour: 21, minute: 0)
-            updateReminders()
-        } else {
-            resetToEmpty()
-            await initializeDefaultsIfNeeded()
-        }
-    }
+==================================================
+FILE: Pocket Ledger/ViewModels/AppData+Notifications.swift
+==================================================
 
-    func save() {
+import Foundation
+@preconcurrency import UserNotifications
+
+extension AppData {
+
+    func updateReminders() {
         guard let currentBook = activeBook else { return }
-        let url = dataURL(for: currentBook)
         
-        let dataToSave = SavedData(
-            accounts: accounts,
-            accountGroups: accountGroups,
-            categories: categories,
-            tags: tags,
-            transactions: transactions,
-            templates: templates,
-            reminderTime: reminderTime,
-            insightPresets: insightPresets
-        )
-        
-        Task.detached(priority: .background) {
-            do {
-                let data = try JSONEncoder().encode(dataToSave)
-                try data.write(to: url, options: [.atomic, .completeFileProtection])
-            } catch {
-                print("Error saving data: \(error.localizedDescription)")
+        Task {
+            let center = UNUserNotificationCenter.current()
+            let requests = await center.pendingNotificationRequests()
+            
+            let currentBookPrefix = currentBook.id.uuidString + "_"
+            
+            let idsToRemove = requests
+                .filter { $0.identifier.hasPrefix(currentBookPrefix) }
+                .map { $0.identifier }
+            
+            center.removePendingNotificationRequests(withIdentifiers: idsToRemove)
+            
+            for template in self.templates {
+                if let schedule = template.reminderSchedule {
+                    self.scheduleNotification(for: template, schedule: schedule)
+                }
             }
         }
     }
+
+    // Changed to 'internal' (default) so other AppData extensions can see it if needed,
+    // though 'private' works if only called from updateReminders.
+    func scheduleNotification(for template: TransactionTemplate, schedule: ReminderSchedule) {
+        guard let currentBook = activeBook else { return }
+        let center = UNUserNotificationCenter.current()
+        
+        let content = UNMutableNotificationContent()
+        content.title = "Record Transaction"
+        content.body = "Time to record: \(template.name)"
+        content.sound = .default
+        
+        content.userInfo = [
+            "bookID": currentBook.id.uuidString,
+            "templateID": template.id.uuidString
+        ]
+        
+        var dateComponents = DateComponents()
+        dateComponents.hour = schedule.time.hour
+        dateComponents.minute = schedule.time.minute
+        
+        switch schedule.frequency {
+        case .daily:
+            break
+        case .weekly:
+            dateComponents.weekday = schedule.dayOfWeek
+        case .monthly:
+            dateComponents.day = schedule.dayOfMonth
+        }
+        
+        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
+        
+        let identifier = "\(currentBook.id.uuidString)_\(template.id.uuidString)"
+        
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+        
+        center.add(request) { error in
+            if let error = error {
+                print("Error scheduling notification: \(error.localizedDescription)")
+            }
+        }
+    }
+}
+
+
+==================================================
+FILE: Pocket Ledger/ViewModels/StorageService.swift
+==================================================
+
+//
+//  StorageService.swift
+//  Pocket Ledger
+//
+//  Created by Zhi Zheng Yeo on 5/2/26.
+//
+
+import Foundation
+
+/// A background actor that handles ONLY raw file I/O.
+/// It knows nothing about AppData models to avoid concurrency conflicts.
+actor StorageService {
     
+    // MARK: - Generic Write
+    func write(_ data: Data, to url: URL) throws {
+        try data.write(to: url, options: [.atomic, .completeFileProtection])
+    }
+    
+    // MARK: - Generic Read
+    func read(from url: URL) throws -> Data? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return try Data(contentsOf: url)
+    }
+    
+    // MARK: - Import Security
+    func readSecureData(from url: URL) throws -> Data {
+        guard url.startAccessingSecurityScopedResource() else {
+            throw NSError(domain: "Permissions", code: 403, userInfo: [NSLocalizedDescriptionKey: "Permission denied"])
+        }
+        defer { url.stopAccessingSecurityScopedResource() }
+        return try Data(contentsOf: url)
+    }
+}
+
+
+==================================================
+FILE: Pocket Ledger/ViewModels/AppData+Logic.swift
+==================================================
+
+//
+//  AppData+Logic.swift
+//  Pocket Ledger
+//
+//  Created by Zhi Zheng Yeo on 5/2/26.
+//
+
+import Foundation
+import Combine
+
+extension AppData {
+    // MARK: - Query Helpers
+
+    func balance(for account: Account) -> Double {
+        let inflow = transactions
+            .filter { $0.accountID == account.id && $0.type == .inflow }
+            .reduce(0) { $0 + $1.amount }
+        let outflow = transactions
+            .filter { $0.accountID == account.id && $0.type == .outflow }
+            .reduce(0) { $0 + $1.amount }
+        
+        if account.isCredit {
+            return account.initialAmount + outflow - inflow
+        } else {
+            return account.initialAmount + inflow - outflow
+        }
+    }
+
+    func transactions(for account: Account) -> [Transaction] {
+        transactions.filter { $0.accountID == account.id }
+    }
+
+    func transactions(for category: Category) -> [Transaction] {
+        transactions.filter { $0.categoryID == category.id }
+    }
+
+    func transactions(for tag: Tag) -> [Transaction] {
+        transactions.filter { $0.tagIDs.contains(tag.id) }
+    }
+
+    func stats(for account: Account) -> AccountStats {
+        let accountTransactions = transactions(for: account)
+        let inflowTransactions = accountTransactions.filter { $0.type == .inflow }
+        let outflowTransactions = accountTransactions.filter { $0.type == .outflow }
+
+        let totalInflow = inflowTransactions.reduce(0) { $0 + $1.amount }
+        let totalOutflow = outflowTransactions.reduce(0) { $0 + $1.amount }
+
+        let dates = accountTransactions.map { $0.date }
+        let start = dates.min() ?? account.created
+        let end = dates.max() ?? account.created
+        
+        let dayComponents = Calendar.current.dateComponents([.day], from: start, to: end)
+        let totalDays = max((dayComponents.day ?? 0) + 1, 1)
+        
+        let weeks = max(Double(totalDays) / 7.0, 1.0)
+        let months = max(Double(totalDays) / 30.0, 1.0)
+        let years = max(Double(totalDays) / 365.0, 1.0)
+
+        return AccountStats(
+            totalInflow: totalInflow,
+            totalOutflow: totalOutflow,
+            dailyInflow: totalInflow / Double(totalDays),
+            weeklyInflow: totalInflow / weeks,
+            monthlyInflow: totalInflow / months,
+            yearlyInflow: totalInflow / years,
+            dailyOutflow: totalOutflow / Double(totalDays),
+            weeklyOutflow: totalOutflow / weeks,
+            monthlyOutflow: totalOutflow / months,
+            yearlyOutflow: totalOutflow / years
+        )
+    }
+    
+    // MARK: - Account Group Operations (Fixed Double-Counting)
+    /// Calculates balance for a group by summing unique member accounts.
+    /// This fixes double-counting by flattening the hierarchy into a unique set of accounts.
+    func groupBalance(_ group: AccountGroup) -> Double {
+        // 1. Get all unique account IDs in this group hierarchy
+        // (Requires the updated AccountGroup.swift which returns a Set)
+        let uniqueAccountIDs = group.allAccountIDs(in: accountGroups, accounts: accounts)
+        
+        var total: Double = 0
+        
+        // 2. Sum them up (applying Debit vs Credit logic)
+        for accountID in uniqueAccountIDs {
+            if let account = accounts.first(where: { $0.id == accountID }) {
+                let accountBalance = balance(for: account)
+                
+                // Credit accounts (debts) subtract from total wealth
+                if account.isCredit {
+                    total -= accountBalance
+                } else {
+                    total += accountBalance
+                }
+            }
+        }
+        
+        return total
+    }
+    
+    /// Returns all members (accounts + groups) for a group
+    func members(for group: AccountGroup) -> [MemberType] {
+        var result: [MemberType] = []
+        
+        for memberID in group.memberIDs {
+            if let account = accounts.first(where: { $0.id == memberID }) {
+                result.append(.account(account))
+            } else if let childGroup = accountGroups.first(where: { $0.id == memberID }) {
+                result.append(.group(childGroup))
+            }
+        }
+        
+        return result
+    }
+    
+    /// Safely adds a member to a group (with cycle detection)
+    func addMember(_ memberID: UUID, to groupID: UUID) throws {
+        guard let index = accountGroups.firstIndex(where: { $0.id == groupID }) else {
+            throw GroupError.groupNotFound
+        }
+        
+        var group = accountGroups[index]
+        
+        // Check for cycles if adding a group
+        if accountGroups.contains(where: { $0.id == memberID }) {
+            if group.wouldCreateCycle(byAdding: memberID, in: accountGroups) {
+                throw GroupError.wouldCreateCycle
+            }
+        }
+        
+        // Check for duplicates
+        if group.memberIDs.contains(memberID) {
+            throw GroupError.memberAlreadyExists
+        }
+        
+        group.memberIDs.append(memberID)
+        accountGroups[index] = group
+        save()
+    }
+    
+    /// Removes a member from a group
+    func removeMember(_ memberID: UUID, from groupID: UUID) {
+        guard let index = accountGroups.firstIndex(where: { $0.id == groupID }) else {
+            return
+        }
+        
+        var group = accountGroups[index]
+        group.memberIDs.removeAll { $0 == memberID }
+        accountGroups[index] = group
+        save()
+    }
+    
+    /// Returns the depth of nesting for a group
+    func depth(of group: AccountGroup) -> Int {
+        group.depth(in: accountGroups)
+    }
+    
+    /// Returns all account IDs in a group (flattened, recursive)
+    func allAccountIDs(in group: AccountGroup) -> [UUID] {
+        // Convert the Set (from updated AccountGroup.swift) back to Array
+        Array(group.allAccountIDs(in: accountGroups, accounts: accounts))
+    }
+    
+    /// Validates group structure integrity
+    func validateGroupStructure() -> [GroupValidationError] {
+        var errors: [GroupValidationError] = []
+        
+        for group in accountGroups {
+            // Check for cycles
+            for memberID in group.memberIDs {
+                if accountGroups.contains(where: { $0.id == memberID }) {
+                    if group.wouldCreateCycle(byAdding: memberID, in: accountGroups) {
+                        errors.append(.cycle(groupName: group.name))
+                    }
+                }
+            }
+            
+            // Check for orphaned references
+            for memberID in group.memberIDs {
+                let isAccount = accounts.contains(where: { $0.id == memberID })
+                let isGroup = accountGroups.contains(where: { $0.id == memberID })
+                
+                if !isAccount && !isGroup {
+                    errors.append(.orphanedMember(groupName: group.name, memberID: memberID))
+                }
+            }
+        }
+        
+        return errors
+    }
+}
+
+// MARK: - Error Types
+
+enum GroupError: LocalizedError {
+    case groupNotFound
+    case wouldCreateCycle
+    case memberAlreadyExists
+    
+    var errorDescription: String? {
+        switch self {
+        case .groupNotFound:
+            return "Group not found"
+        case .wouldCreateCycle:
+            return "Adding this group would create a circular reference"
+        case .memberAlreadyExists:
+            return "This member is already in the group"
+        }
+    }
+}
+
+enum GroupValidationError: Identifiable {
+    case cycle(groupName: String)
+    case orphanedMember(groupName: String, memberID: UUID)
+    
+    var id: String {
+        switch self {
+        case .cycle(let name):
+            return "cycle-\(name)"
+        case .orphanedMember(let name, let id):
+            return "orphan-\(name)-\(id)"
+        }
+    }
+    
+    var description: String {
+        switch self {
+        case .cycle(let name):
+            return "Circular reference detected in group: \(name)"
+        case .orphanedMember(let name, let id):
+            return "Orphaned member in group '\(name)': \(id)"
+        }
+    }
+}
+
+
+==================================================
+FILE: Pocket Ledger/ViewModels/AppData+CRUD.swift
+==================================================
+
+//
+//  AppData+CRUD.swift
+//  Pocket Ledger
+//
+//  Created by Zhi Zheng Yeo on 5/2/26.
+//
+
+import Foundation
+import Combine
+
+extension AppData {
     // MARK: - CREATE Operations
 
     func addAccount(name: String,
@@ -642,7 +1087,23 @@ class AppData: ObservableObject {
             }
         }
     }
-
+    
+    // MARK: - Preset Operations
+    
+    func savePreset(_ preset: InsightPreset) {
+        if let index = insightPresets.firstIndex(where: { $0.id == preset.id }) {
+            insightPresets[index] = preset
+        } else {
+            insightPresets.append(preset)
+        }
+        save()
+    }
+    
+    func deletePreset(_ preset: InsightPreset) {
+        insightPresets.removeAll { $0.id == preset.id }
+        save()
+    }
+    
     // MARK: - Template Operations
 
     func addTemplate(name: String,
@@ -677,358 +1138,29 @@ class AppData: ObservableObject {
         updateReminders()
     }
     
-    // MARK: - Preset Operations
-    
-    func savePreset(_ preset: InsightPreset) {
-        if let index = insightPresets.firstIndex(where: { $0.id == preset.id }) {
-            insightPresets[index] = preset
-        } else {
-            insightPresets.append(preset)
-        }
-        save()
-    }
-    
-    func deletePreset(_ preset: InsightPreset) {
-        insightPresets.removeAll { $0.id == preset.id }
-        save()
-    }
-
-    // MARK: - Reminder Logic
-
-    func updateReminders() {
-        let center = UNUserNotificationCenter.current()
-        center.removeAllPendingNotificationRequests()
-        
-        for template in templates {
-            if let schedule = template.reminderSchedule {
-                scheduleNotification(for: template, schedule: schedule)
-            }
-        }
-    }
-
-    private func scheduleNotification(for template: TransactionTemplate, schedule: ReminderSchedule) {
-        let center = UNUserNotificationCenter.current()
-        
-        let content = UNMutableNotificationContent()
-        content.title = "Record Transaction"
-        content.body = "Time to record: \(template.name)"
-        content.sound = .default
-        
-        var dateComponents = DateComponents()
-        dateComponents.hour = schedule.time.hour
-        dateComponents.minute = schedule.time.minute
-        
-        switch schedule.frequency {
-        case .daily:
-            break
-        case .weekly:
-            dateComponents.weekday = schedule.dayOfWeek
-        case .monthly:
-            dateComponents.day = schedule.dayOfMonth
-        }
-        
-        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
-        let request = UNNotificationRequest(identifier: template.id.uuidString, content: content, trigger: trigger)
-        
-        center.add(request) { error in
-            if let error = error {
-                print("Error scheduling notification: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    // MARK: - Data Management
-
-    func resetAllData() {
-        resetToEmpty()
-        save()
-        Task { await initializeDefaultsIfNeeded() }
-    }
-    
-    private func resetToEmpty() {
-        accounts = []
-        accountGroups = []
-        categories = []
-        tags = []
-        transactions = []
-        templates = []
-        insightPresets = []
-        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
-    }
-    
-    func restoreFromBackup(url: URL) throws {
-        guard url.startAccessingSecurityScopedResource() else {
-            throw NSError(domain: "Permissions", code: 403, userInfo: [NSLocalizedDescriptionKey: "Permission denied to access file."])
-        }
-        defer { url.stopAccessingSecurityScopedResource() }
-        
-        let data = try Data(contentsOf: url)
-        let decoded = try JSONDecoder().decode(SavedData.self, from: data)
-        
-        self.accounts = decoded.accounts
-        self.accountGroups = decoded.accountGroups ?? []
-        self.categories = decoded.categories
-        self.tags = decoded.tags
-        self.transactions = decoded.transactions
-        self.templates = decoded.templates ?? []
-        self.insightPresets = decoded.insightPresets ?? []
-        self.reminderTime = decoded.reminderTime ?? DateComponents(hour: 21, minute: 0)
-        
-        save()
-        updateReminders()
-    }
-    
-    @MainActor
-    func initializeDefaultsIfNeeded() async {
-        if accounts.isEmpty {
-            addAccount(name: "Cash", initialAmount: 0.0)
-            addAccount(name: "Bank", initialAmount: 0.0)
-        }
-        
-        if categories.isEmpty {
-            addCategory(name: "Food", type: .outflow, emoji: "🍽")
-            addCategory(name: "Housing", type: .outflow, emoji: "🏠")
-            addCategory(name: "Transportation", type: .outflow, emoji: "🚗")
-            addCategory(name: "Utilities", type: .outflow, emoji: "💡")
-            addCategory(name: "Entertainment", type: .outflow, emoji: "🎮")
-            addCategory(name: "Shopping", type: .outflow, emoji: "🛍")
-            addCategory(name: "Health", type: .outflow, emoji: "💊")
-            addCategory(name: "Gifts", type: .outflow, emoji: "🎁")
-            addCategory(name: "Other", type: .outflow, emoji: "📦")
-            addCategory(name: "Salary", type: .inflow, emoji: "💼")
-            addCategory(name: "Bonus", type: .inflow, emoji: "💰")
-            addCategory(name: "Other Income", type: .inflow, emoji: "📥")
-        }
-        
-        if tags.isEmpty {
-            addTag(name: "Mandatory")
-            addTag(name: "Discretionary")
-        }
-    }
-    
-    // MARK: - Query Helpers
-
-    func balance(for account: Account) -> Double {
-        let inflow = transactions
-            .filter { $0.accountID == account.id && $0.type == .inflow }
-            .reduce(0) { $0 + $1.amount }
-        let outflow = transactions
-            .filter { $0.accountID == account.id && $0.type == .outflow }
-            .reduce(0) { $0 + $1.amount }
-        
-        if account.isCredit {
-            return account.initialAmount + outflow - inflow
-        } else {
-            return account.initialAmount + inflow - outflow
-        }
-    }
-
-    func transactions(for account: Account) -> [Transaction] {
-        transactions.filter { $0.accountID == account.id }
-    }
-
-    func transactions(for category: Category) -> [Transaction] {
-        transactions.filter { $0.categoryID == category.id }
-    }
-
-    func transactions(for tag: Tag) -> [Transaction] {
-        transactions.filter { $0.tagIDs.contains(tag.id) }
-    }
-
-    func stats(for account: Account) -> AccountStats {
-        let accountTransactions = transactions(for: account)
-        let inflowTransactions = accountTransactions.filter { $0.type == .inflow }
-        let outflowTransactions = accountTransactions.filter { $0.type == .outflow }
-
-        let totalInflow = inflowTransactions.reduce(0) { $0 + $1.amount }
-        let totalOutflow = outflowTransactions.reduce(0) { $0 + $1.amount }
-
-        let dates = accountTransactions.map { $0.date }
-        let start = dates.min() ?? account.created
-        let end = dates.max() ?? account.created
-        
-        let dayComponents = Calendar.current.dateComponents([.day], from: start, to: end)
-        let totalDays = max((dayComponents.day ?? 0) + 1, 1)
-        
-        let weeks = max(Double(totalDays) / 7.0, 1.0)
-        let months = max(Double(totalDays) / 30.0, 1.0)
-        let years = max(Double(totalDays) / 365.0, 1.0)
-
-        return AccountStats(
-            totalInflow: totalInflow,
-            totalOutflow: totalOutflow,
-            dailyInflow: totalInflow / Double(totalDays),
-            weeklyInflow: totalInflow / weeks,
-            monthlyInflow: totalInflow / months,
-            yearlyInflow: totalInflow / years,
-            dailyOutflow: totalOutflow / Double(totalDays),
-            weeklyOutflow: totalOutflow / weeks,
-            monthlyOutflow: totalOutflow / months,
-            yearlyOutflow: totalOutflow / years
-        )
-    }
 }
 
-// MARK: - Account Group Operations (Fixed Double-Counting)
 
-extension AppData {
-    
-    /// Calculates balance for a group by summing unique member accounts.
-    /// This fixes double-counting by flattening the hierarchy into a unique set of accounts.
-    func groupBalance(_ group: AccountGroup) -> Double {
-        // 1. Get all unique account IDs in this group hierarchy
-        // (Requires the updated AccountGroup.swift which returns a Set)
-        let uniqueAccountIDs = group.allAccountIDs(in: accountGroups, accounts: accounts)
-        
-        var total: Double = 0
-        
-        // 2. Sum them up (applying Debit vs Credit logic)
-        for accountID in uniqueAccountIDs {
-            if let account = accounts.first(where: { $0.id == accountID }) {
-                let accountBalance = balance(for: account)
-                
-                // Credit accounts (debts) subtract from total wealth
-                if account.isCredit {
-                    total -= accountBalance
-                } else {
-                    total += accountBalance
-                }
-            }
-        }
-        
-        return total
-    }
-    
-    /// Returns all members (accounts + groups) for a group
-    func members(for group: AccountGroup) -> [MemberType] {
-        var result: [MemberType] = []
-        
-        for memberID in group.memberIDs {
-            if let account = accounts.first(where: { $0.id == memberID }) {
-                result.append(.account(account))
-            } else if let childGroup = accountGroups.first(where: { $0.id == memberID }) {
-                result.append(.group(childGroup))
-            }
-        }
-        
-        return result
-    }
-    
-    /// Safely adds a member to a group (with cycle detection)
-    func addMember(_ memberID: UUID, to groupID: UUID) throws {
-        guard let index = accountGroups.firstIndex(where: { $0.id == groupID }) else {
-            throw GroupError.groupNotFound
-        }
-        
-        var group = accountGroups[index]
-        
-        // Check for cycles if adding a group
-        if accountGroups.contains(where: { $0.id == memberID }) {
-            if group.wouldCreateCycle(byAdding: memberID, in: accountGroups) {
-                throw GroupError.wouldCreateCycle
-            }
-        }
-        
-        // Check for duplicates
-        if group.memberIDs.contains(memberID) {
-            throw GroupError.memberAlreadyExists
-        }
-        
-        group.memberIDs.append(memberID)
-        accountGroups[index] = group
-        save()
-    }
-    
-    /// Removes a member from a group
-    func removeMember(_ memberID: UUID, from groupID: UUID) {
-        guard let index = accountGroups.firstIndex(where: { $0.id == groupID }) else {
-            return
-        }
-        
-        var group = accountGroups[index]
-        group.memberIDs.removeAll { $0 == memberID }
-        accountGroups[index] = group
-        save()
-    }
-    
-    /// Returns the depth of nesting for a group
-    func depth(of group: AccountGroup) -> Int {
-        group.depth(in: accountGroups)
-    }
-    
-    /// Returns all account IDs in a group (flattened, recursive)
-    func allAccountIDs(in group: AccountGroup) -> [UUID] {
-        // Convert the Set (from updated AccountGroup.swift) back to Array
-        Array(group.allAccountIDs(in: accountGroups, accounts: accounts))
-    }
-    
-    /// Validates group structure integrity
-    func validateGroupStructure() -> [GroupValidationError] {
-        var errors: [GroupValidationError] = []
-        
-        for group in accountGroups {
-            // Check for cycles
-            for memberID in group.memberIDs {
-                if accountGroups.contains(where: { $0.id == memberID }) {
-                    if group.wouldCreateCycle(byAdding: memberID, in: accountGroups) {
-                        errors.append(.cycle(groupName: group.name))
-                    }
-                }
-            }
-            
-            // Check for orphaned references
-            for memberID in group.memberIDs {
-                let isAccount = accounts.contains(where: { $0.id == memberID })
-                let isGroup = accountGroups.contains(where: { $0.id == memberID })
-                
-                if !isAccount && !isGroup {
-                    errors.append(.orphanedMember(groupName: group.name, memberID: memberID))
-                }
-            }
-        }
-        
-        return errors
-    }
-}
+==================================================
+FILE: Pocket Ledger/Models/Account+UI.swift
+==================================================
 
-// MARK: - Error Types
+//
+//  Account+UI.swift
+//  Pocket Ledger
+//
+//  Created by Zhi Zheng Yeo on 5/2/26.
+// To keep Account.Swift "purely" about data
 
-enum GroupError: LocalizedError {
-    case groupNotFound
-    case wouldCreateCycle
-    case memberAlreadyExists
-    
-    var errorDescription: String? {
+import SwiftUI
+
+extension AccountType {
+    var color: Color {
         switch self {
-        case .groupNotFound:
-            return "Group not found"
-        case .wouldCreateCycle:
-            return "Adding this group would create a circular reference"
-        case .memberAlreadyExists:
-            return "This member is already in the group"
-        }
-    }
-}
-
-enum GroupValidationError: Identifiable {
-    case cycle(groupName: String)
-    case orphanedMember(groupName: String, memberID: UUID)
-    
-    var id: String {
-        switch self {
-        case .cycle(let name):
-            return "cycle-\(name)"
-        case .orphanedMember(let name, let id):
-            return "orphan-\(name)-\(id)"
-        }
-    }
-    
-    var description: String {
-        switch self {
-        case .cycle(let name):
-            return "Circular reference detected in group: \(name)"
-        case .orphanedMember(let name, let id):
-            return "Orphaned member in group '\(name)': \(id)"
+        case .debit:  return .green
+        case .goal:   return .blue
+        case .budget: return .purple
+        case .debt:   return .orange
         }
     }
 }
@@ -1324,7 +1456,7 @@ FILE: Pocket Ledger/Models/AccountGroup.swift
 
 import Foundation
 
-struct AccountGroup: Identifiable, Codable, Hashable {
+struct AccountGroup: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
     var name: String
     
@@ -1340,7 +1472,7 @@ struct AccountGroup: Identifiable, Codable, Hashable {
 
 // MARK: - Member Type Identification
 
-enum MemberType {
+enum MemberType: Sendable {
     case account(Account)
     case group(AccountGroup)
     
@@ -1366,12 +1498,17 @@ enum MemberType {
 // MARK: - Helper Functions
 
 extension AccountGroup {
+    // CONSTANT: Safety limit to prevent stack overflows
+    private static let maxRecursionDepth = 5
+    
     /// Returns the depth of nesting for this group (0 = top-level)
     func depth(in allGroups: [AccountGroup]) -> Int {
         var maxDepth = 0
         
         for memberID in memberIDs {
             if let childGroup = allGroups.first(where: { $0.id == memberID }) {
+                // Note: Simple depth check doesn't strictly need the limit guard
+                // as much as the recursive collector, but good to be aware.
                 let childDepth = childGroup.depth(in: allGroups)
                 maxDepth = max(maxDepth, childDepth + 1)
             }
@@ -1382,7 +1519,17 @@ extension AccountGroup {
     
     /// Returns all UNIQUE account IDs contained in this group (recursive)
     /// Returns a Set to prevent double-counting
-    func allAccountIDs(in allGroups: [AccountGroup], accounts: [Account], visited: Set<UUID> = []) -> Set<UUID> {
+    func allAccountIDs(in allGroups: [AccountGroup],
+                       accounts: [Account],
+                       visited: Set<UUID> = [],
+                       currentDepth: Int = 0) -> Set<UUID> {
+        
+        // SAFETY GUARD: Stop recursion if we hit the limit
+        guard currentDepth < AccountGroup.maxRecursionDepth else {
+            print("⚠️ Max group depth reached for \(name). Stopping recursion.")
+            return []
+        }
+        
         var result: Set<UUID> = []
         
         // Cycle safety
@@ -1398,7 +1545,11 @@ extension AccountGroup {
             else if let childGroup = allGroups.first(where: { $0.id == memberID }) {
                 // Only recurse if we haven't visited this group in this chain
                 if !visited.contains(childGroup.id) {
-                    result.formUnion(childGroup.allAccountIDs(in: allGroups, accounts: accounts, visited: newVisited))
+                    // Pass incremented depth
+                    result.formUnion(childGroup.allAccountIDs(in: allGroups,
+                                                              accounts: accounts,
+                                                              visited: newVisited,
+                                                              currentDepth: currentDepth + 1))
                 }
             }
         }
@@ -1495,7 +1646,6 @@ FILE: Pocket Ledger/Models/Account.swift
 ==================================================
 
 import Foundation
-import SwiftUI
 
 /// Represents a financial container such as a bank account, credit card, savings goal, or debt.
 ///
@@ -1580,7 +1730,7 @@ struct Account: Identifiable, Codable, Hashable, Sendable {
 
 // MARK: - Supporting Enums
 
-enum AccountType: String, Codable {
+enum AccountType: String, Codable, Sendable {
     case debit = "Debit"
     case goal = "Goal"
     case budget = "Budget"
@@ -1596,23 +1746,13 @@ enum AccountType: String, Codable {
         }
     }
     
-    /// SwiftUI Color for each account type
-    var color: Color {
-        switch self {
-        case .debit:  return .green
-        case .goal:   return .blue
-        case .budget: return .purple
-        case .debt:   return .orange
-        }
-    }
-    
     /// Section header name (for grouping)
     var sectionName: String {
         self.rawValue
     }
 }
 
-enum PaymentFrequency: String, Codable, CaseIterable, Identifiable {
+enum PaymentFrequency: String, Codable, CaseIterable, Identifiable, Sendable {
     case weekly = "Weekly"
     case biweekly = "Bi-weekly"
     case monthly = "Monthly"
@@ -3950,7 +4090,7 @@ struct InsightsView: View {
     @State private var timeRange: TimeRange = .thisMonth
     @State private var breakdownMode: BreakdownMode = .category
     
-    // NEW: Toggle for Income vs Expense Breakdown
+    // Toggle for Income vs Expense Breakdown
     @State private var breakdownType: TransactionType = .outflow
     
     // Anchor Date (defaults to today)
@@ -4022,7 +4162,7 @@ struct InsightsView: View {
                                         Text("Income").tag(TransactionType.inflow)
                                     }
                                     .pickerStyle(.segmented)
-                                    .fixedSize() // Keeps it compact
+                                    .fixedSize()
                                     
                                     Spacer()
                                     
@@ -4122,14 +4262,11 @@ struct InsightsView: View {
     @ViewBuilder
     private func rowDestination(for item: AnalyticsItem) -> some View {
         let currentInterval = timeRange.dateInterval(relativeTo: selectedAnchorDate, fiscalStartDay: fiscalStartDay)
-        
-        // Calculate total for percentage bars (based on currently selected type)
         let totalForType = calculateStats(for: timeRange, offset: 0).totalForBreakdown
         
         switch breakdownMode {
         case .category:
             if let category = data.categories.first(where: { $0.id == item.id }) {
-                // FIXED: Passing full date interval
                 NavigationLink(destination: CategoryDetailView(category: category, dateFilter: currentInterval)) {
                     CategoryBarRow(item: item, total: totalForType, currencySymbol: currencySymbol)
                 }
@@ -4218,55 +4355,105 @@ struct InsightsView: View {
         var expense: Double
         var net: Double { income - expense }
         var breakdownItems: [AnalyticsItem]
-        // Helper to pass the total of the current list to the UI for bar sizing
         var totalForBreakdown: Double
     }
     
     struct AnalyticsItem: Identifiable {
         let id: UUID
         let name: String
-        let icon: String // Emoji or SF Symbol name
+        let icon: String
         let amount: Double
-        let color: Color? // Optional override
+        let color: Color?
     }
     
     private func calculateStats(for range: TimeRange, offset: Int) -> AnalyticsStats {
         let dateInterval = range.dateInterval(relativeTo: selectedAnchorDate, fiscalStartDay: fiscalStartDay, offset: offset)
         
-        // 1. Identify "Transfer" categories to exclude from Income/Expense
+        // 1. Build lookup sets for smart transfer handling
         let transferCategoryIDs = Set(data.categories.filter { $0.name == "Transfer" }.map { $0.id })
         
-        // 2. Filter Transactions
+        // Only pure DEBT accounts trigger the "transfer = expense" logic
+        // Budget accounts (credit cards) record spending as outflows, so their payments are just internal transfers
+        let pureDebtAccountIDs = Set(data.accounts.filter { $0.accountType == .debt }.map { $0.id })
+        
+        // 2. Filter Transactions (basic filters)
         let filtered = data.transactions.filter { tx in
-            // Time Filter
             if !dateInterval.contains(tx.date) { return false }
-            
-            // Standard Filters
             if excludeOutliers && tx.isOutlier { return false }
             if excludedAccountIDs.contains(tx.accountID) { return false }
             if excludedCategoryIDs.contains(tx.categoryID) { return false }
             if !tx.tagIDs.isEmpty && !Set(tx.tagIDs).isDisjoint(with: excludedTagIDs) { return false }
-            
-            // Amount Filter
             if let min = minimumAmount, tx.amount < min { return false }
             if let max = maximumAmount, tx.amount > max { return false }
-            
             return true
         }
         
-        // 3. Calculate Global Totals (Always excludes transfers)
-        let income = filtered
-            .filter { $0.type == .inflow && !transferCategoryIDs.contains($0.categoryID) }
-            .reduce(0) { $0 + $1.amount }
+        // 3. Calculate Global Totals with SMART TRANSFER HANDLING
+        //
+        // Account Type Logic:
+        // - Debit/Goal: Normal accounts (checking, savings)
+        // - Budget: Credit cards - spending recorded as outflows, payments are internal transfers
+        // - Debt: Mortgages/loans - can't spend FROM them, transfers TO them ARE expenses
+        //
+        // Transfer Rules:
+        // - Transfer TO a pure Debt account: counts as EXPENSE (paying mortgage/loan)
+        // - All other transfers: excluded (internal movement or paying credit card balance)
         
-        let expense = filtered
-            .filter { $0.type == .outflow && !transferCategoryIDs.contains($0.categoryID) }
-            .reduce(0) { $0 + $1.amount }
+        var income: Double = 0
+        var expense: Double = 0
         
-        // 4. Generate Breakdown (Controlled by Income/Expense Toggle)
-        // Select which transactions to visualize in the list
-        let breakdownTransactions = filtered.filter {
-            $0.type == breakdownType && !transferCategoryIDs.contains($0.categoryID)
+        for tx in filtered {
+            let isTransferCategory = transferCategoryIDs.contains(tx.categoryID)
+            
+            if isTransferCategory {
+                // Smart transfer logic - only transfers TO pure Debt accounts count as expense
+                // We look at the INFLOW side of the transfer to see where money went
+                if tx.type == .inflow && pureDebtAccountIDs.contains(tx.accountID) {
+                    // Money flowing INTO a Debt account (mortgage payment, loan payment)
+                    if let linkedID = tx.linkedTransactionID,
+                       let linkedTx = data.transactions.first(where: { $0.id == linkedID }) {
+                        if !pureDebtAccountIDs.contains(linkedTx.accountID) {
+                            // Money came FROM non-debt TO debt = expense (loan payment)
+                            expense += tx.amount
+                        }
+                    }
+                }
+                // All other transfer scenarios: exclude from income/expense totals
+            } else {
+                // Regular transaction (not a transfer)
+                if tx.type == .inflow {
+                    income += tx.amount
+                } else if tx.type == .outflow {
+                    expense += tx.amount
+                }
+            }
+        }
+        
+        // 4. Generate Breakdown
+        var breakdownTransactions: [Transaction] = []
+        
+        for tx in filtered {
+            let isTransferCategory = transferCategoryIDs.contains(tx.categoryID)
+            
+            if breakdownType == .outflow {
+                // Include: regular outflows + transfers TO pure Debt accounts
+                if tx.type == .outflow && !isTransferCategory {
+                    breakdownTransactions.append(tx)
+                } else if isTransferCategory && tx.type == .inflow && pureDebtAccountIDs.contains(tx.accountID) {
+                    // Payment TO a Debt account
+                    if let linkedID = tx.linkedTransactionID,
+                       let linkedTx = data.transactions.first(where: { $0.id == linkedID }) {
+                        if !pureDebtAccountIDs.contains(linkedTx.accountID) {
+                            breakdownTransactions.append(tx)
+                        }
+                    }
+                }
+            } else {
+                // Income: regular inflows only
+                if tx.type == .inflow && !isTransferCategory {
+                    breakdownTransactions.append(tx)
+                }
+            }
         }
         
         let breakdownTotal = breakdownTransactions.reduce(0) { $0 + $1.amount }
@@ -4294,7 +4481,6 @@ struct InsightsView: View {
             var dict: [UUID: Double] = [:]
             var ungroupedAmount: Double = 0
             
-            // Pre-calculate map of AccountID -> TopLevelGroupID
             var accountToGroupMap: [UUID: UUID] = [:]
             let topLevelGroups = data.accountGroups.filter { data.depth(of: $0) == 0 }
             
@@ -4363,15 +4549,12 @@ enum TimeRange: String, CaseIterable {
     case lastYear = "Last Year"
     case allTime = "All Time"
     
-    /// Calculates the date interval based on a fiscal start day.
     func dateInterval(relativeTo anchor: Date, fiscalStartDay: Int, offset: Int = 0) -> DateInterval {
         let calendar = Calendar.current
         
-        // 1. Determine "Fiscal Month Start" for the anchor date
         var components = calendar.dateComponents([.year, .month], from: anchor)
         components.day = fiscalStartDay
         
-        // If today is Jan 10, but fiscal starts Jan 15, we are in the 'December' fiscal month.
         var fiscalMonthStart = calendar.date(from: components)!
         if anchor < fiscalMonthStart {
             fiscalMonthStart = calendar.date(byAdding: .month, value: -1, to: fiscalMonthStart)!
@@ -4390,34 +4573,22 @@ enum TimeRange: String, CaseIterable {
             
         case .last3Months:
             let duration = 3
-            // End of current fiscal month (exclusive)
             let currentMonthEnd = calendar.date(byAdding: .month, value: 1, to: fiscalMonthStart)!
-            // Shift back by offset (if any)
             let windowEnd = calendar.date(byAdding: .month, value: offset * duration, to: currentMonthEnd)!
             let windowStart = calendar.date(byAdding: .month, value: -duration, to: windowEnd)!
             return DateInterval(start: windowStart, end: windowEnd)
             
         case .ytd:
-            // Calculate Start of Fiscal Year (Jan {fiscalStartDay})
             var yearStartComps = calendar.dateComponents([.year], from: fiscalMonthStart)
             yearStartComps.month = 1
             yearStartComps.day = fiscalStartDay
             let fiscalYearStart = calendar.date(from: yearStartComps)!
             
-            // Adjust for offset (e.g., Previous YTD)
             let start = calendar.date(byAdding: .year, value: offset, to: fiscalYearStart)!
-            
-            let end: Date
-            if offset == 0 {
-                end = anchor // Up to today
-            } else {
-                end = calendar.date(byAdding: .year, value: offset, to: anchor)!
-            }
+            let end: Date = offset == 0 ? anchor : calendar.date(byAdding: .year, value: offset, to: anchor)!
             return DateInterval(start: start, end: end)
             
         case .lastYear:
-            // Full Previous Fiscal Year
-            // Start: Jan {fiscalStartDay} of (Year - 1 + offset)
             var yearStartComps = calendar.dateComponents([.year], from: fiscalMonthStart)
             yearStartComps.year! -= 1
             yearStartComps.year! += offset
@@ -4469,7 +4640,6 @@ struct TrendHeaderCard: View {
     
     var body: some View {
         VStack(spacing: 16) {
-            // Net Flow Main Stat
             VStack(spacing: 4) {
                 Text("Net Cash Flow")
                     .font(.caption)
@@ -4481,7 +4651,6 @@ struct TrendHeaderCard: View {
                     .font(.system(size: 34, weight: .bold, design: .rounded))
                     .foregroundColor(net >= 0 ? .primary : .red)
                 
-                // Comparison Logic
                 if previous.net != 0 {
                     let diff = net - previous.net
                     let icon = diff >= 0 ? "arrow.up" : "arrow.down"
@@ -4502,25 +4671,10 @@ struct TrendHeaderCard: View {
             
             Divider()
             
-            // Income vs Expense Row
             HStack {
-                StatColumn(
-                    title: "Income",
-                    amount: current.income,
-                    prevAmount: previous.income,
-                    color: .green,
-                    symbol: currencySymbol
-                )
-                
+                StatColumn(title: "Income", amount: current.income, prevAmount: previous.income, color: .green, symbol: currencySymbol)
                 Divider()
-                
-                StatColumn(
-                    title: "Expenses",
-                    amount: current.expense,
-                    prevAmount: previous.expense,
-                    color: .red,
-                    symbol: currencySymbol
-                )
+                StatColumn(title: "Expenses", amount: current.expense, prevAmount: previous.expense, color: .red, symbol: currencySymbol)
             }
         }
         .padding()
@@ -4549,11 +4703,9 @@ struct StatColumn: View {
                 .font(.headline)
                 .foregroundColor(color)
             
-            // Percentage Change
             if prevAmount > 0 {
                 let pct = ((amount - prevAmount) / prevAmount) * 100
                 let isUp = pct > 0
-                // For Expense: Up is Red (Bad). For Income: Up is Green (Good).
                 let indicatorColor: Color = (title == "Expenses" ? (isUp ? .red : .green) : (isUp ? .green : .red))
                 
                 HStack(spacing: 2) {
@@ -4580,10 +4732,9 @@ struct CategoryBarRow: View {
     var body: some View {
         VStack(spacing: 6) {
             HStack {
-                // Icon / Emoji
-                if item.icon.count == 1 { // Emoji
+                if item.icon.count == 1 {
                     Text(item.icon)
-                } else { // SF Symbol
+                } else {
                     Image(systemName: item.icon)
                         .foregroundColor(item.color ?? .primary)
                 }
@@ -4646,7 +4797,6 @@ struct PresetPickerSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                // Section 1: Default "All Data" View
                 Section {
                     Button {
                         onReset()
@@ -4666,7 +4816,6 @@ struct PresetPickerSheet: View {
                     }
                 }
                 
-                // Section 2: User Saved Views
                 if !data.insightPresets.isEmpty {
                     Section(header: Text("Saved Views")) {
                         ForEach(data.insightPresets) { preset in
@@ -4687,9 +4836,7 @@ struct PresetPickerSheet: View {
                                 }
                             }
                             .swipeActions(edge: .leading) {
-                                Button {
-                                    presetToEdit = preset
-                                } label: {
+                                Button { presetToEdit = preset } label: {
                                     Label("Edit", systemImage: "pencil")
                                 }
                                 .tint(.blue)
@@ -4697,9 +4844,7 @@ struct PresetPickerSheet: View {
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
                                     data.deletePreset(preset)
-                                    if selectedPresetID == preset.id {
-                                        onReset()
-                                    }
+                                    if selectedPresetID == preset.id { onReset() }
                                 } label: {
                                     Label("Delete", systemImage: "trash")
                                 }
@@ -4718,9 +4863,7 @@ struct PresetPickerSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        dismiss()
-                    }
+                    Button("Done") { dismiss() }
                 }
             }
             .sheet(item: $presetToEdit) { preset in
@@ -4754,11 +4897,7 @@ struct EditPresetSheet: View {
                     TextField("View Name", text: $presetName)
                         .focused($isNameFieldFocused)
                         .submitLabel(.done)
-                        .onSubmit {
-                            if canSave {
-                                saveChanges()
-                            }
-                        }
+                        .onSubmit { if canSave { saveChanges() } }
                 }
                 
                 Section(header: Text("Filter Summary"), footer: Text("To change filters, apply the view and modify filters from the main screen.")) {
@@ -4804,21 +4943,15 @@ struct EditPresetSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
+                    Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        saveChanges()
-                    }
-                    .disabled(!canSave)
-                    .fontWeight(.semibold)
+                    Button("Save") { saveChanges() }
+                        .disabled(!canSave)
+                        .fontWeight(.semibold)
                 }
             }
-            .onAppear {
-                isNameFieldFocused = true
-            }
+            .onAppear { isNameFieldFocused = true }
         }
         .presentationDetents([.medium])
     }
@@ -5443,6 +5576,72 @@ struct MultiSelectionView: View {
 
 
 ==================================================
+FILE: Pocket Ledger/Views/Shared/MathParser.swift
+==================================================
+
+//
+//  MathParser.swift
+//  Pocket Ledger
+//  Consolidates the Math engine from three different points
+//  Created by Zhi Zheng Yeo on 5/2/26.
+//
+
+import Foundation
+
+struct MathParser {
+    /// Parses a string input (e.g. "10+2.50") and returns a computed Double.
+    /// Handles sanitization, trailing operators, and division-by-zero safety.
+    static func calculate(_ input: String) -> Double {
+        // 1. Sanitize: Allow only numbers and math operators
+        let allowed = CharacterSet(charactersIn: "0123456789.+-*/() ")
+        let sanitized = input.components(separatedBy: allowed.inverted).joined()
+        
+        // 2. Early exit for empty input
+        let trimmed = sanitized.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return 0 }
+        
+        // 3. Validate: Must contain at least one digit
+        guard trimmed.contains(where: { $0.isNumber }) else { return 0 }
+        
+        // 4. Strip trailing non-digit characters (operators and dots)
+        // This handles cases like "50+", "10.", "5+-", etc.
+        let trailingJunk = CharacterSet(charactersIn: "+-*/.() ")
+        let cleaned = trimmed.trimmingCharacters(in: trailingJunk)
+        
+        // After cleaning, check we still have content
+        guard !cleaned.isEmpty, cleaned.contains(where: { $0.isNumber }) else { return 0 }
+        
+        // 5. Also strip leading operators (but keep minus for negative numbers)
+        let leadingJunk = CharacterSet(charactersIn: "+*/. ")
+        var expression = cleaned.trimmingCharacters(in: leadingJunk)
+        
+        // Handle edge case: expression starts with multiple operators like "--5"
+        // Keep at most one leading minus
+        while expression.hasPrefix("--") {
+            expression = String(expression.dropFirst(2))
+        }
+        
+        guard !expression.isEmpty, expression.contains(where: { $0.isNumber }) else { return 0 }
+        
+        // 6. Evaluate using NSExpression
+        let nsExpression = NSExpression(format: expression)
+        
+        if let result = nsExpression.expressionValue(with: nil, context: nil) as? Double {
+            // Guard against Division by Zero (Infinity/NaN)
+            guard result.isFinite else { return 0 }
+            // Round to 2 decimal places
+            return (result * 100).rounded() / 100
+        } else if let intResult = nsExpression.expressionValue(with: nil, context: nil) as? Int {
+            return Double(intResult)
+        }
+        
+        // 7. Fallback: Try simple Double parsing
+        return Double(expression) ?? 0
+    }
+}
+
+
+==================================================
 FILE: Pocket Ledger/Views/Shared/Formatters.swift
 ==================================================
 
@@ -5964,7 +6163,7 @@ FILE: Pocket Ledger/Views/Transactions/TransactionRow.swift
 
 import SwiftUI
 
-/// Enhanced transaction row with category emoji and account type icon
+/// Transaction row displaying: emoji | category + tags | amount
 struct TransactionRow: View {
     @EnvironmentObject var data: AppData
     @AppStorage("currencySymbol") private var currencySymbol: String = "$"
@@ -5980,28 +6179,34 @@ struct TransactionRow: View {
                 .clipShape(Circle())
             
             VStack(alignment: .leading, spacing: 4) {
-                // Primary: Category Name
-                Text(categoryName)
-                    .font(.body)
-                    .foregroundColor(.primary)
+                // Primary: Tags (or account name if no tags)
+                if !transaction.tagIDs.isEmpty {
+                    Text(tagsDisplayString)
+                        .font(.body)
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                } else if let accName = accountName {
+                    Text(accName)
+                        .font(.body)
+                        .foregroundColor(.primary)
+                } else {
+                    Text(categoryName)
+                        .font(.body)
+                        .foregroundColor(.primary)
+                }
                 
-                // Secondary: Account Type Icon + Account Name
+                // Secondary: Account Type Icon + Account Name + Link Indicator
                 HStack(spacing: 4) {
-                    // VISUAL: Account Type Icon (compact)
                     if let account = account {
                         AccountTypeIcon(type: account.accountType, size: 14)
-                    }
-                    
-                    if let accName = accountName {
-                        Text(accName)
+                        Text(account.name)
                     }
                     
                     if transaction.linkedTransactionID != nil {
                         Image(systemName: "link")
                             .font(.caption2)
-                            .foregroundColor(.secondary)
                     }
-                    
                 }
                 .font(.caption)
                 .foregroundColor(.secondary)
@@ -6009,17 +6214,15 @@ struct TransactionRow: View {
             
             Spacer()
             
-            VStack(alignment: .trailing, spacing: 2) {
-                // Amount with Sign
-                HStack(spacing: 2) {
-                    Text(transaction.type == .inflow ? "+" : "-")
-                        .foregroundColor(amountColor)
-                    
-                    Text(transaction.amount.formattedCurrency(symbol: currencySymbol))
-                        .monospacedDigit()
-                        .foregroundColor(amountColor)
-                }
+            // Amount with Sign (monospaced for alignment)
+            HStack(spacing: 2) {
+                Text(transaction.type == .inflow ? "+" : "-")
+                    .foregroundColor(amountColor)
+                
+                Text(transaction.amount.formattedCurrency(symbol: currencySymbol))
+                    .foregroundColor(amountColor)
             }
+            .font(.body.monospacedDigit())
         }
         .padding(.vertical, 4)
     }
@@ -6039,11 +6242,19 @@ struct TransactionRow: View {
     }
     
     private var categoryEmoji: String {
-        category?.emoji ?? "❓"
+        category?.emoji ?? "📝"
     }
     
     private var accountName: String? {
         account?.name
+    }
+    
+    /// Builds a comma-separated string of tag names
+    private var tagsDisplayString: String {
+        let tagNames = transaction.tagIDs.compactMap { tagID in
+            data.tags.first(where: { $0.id == tagID })?.name
+        }
+        return tagNames.joined(separator: ", ")
     }
     
     // Logic to distinguish Transfers visually
@@ -6323,7 +6534,12 @@ struct AddTransactionView: View {
                 advanceAfterAccountSelection()
             } content: {
                 NavigationStack {
-                    SelectionView(title: type == .transfer ? "From Account" : "Account", items: data.accounts, selectedID: $accountID)
+                    // Filter accounts based on transaction type
+                    SelectionView(
+                        title: type == .transfer ? "From Account" : "Account",
+                        items: accountsForSourceSelection,
+                        selectedID: $accountID
+                    )
                 }
                 .presentationDetents([.medium, .large])
             }
@@ -6331,7 +6547,12 @@ struct AddTransactionView: View {
                 advanceAfterTransferTargetSelection()
             } content: {
                 NavigationStack {
-                    SelectionView(title: "To Account", items: data.accounts.filter { $0.id != accountID }, selectedID: $transferTargetAccountID)
+                    // All accounts except the source (Debt accounts ARE valid targets)
+                    SelectionView(
+                        title: "To Account",
+                        items: data.accounts.filter { $0.id != accountID && !$0.isArchived },
+                        selectedID: $transferTargetAccountID
+                    )
                 }
                 .presentationDetents([.medium, .large])
             }
@@ -6366,7 +6587,28 @@ struct AddTransactionView: View {
         }
     }
     
-    // ... Helpers (amountColor, navTitle) ...
+    // MARK: - Account Filtering
+    
+    /// Accounts available for selection as transaction source.
+    /// - Inflow: All non-archived accounts (money can come INTO any account)
+    /// - Outflow: Excludes pure Debt accounts (can't spend FROM a mortgage)
+    /// - Transfer (From): Excludes pure Debt accounts (can't transfer FROM a mortgage)
+    private var accountsForSourceSelection: [Account] {
+        let activeAccounts = data.accounts.filter { !$0.isArchived }
+        
+        switch type {
+        case .inflow:
+            // Money can flow INTO any account
+            return activeAccounts
+        case .outflow, .transfer:
+            // Can't spend FROM or transfer FROM a pure Debt account
+            // (Debt accounts only receive payments, they don't originate spending)
+            return activeAccounts.filter { $0.accountType != .debt }
+        }
+    }
+    
+    // MARK: - Helpers
+    
     private var amountColor: Color {
         switch type {
         case .inflow: return .green
@@ -6382,7 +6624,6 @@ struct AddTransactionView: View {
 
     // MARK: - Logic
     
-    // ... Existing logic for templates, filtering categories, names ...
     private func saveTemplate() {
         let name = templateName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
@@ -6415,25 +6656,8 @@ struct AddTransactionView: View {
         return data.categories.first(where: { $0.id == id })?.name
     }
     
-    private func calculateAmount(_ input: String) -> Double {
-        // ... same existing calculation logic ...
-        let allowed = CharacterSet(charactersIn: "0123456789.+-*/")
-        let sanitized = input.components(separatedBy: allowed.inverted).joined()
-        if sanitized.isEmpty { return 0 }
-        guard let lastChar = sanitized.last, lastChar.isNumber else {
-            return Double(sanitized) ?? 0
-        }
-        let expression = NSExpression(format: sanitized)
-        if let result = expression.expressionValue(with: nil, context: nil) as? Double {
-            return result
-        } else if let intResult = expression.expressionValue(with: nil, context: nil) as? Int {
-            return Double(intResult)
-        }
-        return Double(sanitized) ?? 0
-    }
-
     private var canSave: Bool {
-        let amount = calculateAmount(amountString)
+        let amount = MathParser.calculate(amountString)
         guard amount > 0 else { return false }
         
         if type == .transfer {
@@ -6443,7 +6667,6 @@ struct AddTransactionView: View {
         }
     }
     
-    // ... Focus chain logic (checkAndPresentNextField, etc) ...
     private enum NavigationStep {
         case account
         case secondary
@@ -6520,7 +6743,7 @@ struct AddTransactionView: View {
     }
 
     private func saveTransaction(shouldDismiss: Bool = true) {
-        let amount = calculateAmount(amountString)
+        let amount = MathParser.calculate(amountString)
         let tags = Array(selectedTagIDs)
 
         if type == .transfer {
@@ -6532,9 +6755,6 @@ struct AddTransactionView: View {
             if var existing = editingTransaction, let linkedID = existing.linkedTransactionID {
                 // UPDATE EXISTING LINKED PAIR
                 
-                // Update "From" (This transaction, if it's the source) or find which is which
-                // Note: Current view logic implies editingTransaction is the one we tapped.
-                
                 // 1. Update the transaction we are editing
                 existing.accountID = fromAcc
                 existing.amount = amount
@@ -6545,7 +6765,7 @@ struct AddTransactionView: View {
                 
                 // 2. Update the linked partner
                 if var partner = data.transactions.first(where: { $0.id == linkedID }) {
-                    partner.accountID = toAcc // The partner gets the 'Target' account
+                    partner.accountID = toAcc
                     partner.amount = amount
                     partner.date = date
                     partner.tagIDs = tags
@@ -6555,22 +6775,13 @@ struct AddTransactionView: View {
                 
             } else {
                 // CREATE NEW LINKED PAIR
-                // Manually generate IDs to link them
-                // Note: Since 'Transaction.init' generates an ID if nil, we can't get the ID before init easily unless we modify init or use a helper.
-                // Hack: We rely on the AppData to handle the save, but here we construct them.
-                
-                // Let's create the objects here to get their IDs
                 let id1 = Transaction.generateUniqueTimestampID()
-                
-                // Slightly delay id2 to ensure unique timestamp suffix if random collides (unlikely but safe)
-                // actually generateUniqueTimestampID uses random suffix, so just call again.
-                let id2 = Transaction.generateUniqueTimestampID() + "-2" // appending suffix to guarantee uniqueness from same millisecond
+                let id2 = Transaction.generateUniqueTimestampID() + "-2"
                 
                 let outflow = Transaction(id: id1, linkedTransactionID: id2, type: .outflow, accountID: fromAcc, categoryID: outCatID, tagIDs: tags, amount: amount, date: date, isOutlier: isOutlier)
                 
                 let inflow = Transaction(id: id2, linkedTransactionID: id1, type: .inflow, accountID: toAcc, categoryID: inCatID, tagIDs: tags, amount: amount, date: date, isOutlier: isOutlier)
                 
-                // We access the data.transactions array directly or use a raw add method
                 data.transactions.append(outflow)
                 data.transactions.append(inflow)
                 data.save()
@@ -6742,6 +6953,7 @@ import SwiftUI
 
 struct TransactionListView: View {
     @EnvironmentObject var data: AppData
+    @AppStorage("currencySymbol") private var currencySymbol: String = "$"
     
     // Binding from ContentView for Shortcut support
     @Binding var globalAddTransactionTrigger: Bool
@@ -6758,12 +6970,15 @@ struct TransactionListView: View {
     @State private var batchTagsToAdd: Set<UUID> = []
     
     // MARK: - Temporal Grouping State
-    @State private var loadedMonthsCount: Int = 1 // Start with current month
     @State private var collapsedGroups: Set<TimeGroupID> = []
     
     // MARK: - Archive State
     @AppStorage("showArchivedTransactions") private var showArchivedTransactions: Bool = false
-    @AppStorage("archiveOlderThanMonths") private var archiveOlderThanMonths: Int = 3
+    
+    // MARK: - Search State
+    @State private var searchText: String = ""
+    @State private var isSearchActive: Bool = false
+    @FocusState private var isSearchFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -6771,8 +6986,8 @@ struct TransactionListView: View {
                 // Main List
                 transactionList
                 
-                // Floating Add Button (only when not in edit mode)
-                if !isEditMode {
+                // Floating Add Button (only when not in edit mode and not searching)
+                if !isEditMode && !isSearchActive {
                     floatingAddButton
                 }
             }
@@ -6802,12 +7017,31 @@ struct TransactionListView: View {
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    editButton
+                    HStack(spacing: 16) {
+                        // Search toggle button
+                        Button {
+                            withAnimation {
+                                isSearchActive.toggle()
+                                if isSearchActive {
+                                    isSearchFocused = true
+                                } else {
+                                    searchText = ""
+                                    isSearchFocused = false
+                                }
+                            }
+                        } label: {
+                            Image(systemName: isSearchActive ? "xmark" : "magnifyingglass")
+                        }
+                        
+                        editButton
+                    }
                 }
             }
             .safeAreaInset(edge: .bottom) {
                 if isEditMode && !selection.isEmpty {
                     multiSelectActionBar
+                } else if isSearchActive {
+                    searchBar
                 }
             }
             // Sheets
@@ -6825,6 +7059,50 @@ struct TransactionListView: View {
         }
     }
     
+    // MARK: - Search Bar
+    
+    private var searchBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            
+            HStack(spacing: 12) {
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
+                    
+                    TextField("Search tags, categories, accounts, amounts...", text: $searchText)
+                        .focused($isSearchFocused)
+                        .submitLabel(.search)
+                        .autocorrectionDisabled()
+                    
+                    if !searchText.isEmpty {
+                        Button {
+                            searchText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .padding(10)
+                .background(Color(.secondarySystemBackground))
+                .cornerRadius(10)
+                
+                Button("Cancel") {
+                    withAnimation {
+                        searchText = ""
+                        isSearchActive = false
+                        isSearchFocused = false
+                    }
+                }
+                .foregroundColor(.blue)
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 10)
+            .background(Color(UIColor.systemBackground))
+        }
+    }
+    
     // MARK: - Main List
     
     @ViewBuilder
@@ -6832,21 +7110,27 @@ struct TransactionListView: View {
         List(selection: $selection) {
             if data.transactions.isEmpty {
                 emptyState
-            } else if visibleTransactions.isEmpty && !showArchivedTransactions {
-                archivedOnlyState
+            } else if filteredTransactions.isEmpty {
+                if isSearchActive && !searchText.isEmpty {
+                    noSearchResultsState
+                } else if !showArchivedTransactions && visibleTransactions.isEmpty {
+                    archivedOnlyState
+                } else {
+                    emptyState
+                }
             } else {
                 ForEach(visibleTimeGroups, id: \.id) { group in
                     temporalSection(for: group)
                 }
                 
-                // Pagination: Load More Button
-                if hasMoreToLoad {
-                    loadMoreSection
+                // Pagination: Load Archived Button
+                if hasArchivedTransactions && !showArchivedTransactions && !isSearchActive {
+                    loadArchivedSection
                 }
             }
             
-            // Spacer for FAB/action bar
-            Color.clear.frame(height: 80).listRowBackground(Color.clear)
+            // Spacer for FAB/action bar/search bar
+            Color.clear.frame(height: 100).listRowBackground(Color.clear)
         }
         .environment(\.editMode, .constant(isEditMode ? .active : .inactive))
     }
@@ -6868,6 +7152,24 @@ struct TransactionListView: View {
     }
     
     @ViewBuilder
+    private var noSearchResultsState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 48))
+                .foregroundColor(.secondary)
+            Text("No results for \"\(searchText)\"")
+                .font(.headline)
+            Text("Try searching for tags, categories, accounts, or amounts")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
+    }
+    
+    @ViewBuilder
     private var archivedOnlyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "archivebox")
@@ -6875,7 +7177,7 @@ struct TransactionListView: View {
                 .foregroundColor(.secondary)
             Text("All transactions are archived")
                 .font(.headline)
-            Text("Tap the filter icon to show archived transactions")
+            Text("Tap the menu to show archived transactions")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -6933,13 +7235,27 @@ struct TransactionListView: View {
             
             Spacer()
             
-            Text("\(group.transactions.count)")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 2)
-                .background(Color(.secondarySystemBackground))
-                .clipShape(Capsule())
+            // Net flow + count
+            HStack(spacing: 8) {
+                // Net flow indicator
+                let netFlow = group.netFlow
+                if netFlow != 0 {
+                    Text(netFlow >= 0 ? "+\(netFlow.formattedCurrency(symbol: currencySymbol))" : netFlow.formattedCurrency(symbol: currencySymbol))
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .monospacedDigit()
+                        .foregroundColor(netFlow >= 0 ? .green : .red)
+                }
+                
+                // Transaction count
+                Text("\(group.transactions.count)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(Capsule())
+            }
         }
     }
     
@@ -6958,7 +7274,6 @@ struct TransactionListView: View {
             }
             .swipeActions(edge: .trailing) {
                 Button(role: .destructive) {
-                    // FIX: Use central data logic
                     data.deleteTransaction(transaction)
                 } label: {
                     Label("Delete", systemImage: "trash")
@@ -6982,7 +7297,6 @@ struct TransactionListView: View {
         }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
-                // FIX: Use central data logic
                 data.deleteTransaction(transaction)
             } label: {
                 Label("Delete", systemImage: "trash")
@@ -6990,20 +7304,20 @@ struct TransactionListView: View {
         }
     }
     
-    // MARK: - Load More Section
+    // MARK: - Load Archived Section
     
     @ViewBuilder
-    private var loadMoreSection: some View {
+    private var loadArchivedSection: some View {
         Section {
             Button {
-                loadedMonthsCount += 1
+                showArchivedTransactions = true
             } label: {
                 HStack {
                     Spacer()
                     VStack(spacing: 4) {
-                        Image(systemName: "arrow.down.circle")
+                        Image(systemName: "archivebox")
                             .font(.title3)
-                        Text("Load Previous Month")
+                        Text("Show Archived Transactions")
                             .font(.subheadline)
                     }
                     .foregroundColor(.blue)
@@ -7137,8 +7451,57 @@ struct TransactionListView: View {
         .presentationDetents([.medium, .large])
     }
     
+    // MARK: - Search Logic
+    
+    /// Checks if a transaction matches the search query
+    private func transactionMatchesSearch(_ transaction: Transaction, query: String) -> Bool {
+        let lowercasedQuery = query.lowercased()
+        
+        // Match against tags
+        let tagNames = transaction.tagIDs.compactMap { tagID in
+            data.tags.first(where: { $0.id == tagID })?.name.lowercased()
+        }
+        if tagNames.contains(where: { $0.contains(lowercasedQuery) }) {
+            return true
+        }
+        
+        // Match against category
+        if let category = data.categories.first(where: { $0.id == transaction.categoryID }) {
+            if category.name.lowercased().contains(lowercasedQuery) {
+                return true
+            }
+        }
+        
+        // Match against account
+        if let account = data.accounts.first(where: { $0.id == transaction.accountID }) {
+            if account.name.lowercased().contains(lowercasedQuery) {
+                return true
+            }
+        }
+        
+        // Match against amount (as string)
+        let amountString = String(format: "%.2f", transaction.amount)
+        if amountString.contains(lowercasedQuery) {
+            return true
+        }
+        
+        // Match against whole number amount
+        let wholeAmount = String(Int(transaction.amount))
+        if wholeAmount == lowercasedQuery || amountString.hasPrefix(lowercasedQuery) {
+            return true
+        }
+        
+        return false
+    }
+    
     // MARK: - Temporal Grouping Logic
     
+    /// Archive cutoff: 3 months ago
+    private var archiveCutoffDate: Date {
+        Calendar.current.date(byAdding: .month, value: -3, to: Date()) ?? Date.distantPast
+    }
+    
+    /// All transactions that pass the archive filter (but not search filter)
     private var visibleTransactions: [Transaction] {
         let cutoffDate = archiveCutoffDate
         
@@ -7151,12 +7514,24 @@ struct TransactionListView: View {
         }
     }
     
-    private var archiveCutoffDate: Date {
-        Calendar.current.date(byAdding: .month, value: -archiveOlderThanMonths, to: Date()) ?? Date.distantPast
+    /// Transactions filtered by both archive AND search
+    private var filteredTransactions: [Transaction] {
+        let base = visibleTransactions
+        
+        guard isSearchActive && !searchText.isEmpty else {
+            return base
+        }
+        
+        return base.filter { transactionMatchesSearch($0, query: searchText) }
+    }
+    
+    private var hasArchivedTransactions: Bool {
+        data.transactions.contains { $0.date < archiveCutoffDate }
     }
     
     private var visibleTimeGroups: [TimeGroup] {
-        let sorted = visibleTransactions.sorted { $0.date > $1.date }
+        // Use filtered transactions (includes search filtering)
+        let sorted = filteredTransactions.sorted { $0.date > $1.date }
         
         var groups: [TimeGroup] = []
         let calendar = Calendar.current
@@ -7165,36 +7540,56 @@ struct TransactionListView: View {
         // Define time boundaries
         let startOfToday = calendar.startOfDay(for: now)
         let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday)!
-        let startOfLastWeek = calendar.date(byAdding: .day, value: -7, to: startOfToday)!
-        let startOfLastMonth = calendar.date(byAdding: .month, value: -1, to: startOfToday)!
-        let paginationCutoff = calendar.date(byAdding: .month, value: -loadedMonthsCount, to: startOfToday)!
+        let startOfThisWeek = calendar.date(byAdding: .day, value: -7, to: startOfToday)!
+        let startOfThisMonth = calendar.dateInterval(of: .month, for: now)?.start ?? startOfToday
+        
+        // Last month boundaries
+        let lastMonthDate = calendar.date(byAdding: .month, value: -1, to: now)!
+        let startOfLastMonth = calendar.dateInterval(of: .month, for: lastMonthDate)?.start ?? lastMonthDate
+        let endOfLastMonth = calendar.dateInterval(of: .month, for: lastMonthDate)?.end ?? lastMonthDate
+        
+        // Two months ago boundaries
+        let twoMonthsAgoDate = calendar.date(byAdding: .month, value: -2, to: now)!
+        let startOfTwoMonthsAgo = calendar.dateInterval(of: .month, for: twoMonthsAgoDate)?.start ?? twoMonthsAgoDate
+        let endOfTwoMonthsAgo = calendar.dateInterval(of: .month, for: twoMonthsAgoDate)?.end ?? twoMonthsAgoDate
         
         // Group transactions by time period
         var futureTransactions: [Transaction] = []
         var todayTransactions: [Transaction] = []
         var yesterdayTransactions: [Transaction] = []
-        var lastWeekTransactions: [Transaction] = []
+        var thisWeekTransactions: [Transaction] = []  // 2 days ago to 7 days ago
+        var thisMonthTransactions: [Transaction] = [] // After this week, within this month
         var lastMonthTransactions: [Transaction] = []
+        var twoMonthsAgoTransactions: [Transaction] = []
         var archivedTransactions: [Transaction] = []
-        var olderTransactionsByMonth: [Date: [Transaction]] = [:]
         
         for transaction in sorted {
-            if transaction.date > now {
+            let txDate = transaction.date
+            
+            if txDate > now {
+                // Future
                 futureTransactions.append(transaction)
-            } else if transaction.date >= startOfToday {
+            } else if txDate >= startOfToday {
+                // Today
                 todayTransactions.append(transaction)
-            } else if transaction.date >= startOfYesterday {
+            } else if txDate >= startOfYesterday {
+                // Yesterday
                 yesterdayTransactions.append(transaction)
-            } else if transaction.date >= startOfLastWeek {
-                lastWeekTransactions.append(transaction)
-            } else if transaction.date >= startOfLastMonth {
+            } else if txDate >= startOfThisWeek {
+                // This Week (2 days ago to 7 days ago)
+                thisWeekTransactions.append(transaction)
+            } else if txDate >= startOfThisMonth {
+                // This Month (after this week but still in current month)
+                thisMonthTransactions.append(transaction)
+            } else if txDate >= startOfLastMonth && txDate < endOfLastMonth {
+                // Last Month
                 lastMonthTransactions.append(transaction)
-            } else if transaction.date < archiveCutoffDate {
+            } else if txDate >= startOfTwoMonthsAgo && txDate < endOfTwoMonthsAgo {
+                // Two Months Ago
+                twoMonthsAgoTransactions.append(transaction)
+            } else {
+                // Archived (3+ months old)
                 archivedTransactions.append(transaction)
-            } else if transaction.date >= paginationCutoff {
-                // Group by month for pagination
-                let monthStart = calendar.dateInterval(of: .month, for: transaction.date)?.start ?? transaction.date
-                olderTransactionsByMonth[monthStart, default: []].append(transaction)
             }
         }
         
@@ -7208,19 +7603,17 @@ struct TransactionListView: View {
         if !yesterdayTransactions.isEmpty {
             groups.append(TimeGroup(period: .yesterday, transactions: yesterdayTransactions))
         }
-        if !lastWeekTransactions.isEmpty {
-            groups.append(TimeGroup(period: .lastWeek, transactions: lastWeekTransactions))
+        if !thisWeekTransactions.isEmpty {
+            groups.append(TimeGroup(period: .thisWeek, transactions: thisWeekTransactions))
+        }
+        if !thisMonthTransactions.isEmpty {
+            groups.append(TimeGroup(period: .thisMonth, transactions: thisMonthTransactions))
         }
         if !lastMonthTransactions.isEmpty {
-            groups.append(TimeGroup(period: .lastMonth, transactions: lastMonthTransactions))
+            groups.append(TimeGroup(period: .lastMonth(lastMonthDate), transactions: lastMonthTransactions))
         }
-        
-        // Add monthly groups in reverse chronological order
-        let sortedMonths = olderTransactionsByMonth.keys.sorted(by: >)
-        for month in sortedMonths {
-            if let transactions = olderTransactionsByMonth[month] {
-                groups.append(TimeGroup(period: .month(month), transactions: transactions))
-            }
+        if !twoMonthsAgoTransactions.isEmpty {
+            groups.append(TimeGroup(period: .twoMonthsAgo(twoMonthsAgoDate), transactions: twoMonthsAgoTransactions))
         }
         
         // Add archived group if showing archived
@@ -7229,15 +7622,6 @@ struct TransactionListView: View {
         }
         
         return groups
-    }
-    
-    private var hasMoreToLoad: Bool {
-        let paginationCutoff = Calendar.current.date(byAdding: .month, value: -loadedMonthsCount, to: Date())!
-        let archiveCutoff = archiveCutoffDate
-        
-        return data.transactions.contains { transaction in
-            transaction.date < paginationCutoff && transaction.date >= archiveCutoff
-        }
     }
     
     // MARK: - Actions
@@ -7257,7 +7641,7 @@ struct TransactionListView: View {
 
     private func deleteSelectedTransactions() {
         withAnimation {
-            // UPDATED: Include linked transactions in selection
+            // Include linked transactions in selection
             var idsToDelete = selection
             
             for id in selection {
@@ -7315,12 +7699,16 @@ extension TransactionListView {
         case future
         case today
         case yesterday
-        case lastWeek
-        case lastMonth
-        case month(Date)
-        case archived
+        case thisWeek           // 2 days ago through 7 days ago
+        case thisMonth          // Earlier this month (after this week)
+        case lastMonth(Date)    // Previous calendar month
+        case twoMonthsAgo(Date) // Two calendar months ago
+        case archived           // 3+ months old
         
         var displayName: String {
+            let monthFormatter = DateFormatter()
+            monthFormatter.dateFormat = "MMMM"
+            
             switch self {
             case .future:
                 return "Upcoming"
@@ -7328,14 +7716,14 @@ extension TransactionListView {
                 return "Today"
             case .yesterday:
                 return "Yesterday"
-            case .lastWeek:
-                return "Last 7 Days"
-            case .lastMonth:
-                return "Last 30 Days"
-            case .month(let date):
-                let formatter = DateFormatter()
-                formatter.dateFormat = "MMMM yyyy"
-                return formatter.string(from: date)
+            case .thisWeek:
+                return "This Week"
+            case .thisMonth:
+                return "This Month"
+            case .lastMonth(let date):
+                return monthFormatter.string(from: date)
+            case .twoMonthsAgo(let date):
+                return monthFormatter.string(from: date)
             case .archived:
                 return "Archived"
             }
@@ -7343,7 +7731,7 @@ extension TransactionListView {
         
         var autoExpand: Bool {
             switch self {
-            case .future, .today, .yesterday:
+            case .future, .today, .yesterday, .thisWeek:
                 return true
             default:
                 return false
@@ -7360,6 +7748,23 @@ extension TransactionListView {
             period.displayName
         }
         
+        /// Net flow: inflows - outflows (transfers excluded)
+        var netFlow: Double {
+            var total: Double = 0
+            for tx in transactions {
+                switch tx.type {
+                case .inflow:
+                    total += tx.amount
+                case .outflow:
+                    total -= tx.amount
+                case .transfer:
+                    // Transfers are net-zero, skip
+                    break
+                }
+            }
+            return total
+        }
+        
         init(period: TimePeriod, transactions: [Transaction]) {
             self.period = period
             self.transactions = transactions
@@ -7372,14 +7777,18 @@ extension TransactionListView {
                 self.id = TimeGroupID(value: "today")
             case .yesterday:
                 self.id = TimeGroupID(value: "yesterday")
-            case .lastWeek:
-                self.id = TimeGroupID(value: "lastWeek")
-            case .lastMonth:
-                self.id = TimeGroupID(value: "lastMonth")
-            case .month(let date):
+            case .thisWeek:
+                self.id = TimeGroupID(value: "thisWeek")
+            case .thisMonth:
+                self.id = TimeGroupID(value: "thisMonth")
+            case .lastMonth(let date):
                 let formatter = DateFormatter()
                 formatter.dateFormat = "yyyy-MM"
-                self.id = TimeGroupID(value: "month-\(formatter.string(from: date))")
+                self.id = TimeGroupID(value: "lastMonth-\(formatter.string(from: date))")
+            case .twoMonthsAgo(let date):
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM"
+                self.id = TimeGroupID(value: "twoMonthsAgo-\(formatter.string(from: date))")
             case .archived:
                 self.id = TimeGroupID(value: "archived")
             }
@@ -9721,7 +10130,7 @@ struct EditAccountView: View {
         case .budget:
             return false // Budgets don't use installment plans (they're monthly)
         case .debit:
-            let target = calculateAmount(targetAmountString)
+            let target = MathParser.calculate(targetAmountString)
             return target > 0 // Only show if user adds a target
         }
     }
@@ -9763,7 +10172,7 @@ struct EditAccountView: View {
     }
     
     private var progressText: String {
-        let target = calculateAmount(targetAmountString)
+        let target = MathParser.calculate(targetAmountString)
         guard target > 0 else { return "" }
         
         let current = data.balance(for: account)
@@ -9791,38 +10200,13 @@ struct EditAccountView: View {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
     }
     
-    // MARK: - Math Engine
-    
-    private func calculateAmount(_ input: String) -> Double {
-        // 1. Filter allowed characters
-        let allowed = CharacterSet(charactersIn: "0123456789.+-*/")
-        let sanitized = input.components(separatedBy: allowed.inverted).joined()
-        
-        if sanitized.isEmpty { return 0 }
-        
-        // 2. If it ends in a math symbol, just parse the safe part to avoid crash
-        if let lastChar = sanitized.last, !lastChar.isNumber {
-            return Double(sanitized.dropLast()) ?? 0
-        }
-        
-        // 3. Evaluate expression
-        let expression = NSExpression(format: sanitized)
-        if let result = expression.expressionValue(with: nil, context: nil) as? Double {
-            return result
-        } else if let intResult = expression.expressionValue(with: nil, context: nil) as? Int {
-            return Double(intResult)
-        }
-        
-        return Double(sanitized) ?? 0
-    }
-    
     // MARK: - Calculations
     
     private func calculatePreview() -> (periods: Int, amountPerPeriod: Double)? {
         guard hasTargetDate else { return nil }
         
         let current = data.balance(for: account)
-        let target = calculateAmount(targetAmountString)
+        let target = MathParser.calculate(targetAmountString)
         
         let today = Date()
         guard targetDate > today else { return nil }
@@ -9850,8 +10234,8 @@ struct EditAccountView: View {
     // MARK: - Actions
     
     private func saveChanges() {
-        let amount = calculateAmount(initialAmountString)
-        let targetRaw = calculateAmount(targetAmountString)
+        let amount = MathParser.calculate(initialAmountString)
+        let targetRaw = MathParser.calculate(targetAmountString)
         
         // Parse target: empty string or "0" → nil for debt accounts
         let target: Double?
@@ -10088,7 +10472,7 @@ struct AddAccountView: View {
     }
     
     private var targetSectionFooter: String {
-        let target = calculateAmount(targetAmountString)
+        let target = MathParser.calculate(targetAmountString)
         
         if isCredit {
             if target > 0 {
@@ -10110,7 +10494,7 @@ struct AddAccountView: View {
     }
     
     private var shouldShowInstallmentSection: Bool {
-        let target = calculateAmount(targetAmountString)
+        let target = MathParser.calculate(targetAmountString)
         
         if isCredit {
             // Show for debt accounts (target = 0) or budgets (target > 0)
@@ -10134,7 +10518,7 @@ struct AddAccountView: View {
     }
     
     private var accountTypeIcon: String {
-        let target = calculateAmount(targetAmountString)
+        let target = MathParser.calculate(targetAmountString)
         
         switch (isCredit, target > 0) {
         case (false, false): return "dollarsign.circle.fill"
@@ -10145,7 +10529,7 @@ struct AddAccountView: View {
     }
     
     private var accountTypeColor: Color {
-        let target = calculateAmount(targetAmountString)
+        let target = MathParser.calculate(targetAmountString)
         
         switch (isCredit, target > 0) {
         case (false, false): return .primary
@@ -10156,7 +10540,7 @@ struct AddAccountView: View {
     }
     
     private var accountTypeName: String {
-        let target = calculateAmount(targetAmountString)
+        let target = MathParser.calculate(targetAmountString)
         
         switch (isCredit, target > 0) {
         case (false, false): return "Debit Account"
@@ -10172,39 +10556,13 @@ struct AddAccountView: View {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
     }
     
-    // MARK: - Math Engine
-    
-    /// Parses a string that may contain math expressions (e.g., "100+50") into a Double.
-    private func calculateAmount(_ input: String) -> Double {
-        // 1. Filter allowed characters
-        let allowed = CharacterSet(charactersIn: "0123456789.+-*/")
-        let sanitized = input.components(separatedBy: allowed.inverted).joined()
-        
-        if sanitized.isEmpty { return 0 }
-        
-        // 2. If it ends in a math symbol, just parse the safe part to avoid crash
-        if let lastChar = sanitized.last, !lastChar.isNumber {
-            return Double(sanitized.dropLast()) ?? 0
-        }
-        
-        // 3. Evaluate expression
-        let expression = NSExpression(format: sanitized)
-        if let result = expression.expressionValue(with: nil, context: nil) as? Double {
-            return result
-        } else if let intResult = expression.expressionValue(with: nil, context: nil) as? Int {
-            return Double(intResult)
-        }
-        
-        return Double(sanitized) ?? 0
-    }
-    
     // MARK: - Calculations
     
     private func calculatePreview() -> (periods: Int, amountPerPeriod: Double)? {
         guard hasTargetDate else { return nil }
         
-        let initial = calculateAmount(initialAmountString)
-        let target = calculateAmount(targetAmountString)
+        let initial = MathParser.calculate(initialAmountString)
+        let target = MathParser.calculate(targetAmountString)
         
         let today = Date()
         guard targetDate > today else { return nil }
@@ -10242,8 +10600,8 @@ struct AddAccountView: View {
     }
     
     private func saveAccount() {
-        let amount = calculateAmount(initialAmountString)
-        let targetRaw = calculateAmount(targetAmountString)
+        let amount = MathParser.calculate(initialAmountString)
+        let targetRaw = MathParser.calculate(targetAmountString)
         
         // Logic for Target:
         // If Debt (isCredit=true): target can be 0 (payoff goal) or >0 (budget limit).

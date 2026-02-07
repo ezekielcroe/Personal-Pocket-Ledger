@@ -166,7 +166,7 @@ struct AddAccountView: View {
                     dismiss()
                 }
             )
-            .decimalPadToolbar()
+            .mathPadToolbar(for: activeMathBinding)
             .onAppear {
                 focusedField = .name
             }
@@ -369,5 +369,21 @@ struct AddAccountView: View {
         
         data.save()
         dismiss()
+    }
+    
+    private var activeMathBinding: Binding<String> {
+        Binding {
+            switch focusedField {
+            case .amount: return initialAmountString
+            case .target: return targetAmountString
+            default: return ""
+            }
+        } set: { newValue in
+            switch focusedField {
+            case .amount: initialAmountString = newValue
+            case .target: targetAmountString = newValue
+            default: break
+            }
+        }
     }
 }

@@ -312,7 +312,7 @@ struct AddTransactionView: View {
                     self.type = .transfer // Ensure UI shows as transfer
                 }
             }
-            .decimalPadToolbar()
+            .mathPadToolbar(for: $amountString)
         }
     }
     

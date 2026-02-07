@@ -168,29 +168,71 @@ extension AppData {
     
     @MainActor
     func initializeDefaultsIfNeeded() async {
+        
+        // MARK: - 1. Accounts (The Four Pillars)
+        // We create one of each type to teach the different behaviors.
         if accounts.isEmpty {
-            addAccount(name: "Cash", initialAmount: 0.0)
-            addAccount(name: "Bank", initialAmount: 0.0)
+            // A. DEBIT: The Standard Hub
+            addAccount(name: "Main Checking", initialAmount: 2500.00, isCredit: false)
+            
+            // B. BUDGET (Credit): The "Limit is Budget" Lesson
+            // We set a 2000 target. The UI will show this as "Available Capacity".
+            addAccount(name: "Daily Driver Card", initialAmount: 0.0, isCredit: true, targetAmount: 2000.0)
+            
+            // C. GOAL: The "Progress Bar" Lesson
+            // A savings goal with a target amount.
+            addAccount(name: "Laptop Fund", initialAmount: 450.00, isCredit: false, targetAmount: 2000.0)
+            
+            // D. DEBT: The "Black Hole" Lesson
+            // A debt account where you can only transfer IN (to pay off).
+            addAccount(name: "Student Loan", initialAmount: 15000.00, isCredit: true, targetAmount: 0.0)
         }
         
+        // MARK: - 2. Categories (Broad Philosophy)
+        // We use broad categories to prevent decision fatigue.
         if categories.isEmpty {
-            addCategory(name: "Food", type: .outflow, emoji: "🍽")
+            addCategory(name: "Sustenance", type: .outflow, emoji: "🍱")
             addCategory(name: "Housing", type: .outflow, emoji: "🏠")
-            addCategory(name: "Transportation", type: .outflow, emoji: "🚗")
-            addCategory(name: "Utilities", type: .outflow, emoji: "💡")
-            addCategory(name: "Entertainment", type: .outflow, emoji: "🎮")
-            addCategory(name: "Shopping", type: .outflow, emoji: "🛍")
-            addCategory(name: "Health", type: .outflow, emoji: "💊")
-            addCategory(name: "Gifts", type: .outflow, emoji: "🎁")
-            addCategory(name: "Other", type: .outflow, emoji: "📦")
-            addCategory(name: "Salary", type: .inflow, emoji: "💼")
-            addCategory(name: "Bonus", type: .inflow, emoji: "💰")
-            addCategory(name: "Other Income", type: .inflow, emoji: "📥")
+            addCategory(name: "Lifestyle", type: .outflow, emoji: "🎨")
+            addCategory(name: "Income", type: .inflow, emoji: "💰")
         }
         
+        // MARK: - 3. Tags (The Keyword Lesson)
+        // We create a "Magic Tag" to teach the search engine.
         if tags.isEmpty {
-            addTag(name: "Mandatory")
-            addTag(name: "Discretionary")
+            // The Lesson: Don't make a tag for every coffee shop. Make one tag with keywords.
+            addTag(name: "#Caffeine", keywords: ["starbucks", "dunkin", "espresso", "latte", "coffee"])
+            addTag(name: "#Recurring", keywords: ["subscription", "netflix", "spotify", "monthly"])
+        }
+        
+        // MARK: - 4. Templates (The Workflow Lesson)
+        // Pre-built templates to teach the "Transfer" vs "Expense" logic.
+        if templates.isEmpty {
+            // We need IDs to link these, so we find the created objects first
+            if let creditCard = accounts.first(where: { $0.name == "Daily Driver Card" }),
+               let checking = accounts.first(where: { $0.name == "Main Checking" }),
+               let sustenance = categories.first(where: { $0.name == "Sustenance" }),
+               let caffeineTag = tags.first(where: { $0.name == "#Caffeine" }) {
+                
+                // Template 1: The Quick Spend (Coffee)
+                // Teaches: Using Credit Card + Category + Tag
+                addTemplate(
+                    name: "Morning Coffee",
+                    type: .outflow,
+                    accountID: creditCard.id,
+                    categoryID: sustenance.id,
+                    tagIDs: [caffeineTag.id]
+                )
+                
+                // Template 2: The Bill Pay
+                // Teaches: Paying a credit card is a TRANSFER, not an expense.
+                addTemplate(
+                    name: "Pay Credit Bill",
+                    type: .transfer,
+                    accountID: checking.id, // From Checking
+                    transferTargetAccountID: creditCard.id // To Credit Card
+                )
+            }
         }
     }
 }

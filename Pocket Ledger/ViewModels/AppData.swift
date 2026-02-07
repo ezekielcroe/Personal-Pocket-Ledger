@@ -38,8 +38,12 @@ class AppData: ObservableObject {
     let storage = StorageService()
 
     init() {
-        Task {
-            await loadIndex()
+            Task {
+                // 1. Load any saved data from disk
+                await loadIndex()
+                
+                // 2. Check if the app is empty, and if so, load the tutorial defaults
+                await initializeDefaultsIfNeeded()
+            }
         }
-    }
 }
