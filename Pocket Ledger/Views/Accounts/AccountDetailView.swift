@@ -3,30 +3,52 @@ import SwiftUI
 /// Displays details about an account including its transactions and statistics.
 struct AccountDetailView: View {
     @EnvironmentObject var data: AppData
+    @Environment(\.dismiss) var dismiss
     
-    // The account passed in is just used for its ID to find the "Live" version
     let account: Account
 
     @AppStorage("currencySymbol") private var currencySymbol: String = "$"
     @AppStorage("fiscalStartDay") private var fiscalStartDay: Int = 1
     
-    /// Fetches the latest version of the account from the source of truth.
-    /// This ensures that when AppData changes (e.g. archiving), this view updates immediately.
+    @State private var showingEditSheet = false
+    @State private var showingDeleteConfirmation = false
+    
+    // Ensure we are viewing the latest version from AppData
     private var liveAccount: Account {
         data.accounts.first(where: { $0.id == account.id }) ?? account
     }
     
     var body: some View {
         List {
-            // SECTION 1: Balance Card (Type-Specific)
+            // NEW: Archived Banner
+            if liveAccount.isArchived {
+                Section {
+                    HStack {
+                        Image(systemName: "archivebox.fill")
+                            .foregroundColor(.orange)
+                        VStack(alignment: .leading) {
+                            Text("Archived")
+                                .font(.headline)
+                            Text("This account is hidden from the main list.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+            
+            // SECTION 1: Balance
             balanceSection
             
-            // SECTION 2: Target Progress (Goals, Budgets, Debts)
+            reconciliationStatusSection
+            
+            // SECTION 2: Target Progress
             if shouldShowTargetProgress {
                 targetProgressSection
             }
             
-            // SECTION 3: Installment Calculator (Goals & Debts with target dates)
+            // SECTION 3: Installment Calculator
             if shouldShowInstallmentCalculator {
                 installmentCalculatorSection
             }
@@ -36,13 +58,127 @@ struct AccountDetailView: View {
             
             // SECTION 5: Recent Transactions
             recentTransactionsSection
-            
-            // SECTION 6: Archive Controls
-            archiveSection
         }
         .navigationTitle(liveAccount.name)
         .navigationBarTitleDisplayMode(.inline)
+        // NEW: Consolidated Actions Menu
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button {
+                        showingEditSheet = true
+                    } label: {
+                        Label("Edit Account", systemImage: "pencil")
+                    }
+                    
+                    if liveAccount.isArchived {
+                        Button {
+                            withAnimation { data.unarchiveAccount(liveAccount) }
+                        } label: {
+                            Label("Unarchive", systemImage: "arrow.uturn.backward")
+                        }
+                    } else {
+                        Button {
+                            withAnimation { data.archiveAccount(liveAccount) }
+                        } label: {
+                            Label("Archive", systemImage: "archivebox")
+                        }
+                    }
+                    
+                    Divider()
+                    
+                    Button(role: .destructive) {
+                        showingDeleteConfirmation = true
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
+        }
+        .sheet(isPresented: $showingEditSheet) {
+            EditAccountView(account: liveAccount)
+        }
+        .alert("Delete Account", isPresented: $showingDeleteConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                data.deleteAccount(liveAccount)
+                dismiss() // Pop back to list
+            }
+        } message: {
+            Text("Are you sure? This will permanently remove the account and all its transactions.")
+        }
     }
+    
+    // MARK: - Reconciliation Traffic Light
+        
+        @ViewBuilder
+        private var reconciliationStatusSection: some View {
+            Section(header: Text("Verification Status")) {
+                HStack(spacing: 12) {
+                    // 1. The Light
+                    Circle()
+                        .fill(reconciliationColor)
+                        .frame(width: 12, height: 12)
+                        .shadow(color: reconciliationColor.opacity(0.5), radius: 4, x: 0, y: 0)
+                    
+                    // 2. The Text
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(reconciliationTitle)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                        
+                        Text(reconciliationSubtitle)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                    
+                    // 3. Action Button (Optional shortcut to Reconcile)
+                    // You can link this to the ReconcileView if you want a direct path
+                }
+                .padding(.vertical, 4)
+            }
+        }
+        
+        // MARK: - Reconciliation Logic
+        
+        private var daysSinceReconciliation: Int? {
+            guard let date = liveAccount.lastReconciledDate else { return nil }
+            let calendar = Calendar.current
+            let start = calendar.startOfDay(for: date)
+            let end = calendar.startOfDay(for: Date())
+            return calendar.dateComponents([.day], from: start, to: end).day
+        }
+        
+        private var reconciliationColor: Color {
+            guard let days = daysSinceReconciliation else { return .red } // Never reconciled
+            
+            if days < 7 { return .green }      // Fresh
+            if days < 30 { return .yellow }    // Stale
+            return .red                        // Overdue
+        }
+        
+        private var reconciliationTitle: String {
+            guard let days = daysSinceReconciliation else { return "Never Reconciled" }
+            
+            if days == 0 { return "Verified Today" }
+            if days == 1 { return "Verified Yesterday" }
+            return "Verified \(days) days ago"
+        }
+        
+        private var reconciliationSubtitle: String {
+            guard let days = daysSinceReconciliation else {
+                return "Balance accuracy is unverified."
+            }
+            
+            if days < 7 { return "Balance is fresh and trusted." }
+            if days < 30 { return "It might be time for a quick check." }
+            return "Balance may not match reality."
+        }
     
     // MARK: - Balance Section
     

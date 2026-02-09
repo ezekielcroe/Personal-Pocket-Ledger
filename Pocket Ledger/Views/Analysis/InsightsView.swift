@@ -139,10 +139,6 @@ struct InsightsView: View {
                     Button { showingFilterSheet = true } label: {
                         Label("Filter Data", systemImage: "line.3.horizontal.decrease.circle")
                     }
-                    Divider()
-                    Button { showingReconcileSheet = true } label: {
-                        Label("Reconcile Accounts", systemImage: "checkmark.seal")
-                    }
                 } label: {
                     Image(systemName: "slider.horizontal.3")
                         .font(.title2.weight(.semibold))

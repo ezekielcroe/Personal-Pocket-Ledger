@@ -4,14 +4,16 @@ struct AccountsListView: View {
     @EnvironmentObject var data: AppData
     @AppStorage("currencySymbol") private var currencySymbol: String = "$"
     
-    // MARK: - Navigation State (Bindings from ContentView)
-    // These replace the local @State so shortcuts can trigger them
+    // MARK: - Navigation State
     @Binding var globalAddAccountTrigger: Bool
     @Binding var globalAddGroupTrigger: Bool
     
-    // Local State for Editing (Sheets that don't need global shortcuts)
+    // Local State for Editing
     @State private var accountToEdit: Account?
     @State private var groupToEdit: AccountGroup? = nil
+    
+    // NEW: State for Reconcile Sheet
+    @State private var showingReconcileSheet = false
     
     // MARK: - Expansion States
     @State private var isDebitExpanded = true
@@ -21,8 +23,7 @@ struct AccountsListView: View {
     @State private var isGroupsExpanded = true
     @State private var isArchivedExpanded = false
 
-    // MARK: - Filtered Lists
-    
+    // ... [Filtered Lists Computed Properties remain unchanged] ...
     private var debitAccounts: [Account] {
         data.accounts
             .filter { $0.accountType == .debit && !$0.isArchived }
@@ -57,6 +58,7 @@ struct AccountsListView: View {
         NavigationStack {
             ZStack(alignment: .bottomTrailing) {
                 List {
+                    // ... [List Content remains unchanged] ...
                     if data.accounts.isEmpty && data.accountGroups.isEmpty {
                         Text("No accounts yet. Tap + to add one.")
                             .foregroundColor(.secondary)
@@ -67,11 +69,7 @@ struct AccountsListView: View {
                     if !debitAccounts.isEmpty {
                         DisclosureGroup(
                             isExpanded: $isDebitExpanded,
-                            content: {
-                                ForEach(debitAccounts) { account in
-                                    accountRowLink(for: account)
-                                }
-                            },
+                            content: { ForEach(debitAccounts) { accountRowLink(for: $0) } },
                             label: { headerLabel(title: "Debit", count: debitAccounts.count) }
                         )
                     }
@@ -80,11 +78,7 @@ struct AccountsListView: View {
                     if !goalAccounts.isEmpty {
                         DisclosureGroup(
                             isExpanded: $isGoalsExpanded,
-                            content: {
-                                ForEach(goalAccounts) { account in
-                                    accountRowLink(for: account)
-                                }
-                            },
+                            content: { ForEach(goalAccounts) { accountRowLink(for: $0) } },
                             label: { headerLabel(title: "Goals", count: goalAccounts.count) }
                         )
                     }
@@ -93,11 +87,7 @@ struct AccountsListView: View {
                     if !budgetAccounts.isEmpty {
                         DisclosureGroup(
                             isExpanded: $isBudgetsExpanded,
-                            content: {
-                                ForEach(budgetAccounts) { account in
-                                    accountRowLink(for: account)
-                                }
-                            },
+                            content: { ForEach(budgetAccounts) { accountRowLink(for: $0) } },
                             label: { headerLabel(title: "Budgets", count: budgetAccounts.count) }
                         )
                     }
@@ -106,11 +96,7 @@ struct AccountsListView: View {
                     if !debtAccounts.isEmpty {
                         DisclosureGroup(
                             isExpanded: $isDebtsExpanded,
-                            content: {
-                                ForEach(debtAccounts) { account in
-                                    accountRowLink(for: account)
-                                }
-                            },
+                            content: { ForEach(debtAccounts) { accountRowLink(for: $0) } },
                             label: { headerLabel(title: "Debts", count: debtAccounts.count) }
                         )
                     }
@@ -129,23 +115,16 @@ struct AccountsListView: View {
                                                 .fontWeight(.medium)
                                             Spacer()
                                             Text(data.groupBalance(group).formattedCurrency(symbol: currencySymbol))
+                                                .font(.system(.body, design: .monospaced))
                                                 .foregroundColor(.secondary)
                                         }
                                     }
                                     .swipeActions(edge: .leading) {
-                                        Button {
-                                            groupToEdit = group
-                                        } label: {
-                                            Label("Edit", systemImage: "pencil")
-                                        }
-                                        .tint(.blue)
+                                        Button { groupToEdit = group } label: { Label("Edit", systemImage: "pencil") }
+                                            .tint(.blue)
                                     }
                                     .swipeActions(edge: .trailing) {
-                                        Button(role: .destructive) {
-                                            data.deleteAccountGroup(group)
-                                        } label: {
-                                            Label("Delete", systemImage: "trash")
-                                        }
+                                        Button(role: .destructive) { data.deleteAccountGroup(group) } label: { Label("Delete", systemImage: "trash") }
                                     }
                                 }
                             },
@@ -176,6 +155,7 @@ struct AccountsListView: View {
                                             }
                                             Spacer()
                                             Text(data.balance(for: account).formattedCurrency(symbol: currencySymbol))
+                                                .font(.system(.body, design: .monospaced))
                                                 .foregroundColor(.secondary)
                                                 .opacity(0.6)
                                         }
@@ -193,18 +173,16 @@ struct AccountsListView: View {
                     Color.clear.frame(height: 80).listRowBackground(Color.clear)
                 }
                 
-                // FAB Menu (Modified to use Bindings)
+                // FAB Menu (UPDATED)
                 Menu {
-                    Button {
-                        globalAddAccountTrigger = true
-                    } label: {
-                        Label("New Account", systemImage: "plus")
-                    }
+                    Button { globalAddAccountTrigger = true } label: { Label("New Account", systemImage: "plus") }
+                    Button { globalAddGroupTrigger = true } label: { Label("New Account Group", systemImage: "folder.badge.plus") }
                     
-                    Button {
-                        globalAddGroupTrigger = true
-                    } label: {
-                        Label("New Account Group", systemImage: "folder.badge.plus")
+                    Divider()
+                    
+                    // NEW: Reconcile Action
+                    Button { showingReconcileSheet = true } label: {
+                        Label("Reconcile Accounts", systemImage: "checkmark.seal")
                     }
                 } label: {
                     Image(systemName: "plus")
@@ -219,35 +197,28 @@ struct AccountsListView: View {
             }
             .navigationTitle("Accounts")
             .toolbar {
-                // COLLAPSE/EXPAND ALL BUTTON
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        toggleAllSections()
-                    } label: {
+                    Button { toggleAllSections() } label: {
                         let anyExpanded = isDebitExpanded || isGoalsExpanded || isBudgetsExpanded || isDebtsExpanded || isGroupsExpanded
                         Image(systemName: anyExpanded ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
                             .font(.subheadline)
                     }
                 }
             }
-            // Sheets (Bound to Global State)
-            .sheet(isPresented: $globalAddAccountTrigger) {
-                AddAccountView()
-            }
-            .sheet(isPresented: $globalAddGroupTrigger) {
-                AddAccountGroupView()
-            }
-            // Sheets (Bound to Local State)
-            .sheet(item: $accountToEdit) { account in
-                EditAccountView(account: account)
-            }
-            .sheet(item: $groupToEdit) { group in
-                AddAccountGroupView(groupToEdit: group)
+            .sheet(isPresented: $globalAddAccountTrigger) { AddAccountView() }
+            .sheet(isPresented: $globalAddGroupTrigger) { AddAccountGroupView() }
+            .sheet(item: $accountToEdit) { account in EditAccountView(account: account) }
+            .sheet(item: $groupToEdit) { group in AddAccountGroupView(groupToEdit: group) }
+            
+            // NEW: Reconcile Sheet
+            .sheet(isPresented: $showingReconcileSheet) {
+                ReconcileSelectionView()
+                    .environmentObject(data)
             }
         }
     }
     
-    // MARK: - Logic
+    // ... [Logic and Helper Functions remain unchanged] ...
     
     private func toggleAllSections() {
         withAnimation {
@@ -261,17 +232,12 @@ struct AccountsListView: View {
         }
     }
 
-    // MARK: - View Builders
-    
     private func headerLabel(title: String, count: Int) -> some View {
         HStack {
-            Text(title)
-                .font(.headline)
-                .foregroundColor(.primary)
+            Text(title).font(.headline).foregroundColor(.primary)
             Spacer()
             Text("\(count)")
-                .font(.caption)
-                .foregroundColor(.secondary)
+                .font(.caption).foregroundColor(.secondary)
                 .padding(.horizontal, 8)
                 .background(Color(.secondarySystemBackground))
                 .clipShape(Capsule())
@@ -284,23 +250,21 @@ struct AccountsListView: View {
             AccountRow(account: account)
         }
         .swipeActions(edge: .leading) {
-            Button {
-                accountToEdit = account
-            } label: {
-                Label("Edit", systemImage: "pencil")
-            }
+            Button { accountToEdit = account } label: { Label("Edit", systemImage: "pencil") }
             .tint(.blue)
         }
         .swipeActions(edge: .trailing) {
-            Button(role: .destructive) {
-                data.deleteAccount(account)
+            Button {
+                withAnimation {
+                    data.archiveAccount(account)
+                }
             } label: {
-                Label("Delete", systemImage: "trash")
+                Label("Archive", systemImage: "archivebox")
             }
+            .tint(.orange)
         }
     }
 }
-
 // MARK: - Account Row
 
 struct AccountRow: View {
@@ -312,7 +276,7 @@ struct AccountRow: View {
         HStack(spacing: 8) {
             // 1. LEFT SIDE: Name & Type
             VStack(alignment: .leading, spacing: 3) {
-                // Row A: Name + Badge
+                // Row A: Name + Badge + Reconciliation Dot
                 HStack(spacing: 6) {
                     Text(account.name)
                         .font(.body)
@@ -323,11 +287,18 @@ struct AccountRow: View {
                         AccountStatusBadgeView(badge: badge)
                             .scaleEffect(0.75)
                     }
+                    
+                    // NEW: Reconciliation Status Dot
+                    if let dotColor = reconciliationColor {
+                        Circle()
+                            .fill(dotColor)
+                            .frame(width: 8, height: 8)
+                            .padding(.leading, 2)
+                    }
                 }
                 
-                // Row B: Icon + Label (Color Restored)
+                // Row B: Icon + Label
                 HStack(spacing: 4) {
-                    // FIX: Apply the specific type color to the icon
                     Image(systemName: account.accountType.icon)
                         .foregroundColor(account.accountType.color)
                     
@@ -345,6 +316,20 @@ struct AccountRow: View {
                 .multilineTextAlignment(.trailing)
         }
         .padding(.vertical, 6)
+    }
+    
+    // MARK: - Reconciliation Logic
+    private var reconciliationColor: Color? {
+        guard let date = account.lastReconciledDate else { return nil }
+        
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: date)
+        let end = calendar.startOfDay(for: Date())
+        let days = calendar.dateComponents([.day], from: start, to: end).day ?? 0
+        
+        if days < 7 { return .green }      // Verified recently
+        if days < 30 { return .yellow }    // Stale
+        return .red                        // Needs Attention
     }
     
     // MARK: - Balance View

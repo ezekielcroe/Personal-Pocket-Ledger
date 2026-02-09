@@ -132,7 +132,7 @@ struct AccountsGuideView: View {
                 GuideDetailRow(icon: "banknote", color: .green, title: "Debit", description: "Standard liquid cash (Checking, Wallet).")
                 GuideDetailRow(icon: "target", color: .blue, title: "Goal", description: "Savings container. Set a target amount to track progress.")
                 GuideDetailRow(icon: "envelope.fill", color: .purple, title: "Budget (Credit)", description: "Treats Credit Limits as 'Budgets'. Spending depletes your available capacity.")
-                GuideDetailRow(icon: "lock.fill", color: .orange, title: "Debt", description: "A 'Sink' account. You cannot spend from here. You can only transfer IN to pay it off.")
+                GuideDetailRow(icon: "lock.fill", color: .orange, title: "Debt", description: "A 'Sink' account. You cannot spend from here. You can only transfer IN to pay it off. These transfers are counted as outflows")
             }
         }
         .navigationTitle("Accounts")
@@ -158,7 +158,7 @@ struct TaxonomyGuideView: View {
                 }
                 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Keywords are Magic")
+                    Text("Add Keywords to Tags")
                         .font(.headline)
                     Text("Don't create a tag for every vendor. Add 'Starbucks' as a keyword to the '#Coffee' tag. Searching for 'Starbucks' will auto-apply the tag.")
                         .font(.caption).foregroundColor(.secondary)
@@ -177,9 +177,8 @@ struct TemplatesGuideView: View {
             }
             
             Section(header: Text("Features")) {
-                GuideDetailRow(icon: "bolt.fill", color: .yellow, title: "One-Tap Entry", description: "Pre-fill Amount, Category, Tags, and Account.")
+                GuideDetailRow(icon: "bolt.fill", color: .yellow, title: "One-Tap Entry", description: "Pre-fill Type, Category, Tags, and Account.")
                 GuideDetailRow(icon: "bell.badge.fill", color: .red, title: "Reminders", description: "Attach a schedule (e.g., 'Monthly on the 1st'). The notification will deep-link directly to the pre-filled form.")
-                GuideDetailRow(icon: "arrow.left.arrow.right", color: .blue, title: "Transfers", description: "Use templates to standardize credit card payments (Transfer Checking -> Credit).")
             }
         }
         .navigationTitle("Templates")
@@ -195,7 +194,6 @@ struct PowerUserGuideView: View {
                 HotkeyDisplayRow(keys: ["⌘", "2"], action: "Transactions Tab")
                 HotkeyDisplayRow(keys: ["⌘", "3"], action: "Templates Tab")
                 HotkeyDisplayRow(keys: ["⌘", "4"], action: "Insights Tab")
-                Divider()
                 HotkeyDisplayRow(keys: ["⌘", "T"], action: "New Transaction")
                 HotkeyDisplayRow(keys: ["⌘", "A"], action: "New Account")
                 HotkeyDisplayRow(keys: ["⌘", "G"], action: "New Group")
@@ -228,10 +226,10 @@ struct PowerUserGuideView: View {
                         .foregroundColor(.secondary)
                 }
                 HStack {
-                    Image(systemName: "hand.tap.fill")
-                    Text("Tap & Hold")
+                    Image(systemName: "hand.draw.fill")
+                    Text("Swipe Right")
                     Spacer()
-                    Text("Context Menu")
+                    Text("Edit")
                         .foregroundColor(.secondary)
                 }
             }

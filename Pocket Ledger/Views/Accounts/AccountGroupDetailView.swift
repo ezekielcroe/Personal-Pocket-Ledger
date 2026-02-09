@@ -1,12 +1,24 @@
 import SwiftUI
 
+import SwiftUI
+
 struct AccountGroupDetailView: View {
     @EnvironmentObject var data: AppData
+    @Environment(\.dismiss) var dismiss
+    
     let group: AccountGroup
+    
     @AppStorage("currencySymbol") private var currencySymbol: String = "$"
     @AppStorage("fiscalStartDay") private var fiscalStartDay: Int = 1
     
     @State private var expandedMemberIDs: Set<UUID> = []
+    @State private var showingEditSheet = false
+    @State private var showingDeleteConfirmation = false
+    
+    // NEW: Live Group object for reactive updates
+    private var liveGroup: AccountGroup {
+        data.accountGroups.first(where: { $0.id == group.id }) ?? group
+    }
     
     var body: some View {
         List {
@@ -14,51 +26,38 @@ struct AccountGroupDetailView: View {
             Section(header: Text("Total")) {
                 VStack(spacing: 8) {
                     HStack {
-                        Text("Group Balance")
-                            .font(.headline)
+                        Text("Group Balance").font(.headline)
                         Spacer()
                     }
-                    
-                    Text(data.groupBalance(group).formattedCurrency(symbol: currencySymbol))
+                    Text(data.groupBalance(liveGroup).formattedCurrency(symbol: currencySymbol))
                         .font(.system(size: 36, weight: .bold, design: .rounded))
                         .foregroundColor(totalBalanceColor)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     
-                    // Nesting depth indicator
-                    let depth = data.depth(of: group)
+                    let depth = data.depth(of: liveGroup)
                     if depth > 0 {
                         HStack(spacing: 4) {
-                            Image(systemName: "arrow.down.forward")
-                                .font(.caption2)
-                            Text("Nesting depth: \(depth)")
-                                .font(.caption)
+                            Image(systemName: "arrow.down.forward").font(.caption2)
+                            Text("Nesting depth: \(depth)").font(.caption)
                         }
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .foregroundColor(.secondary).frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
             }
             
             // SECTION 2: Hierarchical Breakdown
             Section(header: HStack {
-                Text("Members (\(group.memberIDs.count))")
+                Text("Members (\(liveGroup.memberIDs.count))")
                 Spacer()
-                Button(expandedMemberIDs.isEmpty ? "Expand All" : "Collapse All") {
-                    toggleAllMembers()
-                }
+                Button(expandedMemberIDs.isEmpty ? "Expand All" : "Collapse All") { toggleAllMembers() }
                 .font(.caption)
             }, footer: Text(balanceCalculationExplanation)) {
-                // REFACTORED: Now uses a struct instead of a recursive function call
-                ForEach(data.members(for: group), id: \.id) { member in
-                    MemberRowView(
-                        member: member,
-                        depth: 0,
-                        expandedMemberIDs: $expandedMemberIDs
-                    )
+                ForEach(data.members(for: liveGroup), id: \.id) { member in
+                    MemberRowView(member: member, depth: 0, expandedMemberIDs: $expandedMemberIDs)
                 }
             }
             
-            // SECTION 3: Statistics (This Period)
+            // SECTION 3: Statistics
             Section(header: Text("Statistics")) {
                 let totals = calculateGroupMonthlyTotals()
                 StatRow(title: "Inflow (This Month)", value: totals.inflow, symbol: currencySymbol, color: .green)
@@ -68,10 +67,8 @@ struct AccountGroupDetailView: View {
             // SECTION 4: Recent Transactions
             Section(header: Text("Recent Transactions (Last 25)")) {
                 let recent = recentTransactions
-                
                 if recent.isEmpty {
-                    Text("No transactions in this group.")
-                        .foregroundColor(.secondary)
+                    Text("No transactions in this group.").foregroundColor(.secondary)
                 } else {
                     ForEach(recent) { tx in
                         NavigationLink(destination: TransactionDetailView(transaction: tx)) {
@@ -81,92 +78,102 @@ struct AccountGroupDetailView: View {
                 }
             }
         }
-        .navigationTitle(group.name)
+        .navigationTitle(liveGroup.name)
+        // NEW: Actions Menu
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button {
+                        showingEditSheet = true
+                    } label: {
+                        Label("Edit Group", systemImage: "pencil")
+                    }
+                    
+                    // Assuming AppData supports group archiving, otherwise this can be omitted
+                    /* if liveGroup.isArchived {
+                        Button { withAnimation { data.unarchiveAccountGroup(liveGroup) } } label: { Label("Unarchive", systemImage: "arrow.uturn.backward") }
+                    } else {
+                        Button { withAnimation { data.archiveAccountGroup(liveGroup) } } label: { Label("Archive", systemImage: "archivebox") }
+                    }
+                    */
+                    
+                    Divider()
+                    
+                    Button(role: .destructive) {
+                        showingDeleteConfirmation = true
+                    } label: {
+                        Label("Delete Group", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
+        }
+        .sheet(isPresented: $showingEditSheet) {
+            AddAccountGroupView(groupToEdit: liveGroup)
+        }
+        .alert("Delete Group", isPresented: $showingDeleteConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                data.deleteAccountGroup(liveGroup)
+                dismiss()
+            }
+        } message: {
+            Text("Delete this group? Accounts inside it will not be deleted, they will just be ungrouped.")
+        }
         .onAppear {
-            // Auto-expand first level
-            expandedMemberIDs = Set(group.memberIDs.filter { id in
-                data.accountGroups.contains(where: { $0.id == id })
-            })
+            expandedMemberIDs = Set(liveGroup.memberIDs.filter { id in data.accountGroups.contains(where: { $0.id == id }) })
         }
     }
     
-    // MARK: - Helper Functions
-    
+    // [Helper functions remain unchanged: toggleAllMembers, calculateGroupMonthlyTotals, etc.]
     private func toggleAllMembers() {
-        if expandedMemberIDs.isEmpty {
-            // Expand all groups recursively
-            expandedMemberIDs = Set(allGroupIDs(in: group))
-        } else {
-            // Collapse all
-            expandedMemberIDs.removeAll()
-        }
+        if expandedMemberIDs.isEmpty { expandedMemberIDs = Set(allGroupIDs(in: liveGroup)) }
+        else { expandedMemberIDs.removeAll() }
     }
     
     private func allGroupIDs(in group: AccountGroup) -> [UUID] {
         var result: [UUID] = []
-        
         for member in data.members(for: group) {
             if case .group(let childGroup) = member {
                 result.append(childGroup.id)
                 result.append(contentsOf: allGroupIDs(in: childGroup))
             }
         }
-        
         return result
     }
     
     private var totalBalanceColor: Color {
-        let total = data.groupBalance(group)
-        return total < 0 ? .red : .primary
+        data.groupBalance(liveGroup) < 0 ? .red : .primary
     }
     
     private var balanceCalculationExplanation: String {
-        let allAccountIDs = data.allAccountIDs(in: group)
-        let hasDebit = allAccountIDs.contains { id in
-            data.accounts.first(where: { $0.id == id })?.isCredit == false
-        }
-        let hasCredit = allAccountIDs.contains { id in
-            data.accounts.first(where: { $0.id == id })?.isCredit == true
-        }
-        
-        if hasDebit && hasCredit {
-            return "Group total = Debit accounts (+) minus Credit accounts (−). Groups are calculated recursively."
-        } else if hasCredit {
-            return "Group total = Sum of all credit balances. Groups are calculated recursively."
-        } else {
-            return "Group total = Sum of all debit balances. Groups are calculated recursively."
-        }
+        let ids = data.allAccountIDs(in: liveGroup)
+        let hasDebit = ids.contains { _ in data.accounts.first(where: { $0.id == $0.id })?.isCredit == false }
+        let hasCredit = ids.contains { _ in data.accounts.first(where: { $0.id == $0.id })?.isCredit == true }
+        if hasDebit && hasCredit { return "Group total = Debit accounts (+) minus Credit accounts (−)." }
+        else if hasCredit { return "Group total = Sum of all credit balances." }
+        else { return "Group total = Sum of all debit balances." }
     }
     
     private var recentTransactions: [Transaction] {
-        let allAccountIDs = data.allAccountIDs(in: group)
-        
-        return data.transactions
-            .filter { allAccountIDs.contains($0.accountID) }
-            .sorted { $0.date > $1.date }
-            .prefix(25)
-            .map { $0 }
+        let ids = data.allAccountIDs(in: liveGroup)
+        return data.transactions.filter { ids.contains($0.accountID) }.sorted { $0.date > $1.date }.prefix(25).map { $0 }
     }
     
-    // MARK: - Statistics Calculation
-    
     private func calculateGroupMonthlyTotals() -> (inflow: Double, outflow: Double) {
-        let allAccountIDs = data.allAccountIDs(in: group)
-        let transactions = data.transactions.filter { allAccountIDs.contains($0.accountID) }
-        
+        let ids = data.allAccountIDs(in: liveGroup)
+        let transactions = data.transactions.filter { ids.contains($0.accountID) }
         let range = getCurrentFiscalRange()
         let filtered = transactions.filter { $0.date >= range.start && $0.date <= range.end }
-        
-        let inflow = filtered.filter { $0.type == .inflow }.reduce(0) { $0 + $1.amount }
-        let outflow = filtered.filter { $0.type == .outflow }.reduce(0) { $0 + $1.amount }
-        return (inflow, outflow)
+        return (filtered.filter { $0.type == .inflow }.reduce(0) { $0 + $1.amount },
+                filtered.filter { $0.type == .outflow }.reduce(0) { $0 + $1.amount })
     }
 
     private func getCurrentFiscalRange() -> (start: Date, end: Date) {
         let calendar = Calendar.current
         let components = calendar.dateComponents([.year, .month], from: Date())
-        let startComp = DateComponents(year: components.year, month: components.month, day: fiscalStartDay)
-        var start = calendar.date(from: startComp) ?? Date()
+        var start = calendar.date(from: DateComponents(year: components.year, month: components.month, day: fiscalStartDay)) ?? Date()
         if Date() < start { start = calendar.date(byAdding: .month, value: -1, to: start) ?? start }
         let end = calendar.date(byAdding: .month, value: 1, to: start)?.addingTimeInterval(-1) ?? Date()
         return (start, end)

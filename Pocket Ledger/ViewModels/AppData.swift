@@ -46,4 +46,12 @@ class AppData: ObservableObject {
                 await initializeDefaultsIfNeeded()
             }
         }
+    
+    // MARK: - Reconciled account marker
+    func markAccountAsReconciled(_ accountID: UUID) {
+        if let index = accounts.firstIndex(where: { $0.id == accountID }) {
+            accounts[index].lastReconciledDate = Date()
+            save()
+        }
+    }
 }

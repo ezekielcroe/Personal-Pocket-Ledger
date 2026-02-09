@@ -2,7 +2,6 @@ import SwiftUI
 
 // MARK: - Single Selection View
 
-/// A generic searchable list for single selection (Accounts/Categories) with visual enhancements
 struct SelectionView<T: Identifiable>: View where T: Hashable {
     @EnvironmentObject var data: AppData
     @AppStorage("currencySymbol") private var currencySymbol: String = "$"
@@ -14,16 +13,26 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
     @State private var searchText = ""
     
     @FocusState private var isSearchFocused: Bool
-    
-    // NEW: State for collapsed archived section
     @State private var isArchivedExpanded: Bool = false
     
     var filteredItems: [T] {
+        // 1. Filter out archived items immediately for selection purposes
+        let activeItems = items.filter { item in
+            if let cat = item as? Category {
+                return !cat.isArchived
+            }
+            // Accounts are usually pre-filtered by the caller, but this is a safety check
+            if let acc = item as? Account {
+                return !acc.isArchived
+            }
+            return true
+        }
+        
         let list: [T]
         if searchText.isEmpty {
-            list = items
+            list = activeItems
         } else {
-            list = items.filter { item in
+            list = activeItems.filter { item in
                 if let named = item as? Account {
                     return named.name.localizedCaseInsensitiveContains(searchText)
                 }
@@ -50,27 +59,20 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
     }
     
     // MARK: - Account Grouping Logic
+    // (Used only if T is Account)
     
-    // Active accounts grouped by type
     private var activeAccountsByType: [(type: AccountType, accounts: [T])] {
         guard isAccountView else { return [] }
         
         let typeOrder: [AccountType] = [.debit, .goal, .budget, .debt]
-        // Filter only Active accounts
-        let activeItems = filteredItems.filter { !($0 as? Account)!.isArchived }
+        // Note: filteredItems is already filtered for isArchived above
         
         return typeOrder.compactMap { type in
-            let accountsOfType = activeItems.filter {
+            let accountsOfType = filteredItems.filter {
                 ($0 as? Account)?.accountType == type
             }
             return accountsOfType.isEmpty ? nil : (type, accountsOfType)
         }
-    }
-    
-    // Archived accounts list
-    private var archivedAccounts: [T] {
-        guard isAccountView else { return [] }
-        return filteredItems.filter { ($0 as? Account)!.isArchived }
     }
     
     var body: some View {
@@ -87,25 +89,7 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
                             }
                         }
                     }
-                    
-                    // 2. Archived Accounts (Collapsed Section)
-                    if !archivedAccounts.isEmpty {
-                        DisclosureGroup(isExpanded: $isArchivedExpanded) {
-                            ForEach(archivedAccounts) { item in
-                                accountSelectionRow(for: item)
-                            }
-                        } label: {
-                            HStack {
-                                Image(systemName: "archivebox")
-                                Text("Archived Accounts")
-                                Spacer()
-                                Text("\(archivedAccounts.count)")
-                                    .foregroundColor(.secondary)
-                                    .font(.caption)
-                            }
-                            .foregroundColor(.secondary)
-                        }
-                    }
+                    // Note: Archived accounts are hidden in selection view
                     
                 } else {
                     // CATEGORIES: Standard list with emoji
@@ -135,7 +119,7 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
         }
     }
     
-    // MARK: - Account Selection Row (Enhanced)
+    // MARK: - Account Selection Row
     
     @ViewBuilder
     private func accountSelectionRow(for item: T) -> some View {
@@ -144,22 +128,16 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
                 selectAndDismiss(item.id)
             } label: {
                 HStack(spacing: 12) {
-                    // VISUAL: Account Type Icon (Dimmed if archived)
                     AccountTypeIcon(type: account.accountType, size: 32)
-                        .opacity(account.isArchived ? 0.5 : 1.0)
                     
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 6) {
                             Text(account.name)
-                                .foregroundColor(account.isArchived ? .secondary : .primary)
-                            
-                            // VISUAL: Status Badge (Dimmed if archived)
+                                .foregroundColor(.primary)
                             if let badge = account.statusBadge(balance: data.balance(for: account)) {
                                 AccountStatusBadgeView(badge: badge)
-                                    .opacity(account.isArchived ? 0.5 : 1.0)
                             }
                         }
-                        
                         Text(account.accountType.rawValue.capitalized)
                             .font(.caption)
                             .foregroundColor(.secondary)
@@ -167,13 +145,10 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
                     
                     Spacer()
                     
-                    // Balance (Dimmed if archived)
                     Text(data.balance(for: account).formattedCurrency(symbol: currencySymbol))
                         .font(.subheadline)
                         .foregroundColor(balanceColor(for: account))
-                        .opacity(account.isArchived ? 0.5 : 1.0)
                     
-                    // Checkmark
                     if item.id == selectedID {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundColor(.blue)
@@ -189,7 +164,7 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
         }
     }
     
-    // MARK: - Category Selection Row (Enhanced)
+    // MARK: - Category Selection Row
     
     @ViewBuilder
     private func categorySelectionRow(for item: T) -> some View {
@@ -198,7 +173,6 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
                 selectAndDismiss(item.id)
             } label: {
                 HStack(spacing: 12) {
-                    // VISUAL: Category Emoji
                     Text(category.emoji)
                         .font(.title2)
                         .frame(width: 36, height: 36)
@@ -210,7 +184,6 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
                     
                     Spacer()
                     
-                    // Checkmark
                     if item.id == selectedID {
                         Image(systemName: "checkmark")
                             .foregroundColor(.blue)
@@ -256,30 +229,21 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
     }
     
     private func balanceColor(for account: Account) -> Color {
-        if account.isArchived { return .secondary }
-        
         let balance = data.balance(for: account)
-        
         switch account.accountType {
-        case .debit:
-            return balance < 0 ? .red : .secondary
+        case .debit: return balance < 0 ? .red : .secondary
         case .goal:
-            if let target = account.targetAmount, balance >= target {
-                return .green
-            }
+            if let target = account.targetAmount, balance >= target { return .green }
             return .secondary
         case .budget:
-            if let target = account.targetAmount, balance > target {
-                return .red
-            }
+            if let target = account.targetAmount, balance > target { return .red }
             return .secondary
-        case .debt:
-            return balance > 0 ? .orange : .green
+        case .debt: return balance > 0 ? .orange : .green
         }
     }
 }
 
-// MARK: - Multiple Selection View (Enhanced)
+// MARK: - Multiple Selection View
 
 /// A searchable list for multiple selection (Tags) with Keyboard-first creation logic
 struct MultiSelectionView: View {
@@ -293,12 +257,15 @@ struct MultiSelectionView: View {
     @FocusState private var isSearchFocused: Bool
     
     var filteredItems: [Tag] {
+        // 1. Filter out archived tags
+        let activeTags = items.filter { !$0.isArchived }
+        
         let list: [Tag]
         if searchText.isEmpty {
-            list = items
+            list = activeTags
         } else {
             // Check both name and keywords
-            list = items.filter { tag in
+            list = activeTags.filter { tag in
                 tag.name.localizedCaseInsensitiveContains(searchText) ||
                 tag.keywords.contains { $0.localizedCaseInsensitiveContains(searchText) }
             }
@@ -330,7 +297,6 @@ struct MultiSelectionView: View {
                                 Text(item.name)
                                     .foregroundColor(.primary)
                                 
-                                // Show why it matched if using a keyword
                                 if !searchText.isEmpty,
                                    !item.name.localizedCaseInsensitiveContains(searchText),
                                    let match = item.keywords.first(where: { $0.localizedCaseInsensitiveContains(searchText) }) {

@@ -39,6 +39,9 @@ struct Account: Identifiable, Codable, Hashable, Sendable {
     /// Date when the account was archived. If nil, account is active.
     var archivedDate: Date? = nil
     
+    /// NEW: The last time the user verified this balance against reality.
+    var lastReconciledDate: Date? = nil
+    
     /// Computed property to check if account is archived
     var isArchived: Bool {
         archivedDate != nil
@@ -52,7 +55,8 @@ struct Account: Identifiable, Codable, Hashable, Sendable {
          targetAmount: Double? = nil,
          targetDate: Date? = nil,
          paymentFrequency: PaymentFrequency? = nil,
-         archivedDate: Date? = nil) {
+         archivedDate: Date? = nil,
+         lastReconciledDate: Date? = nil) {
         self.id = id
         self.name = name
         self.initialAmount = initialAmount
@@ -62,6 +66,7 @@ struct Account: Identifiable, Codable, Hashable, Sendable {
         self.targetDate = targetDate
         self.paymentFrequency = paymentFrequency
         self.archivedDate = archivedDate
+        self.lastReconciledDate = lastReconciledDate
     }
     
     /// Computed property for account type classification

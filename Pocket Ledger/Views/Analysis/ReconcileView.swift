@@ -1,11 +1,16 @@
 import SwiftUI
+import UIKit // Needed for Haptics
+
+import SwiftUI
+import UIKit // Needed for Haptics
 
 struct ReconcileInputView: View {
     @EnvironmentObject var data: AppData
-    @Environment(\.dismiss) var dismiss
+    // NOTE: Removed @Environment(\.dismiss) because we delegate dismissal to the parent
     @AppStorage("currencySymbol") private var currencySymbol: String = "$"
     
     let selectedIDs: Set<UUID>
+    var onComplete: () -> Void
     
     // User Input: Maps Target ID -> Input String
     @State private var balanceInputs: [UUID: String] = [:]
@@ -19,11 +24,13 @@ struct ReconcileInputView: View {
     @State private var showingGroupTargetPicker = false
     @State private var selectedAccountForGroupAdjustment: Account?
     
-    // MARK: - KEY FIX: Track which Row ID is focused
+    // Feedback States
+    @State private var showingSuccessAlert = false
+    @State private var reconciledCount = 0
+    
     @FocusState private var focusedFieldID: UUID?
     
-    // MARK: - Computed Binding for the Toolbar
-    // This tells the toolbar: "Apply the + sign to whichever text field is currently focused"
+    // MARK: - Computed Binding
     private var activeMathBinding: Binding<String> {
         Binding {
             guard let id = focusedFieldID else { return "" }
@@ -34,7 +41,7 @@ struct ReconcileInputView: View {
         }
     }
     
-    // MARK: - Unified Target Model
+    // MARK: - Target Model
     enum ReconcileTarget: Identifiable, Hashable {
         case account(Account)
         case group(AccountGroup)
@@ -88,38 +95,50 @@ struct ReconcileInputView: View {
         .navigationTitle("Reconcile")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("Done") { dismiss() }
+                Button("Done") {
+                    handleDone()
+                }
             }
         }
-        // KEY FIX: Pass the dynamic binding to the toolbar
         .mathPadToolbar(for: activeMathBinding)
         .onAppear { initializeInputs() }
         
-        // --- SHEETS ---
+        // --- ALERTS & SHEETS ---
         
-        // 1. Adjustment Details
+        // 1. Success Feedback Alert
+        .alert("Verification Complete", isPresented: $showingSuccessAlert) {
+            // CRITICAL FIX: Call onComplete() here, NOT dismiss()
+            Button("OK") { onComplete() }
+        } message: {
+            Text("\(reconciledCount) accounts have been marked as verified.")
+        }
+        
+        // 2. Adjustment Sheet
         .sheet(isPresented: $showingAdjustmentSheet) {
             if let target = targetToAdjust {
-                // Placeholder for your AdjustmentDetailSheet
-                Text("Adjustment Sheet for \(target.name)")
-                // You can paste your AdjustmentDetailSheet implementation here or in a separate file
+                let name = selectedAccountForGroupAdjustment?.name ?? target.name
+                AdjustmentDetailSheet(
+                    targetName: name,
+                    difference: differenceToAdjust,
+                    currencySymbol: currencySymbol,
+                    onConfirm: { categoryID in
+                        finalizeAdjustment(categoryID: categoryID)
+                    }
+                )
             }
         }
         
-        // 2. Group Account Picker
+        // 3. Group Picker
         .confirmationDialog("Apply Adjustment To...", isPresented: $showingGroupTargetPicker, titleVisibility: .visible) {
             if case .group(let group) = targetToAdjust {
                 let eligibleAccounts = getAccountsRecursive(for: group)
-                
                 ForEach(eligibleAccounts) { account in
                     Button(account.name) {
                         selectedAccountForGroupAdjustment = account
                         showingAdjustmentSheet = true
                     }
                 }
-                Button("Cancel", role: .cancel) {
-                    targetToAdjust = nil
-                }
+                Button("Cancel", role: .cancel) { targetToAdjust = nil }
             }
         } message: {
             Text("Select which account in the group contains the discrepancy.")
@@ -129,7 +148,6 @@ struct ReconcileInputView: View {
     // MARK: - Row View
     private func targetRow(_ target: ReconcileTarget) -> some View {
         let systemBal = target.systemBalance(in: data)
-        // Safe binding to the dictionary
         let binding = Binding<String>(
             get: { balanceInputs[target.id] ?? "" },
             set: { balanceInputs[target.id] = $0 }
@@ -137,28 +155,24 @@ struct ReconcileInputView: View {
         
         return VStack(spacing: 8) {
             HStack {
-                Text(target.name)
-                    .fontWeight(.medium)
+                if case .group = target {
+                    Image(systemName: "folder.fill").foregroundColor(.purple)
+                }
+                Text(target.name).fontWeight(.medium)
                 Spacer()
-                // System Balance (Reference)
                 Text("System: \(systemBal.formattedCurrency(symbol: currencySymbol))")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
             
             HStack {
-                Text("Actual:")
-                    .foregroundColor(.secondary)
+                Text("Actual:").foregroundColor(.secondary)
                 
                 TextField("0.00", text: binding)
-                    .keyboardType(.numbersAndPunctuation) // Must match MathParser logic
+                    .keyboardType(.numbersAndPunctuation)
                     .multilineTextAlignment(.trailing)
-                    .focused($focusedFieldID, equals: target.id) // KEY: Link focus to ID
-                    .onSubmit {
-                        checkDiscrepancy(for: target)
-                    }
+                    .focused($focusedFieldID, equals: target.id)
                 
-                // Status Indicator
                 if let input = balanceInputs[target.id], !input.isEmpty {
                     let actual = MathParser.calculate(input)
                     let diff = actual - systemBal
@@ -168,7 +182,7 @@ struct ReconcileInputView: View {
                             .foregroundColor(.green)
                     } else {
                         Button {
-                            checkDiscrepancy(for: target)
+                            prepareForAdjustment(target: target, diff: diff)
                         } label: {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundColor(.orange)
@@ -182,32 +196,16 @@ struct ReconcileInputView: View {
     
     // MARK: - Logic Helpers
     
-    private func initializeInputs() {
-        for target in targets {
-            // Pre-fill with current system balance to make it easier?
-            // Or leave empty? Let's leave empty to force "Active Guardianship"
-            if balanceInputs[target.id] == nil {
-                balanceInputs[target.id] = ""
-            }
-        }
-    }
+    private func initializeInputs() { }
     
-    private func checkDiscrepancy(for target: ReconcileTarget) {
-        guard let input = balanceInputs[target.id] else { return }
-        let actual = MathParser.calculate(input)
-        let system = target.systemBalance(in: data)
-        let diff = actual - system
+    private func prepareForAdjustment(target: ReconcileTarget, diff: Double) {
+        targetToAdjust = target
+        differenceToAdjust = diff
         
-        if abs(diff) > 0.01 {
-            // Discrepancy found, trigger adjustment flow
-            targetToAdjust = target
-            differenceToAdjust = diff
-            
-            if case .group = target {
-                showingGroupTargetPicker = true
-            } else {
-                showingAdjustmentSheet = true
-            }
+        if case .group = target {
+            showingGroupTargetPicker = true
+        } else {
+            showingAdjustmentSheet = true
         }
     }
     
@@ -216,14 +214,102 @@ struct ReconcileInputView: View {
         return data.accounts.filter { ids.contains($0.id) }
     }
     
+    // MARK: - Done Action
+    
+    private func handleDone() {
+        let count = commitReconciliation()
+        
+        if count > 0 {
+            // Success State
+            reconciledCount = count
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.success)
+            showingSuccessAlert = true
+        } else {
+            onComplete()
+        }
+    }
+    
+    private func commitReconciliation() -> Int {
+        var updatedCount = 0
+        for (id, input) in balanceInputs {
+            guard !input.isEmpty else { continue }
+            guard let target = targets.first(where: { $0.id == id }) else { continue }
+            
+            let actual = MathParser.calculate(input)
+            let system = target.systemBalance(in: data)
+            
+            if abs(actual - system) < 0.01 {
+                switch target {
+                case .account(let account):
+                    data.markAccountAsReconciled(account.id)
+                    updatedCount += 1
+                case .group(let group):
+                    let childAccounts = getAccountsRecursive(for: group)
+                    for child in childAccounts {
+                        data.markAccountAsReconciled(child.id)
+                        updatedCount += 1
+                    }
+                }
+            }
+        }
+        return updatedCount
+    }
+    
     private func finalizeAdjustment(categoryID: UUID?) {
-        // Your existing logic to create the transaction
-        dismiss()
+        guard let target = targetToAdjust else { return }
+        
+        let accountID: UUID
+        if let groupAcc = selectedAccountForGroupAdjustment {
+            accountID = groupAcc.id
+        } else if case .account(let acc) = target {
+            accountID = acc.id
+        } else { return }
+        
+        let type: TransactionType = differenceToAdjust > 0 ? .inflow : .outflow
+        let amount = abs(differenceToAdjust)
+        
+        let finalCategoryID: UUID
+        if let userCat = categoryID {
+            finalCategoryID = userCat
+        } else {
+            finalCategoryID = ensureAdjustmentCategory(type: type)
+        }
+        
+        data.addTransaction(
+            type: type,
+            accountID: accountID,
+            categoryID: finalCategoryID,
+            tagIDs: [],
+            amount: amount,
+            date: Date(),
+            isOutlier: false
+        )
+        
+        data.markAccountAsReconciled(accountID)
+        
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.success)
+        
+        targetToAdjust = nil
+        selectedAccountForGroupAdjustment = nil
+        showingAdjustmentSheet = false
+        showingGroupTargetPicker = false
+    }
+    
+    private func ensureAdjustmentCategory(type: TransactionType) -> UUID {
+        let name = "Reconciliation Adjustment"
+        if let existing = data.categories.first(where: { $0.name == name && $0.type.rawValue == type.rawValue }) {
+            return existing.id
+        }
+        let catType = CategoryType(rawValue: type.rawValue) ?? .outflow
+        let newCat = Category(name: name, type: catType, emoji: "⚖️")
+        data.categories.append(newCat)
+        data.save()
+        return newCat.id
     }
 }
 
-// Reuse the existing AdjustmentDetailSheet (it is generic enough)
-// Minor tweak: pass `targetName` string instead of `Account` object to make it compatible
 struct AdjustmentDetailSheet: View {
     @EnvironmentObject var data: AppData
     @Environment(\.dismiss) var dismiss
