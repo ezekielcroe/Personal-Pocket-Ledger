@@ -6,13 +6,8 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		FE7570E82F3A1A5800292772 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = FE7570E72F3A1A5800292772 /* PrivacyInfo.xcprivacy */; };
-/* End PBXBuildFile section */
-
 /* Begin PBXFileReference section */
 		FE3DBFD32F1B151100D7B598 /* Pocket Ledger.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Pocket Ledger.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		FE7570E72F3A1A5800292772 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -37,7 +32,6 @@
 		FE3DBFCA2F1B151100D7B598 = {
 			isa = PBXGroup;
 			children = (
-				FE7570E72F3A1A5800292772 /* PrivacyInfo.xcprivacy */,
 				FE3DBFD52F1B151100D7B598 /* Pocket Ledger */,
 				FE3DBFD42F1B151100D7B598 /* Products */,
 			);
@@ -115,7 +109,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				FE7570E82F3A1A5800292772 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
