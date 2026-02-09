@@ -319,22 +319,30 @@ struct AddTransactionView: View {
     // MARK: - Account Filtering
     
     /// Accounts available for selection as transaction source.
-    /// - Inflow: All non-archived accounts (money can come INTO any account)
-    /// - Outflow: Excludes pure Debt accounts (can't spend FROM a mortgage)
-    /// - Transfer (From): Excludes pure Debt accounts (can't transfer FROM a mortgage)
-    private var accountsForSourceSelection: [Account] {
-        let activeAccounts = data.accounts.filter { !$0.isArchived }
-        
-        switch type {
-        case .inflow:
-            // Money can flow INTO any account
-            return activeAccounts
-        case .outflow, .transfer:
-            // Can't spend FROM or transfer FROM a pure Debt account
-            // (Debt accounts only receive payments, they don't originate spending)
-            return activeAccounts.filter { $0.accountType != .debt }
+        private var accountsForSourceSelection: [Account] {
+            let activeAccounts = data.accounts.filter { !$0.isArchived }
+            
+            switch type {
+            case .inflow:
+                // Money can flow INTO any account
+                return activeAccounts
+                
+            case .outflow:
+                // STRICT LOCK:
+                // 1. Cannot spend directly from Debt (existing rule)
+                // 2. Cannot spend directly from Goal (new rule)
+                return activeAccounts.filter {
+                    $0.accountType != .debt &&
+                    $0.accountType != .goal
+                }
+                
+            case .transfer:
+                // EMERGENCY ACCESS:
+                // Allow transfers FROM Goal accounts to other accounts.
+                // Still prevent transfers FROM pure Debt accounts (like mortgages).
+                return activeAccounts.filter { $0.accountType != .debt }
+            }
         }
-    }
     
     // MARK: - Helpers
     

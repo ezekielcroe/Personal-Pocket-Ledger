@@ -19,6 +19,8 @@ struct TransactionListView: View {
     @State private var batchTagsToAdd: Set<UUID> = []
     
     // MARK: - Temporal Grouping State
+    // 1. CHANGED: This is now the source of truth for the list
+    @State private var displayedGroups: [TimeGroup] = []
     @State private var collapsedGroups: Set<TimeGroupID> = []
     
     // MARK: - Archive State
@@ -47,7 +49,7 @@ struct TransactionListView: View {
                         Button {
                             toggleAllGroups()
                         } label: {
-                            let allCollapsed = collapsedGroups.count == visibleTimeGroups.count
+                            let allCollapsed = collapsedGroups.count == displayedGroups.count
                             Label(allCollapsed ? "Expand All" : "Collapse All",
                                   systemImage: allCollapsed ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
                         }
@@ -105,6 +107,28 @@ struct TransactionListView: View {
             .sheet(isPresented: $isPresentingBatchTagSheet) {
                 batchTagSheet
             }
+            // MARK: - ASYNC SEARCH TRIGGERS
+            // 2. CHANGED: Watch for text changes, debounce, and calculate
+            .task(id: searchText) {
+                // Debounce: Wait 0.3s if user is typing, unless clearing search
+                if !searchText.isEmpty {
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                }
+                await updateSearchResults()
+            }
+            // 3. CHANGED: Watch for data/filter changes (no debounce needed usually)
+            .task(id: data.transactions) {
+                await updateSearchResults()
+            }
+            .task(id: showArchivedTransactions) {
+                await updateSearchResults()
+            }
+            .task(id: isSearchActive) {
+                // When closing search, ensure list resets immediately
+                if !isSearchActive && searchText.isEmpty {
+                    await updateSearchResults()
+                }
+            }
         }
     }
     
@@ -159,16 +183,19 @@ struct TransactionListView: View {
         List(selection: $selection) {
             if data.transactions.isEmpty {
                 emptyState
-            } else if filteredTransactions.isEmpty {
+            } else if displayedGroups.isEmpty {
+                // 4. CHANGED: Simplified empty state logic based on active search
                 if isSearchActive && !searchText.isEmpty {
                     noSearchResultsState
-                } else if !showArchivedTransactions && visibleTransactions.isEmpty {
+                } else if !showArchivedTransactions && visibleTransactionsCount == 0 {
                     archivedOnlyState
                 } else {
-                    emptyState
+                    // Fallback (usually implies loading or actual empty state)
+                     emptyState
                 }
             } else {
-                ForEach(visibleTimeGroups, id: \.id) { group in
+                // 5. CHANGED: Iterate over the @State variable, not a computed property
+                ForEach(displayedGroups, id: \.id) { group in
                     temporalSection(for: group)
                 }
                 
@@ -500,183 +527,163 @@ struct TransactionListView: View {
         .presentationDetents([.medium, .large])
     }
     
-    // MARK: - Search Logic
+    // MARK: - Async Search & Grouping Logic
     
-    /// Checks if a transaction matches the search query
-    private func transactionMatchesSearch(_ transaction: Transaction, query: String) -> Bool {
-        let lowercasedQuery = query.lowercased()
+    // 6. CHANGED: This entire block was moved from being computed properties to an async function.
+    
+    /// Main logic to filter and group transactions off the main thread
+    private func updateSearchResults() async {
+        // 1. Capture Data Snapshot (Value Types)
+        // We capture these here so we can pass them into the background sorting
+        // without worrying about MainActor warnings later.
+        let allTransactions = data.transactions
+        let allTags = data.tags
+        let allCategories = data.categories
+        let allAccounts = data.accounts
+        let currentSearchText = searchText
+        let isSearchActive = isSearchActive
+        let showArchived = showArchivedTransactions
+        let cutoffDate = archiveCutoffDate
         
-        // Match against tags
-        let tagNames = transaction.tagIDs.compactMap { tagID in
-            data.tags.first(where: { $0.id == tagID })?.name.lowercased()
-        }
-        if tagNames.contains(where: { $0.contains(lowercasedQuery) }) {
-            return true
-        }
-        
-        // Match against category
-        if let category = data.categories.first(where: { $0.id == transaction.categoryID }) {
-            if category.name.lowercased().contains(lowercasedQuery) {
+        // 2. Perform Filtering & Grouping in Background
+        let newGroups = await Task.detached(priority: .userInitiated) { () -> [TimeGroup] in
+            
+            // --- Helper: Search Matcher ---
+            func matchesSearch(_ transaction: Transaction, query: String) -> Bool {
+                let lowercasedQuery = query.lowercased()
+                
+                // Tags
+                let tagNames = transaction.tagIDs.compactMap { tagID in
+                    allTags.first(where: { $0.id == tagID })?.name.lowercased()
+                }
+                if tagNames.contains(where: { $0.contains(lowercasedQuery) }) { return true }
+                
+                // Category
+                if let category = allCategories.first(where: { $0.id == transaction.categoryID }) {
+                    if category.name.lowercased().contains(lowercasedQuery) { return true }
+                }
+                
+                // Account
+                if let account = allAccounts.first(where: { $0.id == transaction.accountID }) {
+                    if account.name.lowercased().contains(lowercasedQuery) { return true }
+                }
+                
+                // Amount
+                let amountString = String(format: "%.2f", transaction.amount)
+                if amountString.contains(lowercasedQuery) { return true }
+                
+                let wholeAmount = String(Int(transaction.amount))
+                if wholeAmount == lowercasedQuery || amountString.hasPrefix(lowercasedQuery) { return true }
+                
+                return false
+            }
+            
+            // --- Step A: Filter ---
+            let filtered: [Transaction] = allTransactions.filter { transaction in
+                // 1. Archive Check
+                let isArchived = transaction.date < cutoffDate
+                if !showArchived && isArchived && (!isSearchActive || currentSearchText.isEmpty) {
+                    return false
+                }
+                
+                // 2. Search Check
+                if isSearchActive && !currentSearchText.isEmpty {
+                    return matchesSearch(transaction, query: currentSearchText)
+                }
+                
                 return true
             }
-        }
-        
-        // Match against account
-        if let account = data.accounts.first(where: { $0.id == transaction.accountID }) {
-            if account.name.lowercased().contains(lowercasedQuery) {
-                return true
+            
+            // --- Step B: Sort ---
+            let sorted = filtered.sorted { $0.date > $1.date }
+            
+            // --- Step C: Group ---
+            var groups: [TimeGroup] = []
+            let calendar = Calendar.current
+            let now = Date()
+            
+            // Define time boundaries
+            let startOfToday = calendar.startOfDay(for: now)
+            let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday)!
+            let startOfThisWeek = calendar.date(byAdding: .day, value: -7, to: startOfToday)!
+            let startOfThisMonth = calendar.dateInterval(of: .month, for: now)?.start ?? startOfToday
+            
+            let lastMonthDate = calendar.date(byAdding: .month, value: -1, to: now)!
+            let startOfLastMonth = calendar.dateInterval(of: .month, for: lastMonthDate)?.start ?? lastMonthDate
+            let endOfLastMonth = calendar.dateInterval(of: .month, for: lastMonthDate)?.end ?? lastMonthDate
+            
+            let twoMonthsAgoDate = calendar.date(byAdding: .month, value: -2, to: now)!
+            let startOfTwoMonthsAgo = calendar.dateInterval(of: .month, for: twoMonthsAgoDate)?.start ?? twoMonthsAgoDate
+            let endOfTwoMonthsAgo = calendar.dateInterval(of: .month, for: twoMonthsAgoDate)?.end ?? twoMonthsAgoDate
+            
+            var futureTransactions: [Transaction] = []
+            var todayTransactions: [Transaction] = []
+            var yesterdayTransactions: [Transaction] = []
+            var thisWeekTransactions: [Transaction] = []
+            var thisMonthTransactions: [Transaction] = []
+            var lastMonthTransactions: [Transaction] = []
+            var twoMonthsAgoTransactions: [Transaction] = []
+            var archivedTransactions: [Transaction] = []
+            
+            for transaction in sorted {
+                let txDate = transaction.date
+                
+                if txDate > now { futureTransactions.append(transaction) }
+                else if txDate >= startOfToday { todayTransactions.append(transaction) }
+                else if txDate >= startOfYesterday { yesterdayTransactions.append(transaction) }
+                else if txDate >= startOfThisWeek { thisWeekTransactions.append(transaction) }
+                else if txDate >= startOfThisMonth { thisMonthTransactions.append(transaction) }
+                else if txDate >= startOfLastMonth && txDate < endOfLastMonth { lastMonthTransactions.append(transaction) }
+                else if txDate >= startOfTwoMonthsAgo && txDate < endOfTwoMonthsAgo { twoMonthsAgoTransactions.append(transaction) }
+                else { archivedTransactions.append(transaction) }
             }
-        }
+            
+            if !futureTransactions.isEmpty { await groups.append(TimeGroup(period: .future, transactions: futureTransactions)) }
+            if !todayTransactions.isEmpty { await groups.append(TimeGroup(period: .today, transactions: todayTransactions)) }
+            if !yesterdayTransactions.isEmpty { await groups.append(TimeGroup(period: .yesterday, transactions: yesterdayTransactions)) }
+            if !thisWeekTransactions.isEmpty { await groups.append(TimeGroup(period: .thisWeek, transactions: thisWeekTransactions)) }
+            if !thisMonthTransactions.isEmpty { await groups.append(TimeGroup(period: .thisMonth, transactions: thisMonthTransactions)) }
+            if !lastMonthTransactions.isEmpty { await groups.append(TimeGroup(period: .lastMonth(lastMonthDate), transactions: lastMonthTransactions)) }
+            if !twoMonthsAgoTransactions.isEmpty { await groups.append(TimeGroup(period: .twoMonthsAgo(twoMonthsAgoDate), transactions: twoMonthsAgoTransactions)) }
+            
+            // Only add archived group if specifically requested OR we are searching
+            // (If searching, we want to find old transactions too usually)
+            if !archivedTransactions.isEmpty {
+                if showArchived || (isSearchActive && !currentSearchText.isEmpty) {
+                    await groups.append(TimeGroup(period: .archived, transactions: archivedTransactions))
+                }
+            }
+            
+            return groups
+        }.value
         
-        // Match against amount (as string)
-        let amountString = String(format: "%.2f", transaction.amount)
-        if amountString.contains(lowercasedQuery) {
-            return true
+        // 3. Update UI on Main Thread
+        withAnimation {
+            self.displayedGroups = newGroups
         }
-        
-        // Match against whole number amount
-        let wholeAmount = String(Int(transaction.amount))
-        if wholeAmount == lowercasedQuery || amountString.hasPrefix(lowercasedQuery) {
-            return true
-        }
-        
-        return false
     }
     
-    // MARK: - Temporal Grouping Logic
+    // MARK: - Temporal Grouping Helpers
     
     /// Archive cutoff: 3 months ago
     private var archiveCutoffDate: Date {
         Calendar.current.date(byAdding: .month, value: -3, to: Date()) ?? Date.distantPast
     }
     
-    /// All transactions that pass the archive filter (but not search filter)
-    private var visibleTransactions: [Transaction] {
-        let cutoffDate = archiveCutoffDate
-        
-        return data.transactions.filter { transaction in
-            if showArchivedTransactions {
-                return true
-            } else {
-                return transaction.date >= cutoffDate
-            }
-        }
-    }
-    
-    /// Transactions filtered by both archive AND search
-    private var filteredTransactions: [Transaction] {
-        let base = visibleTransactions
-        
-        guard isSearchActive && !searchText.isEmpty else {
-            return base
-        }
-        
-        return base.filter { transactionMatchesSearch($0, query: searchText) }
-    }
-    
     private var hasArchivedTransactions: Bool {
         data.transactions.contains { $0.date < archiveCutoffDate }
     }
     
-    private var visibleTimeGroups: [TimeGroup] {
-        // Use filtered transactions (includes search filtering)
-        let sorted = filteredTransactions.sorted { $0.date > $1.date }
-        
-        var groups: [TimeGroup] = []
-        let calendar = Calendar.current
-        let now = Date()
-        
-        // Define time boundaries
-        let startOfToday = calendar.startOfDay(for: now)
-        let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday)!
-        let startOfThisWeek = calendar.date(byAdding: .day, value: -7, to: startOfToday)!
-        let startOfThisMonth = calendar.dateInterval(of: .month, for: now)?.start ?? startOfToday
-        
-        // Last month boundaries
-        let lastMonthDate = calendar.date(byAdding: .month, value: -1, to: now)!
-        let startOfLastMonth = calendar.dateInterval(of: .month, for: lastMonthDate)?.start ?? lastMonthDate
-        let endOfLastMonth = calendar.dateInterval(of: .month, for: lastMonthDate)?.end ?? lastMonthDate
-        
-        // Two months ago boundaries
-        let twoMonthsAgoDate = calendar.date(byAdding: .month, value: -2, to: now)!
-        let startOfTwoMonthsAgo = calendar.dateInterval(of: .month, for: twoMonthsAgoDate)?.start ?? twoMonthsAgoDate
-        let endOfTwoMonthsAgo = calendar.dateInterval(of: .month, for: twoMonthsAgoDate)?.end ?? twoMonthsAgoDate
-        
-        // Group transactions by time period
-        var futureTransactions: [Transaction] = []
-        var todayTransactions: [Transaction] = []
-        var yesterdayTransactions: [Transaction] = []
-        var thisWeekTransactions: [Transaction] = []  // 2 days ago to 7 days ago
-        var thisMonthTransactions: [Transaction] = [] // After this week, within this month
-        var lastMonthTransactions: [Transaction] = []
-        var twoMonthsAgoTransactions: [Transaction] = []
-        var archivedTransactions: [Transaction] = []
-        
-        for transaction in sorted {
-            let txDate = transaction.date
-            
-            if txDate > now {
-                // Future
-                futureTransactions.append(transaction)
-            } else if txDate >= startOfToday {
-                // Today
-                todayTransactions.append(transaction)
-            } else if txDate >= startOfYesterday {
-                // Yesterday
-                yesterdayTransactions.append(transaction)
-            } else if txDate >= startOfThisWeek {
-                // This Week (2 days ago to 7 days ago)
-                thisWeekTransactions.append(transaction)
-            } else if txDate >= startOfThisMonth {
-                // This Month (after this week but still in current month)
-                thisMonthTransactions.append(transaction)
-            } else if txDate >= startOfLastMonth && txDate < endOfLastMonth {
-                // Last Month
-                lastMonthTransactions.append(transaction)
-            } else if txDate >= startOfTwoMonthsAgo && txDate < endOfTwoMonthsAgo {
-                // Two Months Ago
-                twoMonthsAgoTransactions.append(transaction)
-            } else {
-                // Archived (3+ months old)
-                archivedTransactions.append(transaction)
-            }
-        }
-        
-        // Build groups in order
-        if !futureTransactions.isEmpty {
-            groups.append(TimeGroup(period: .future, transactions: futureTransactions))
-        }
-        if !todayTransactions.isEmpty {
-            groups.append(TimeGroup(period: .today, transactions: todayTransactions))
-        }
-        if !yesterdayTransactions.isEmpty {
-            groups.append(TimeGroup(period: .yesterday, transactions: yesterdayTransactions))
-        }
-        if !thisWeekTransactions.isEmpty {
-            groups.append(TimeGroup(period: .thisWeek, transactions: thisWeekTransactions))
-        }
-        if !thisMonthTransactions.isEmpty {
-            groups.append(TimeGroup(period: .thisMonth, transactions: thisMonthTransactions))
-        }
-        if !lastMonthTransactions.isEmpty {
-            groups.append(TimeGroup(period: .lastMonth(lastMonthDate), transactions: lastMonthTransactions))
-        }
-        if !twoMonthsAgoTransactions.isEmpty {
-            groups.append(TimeGroup(period: .twoMonthsAgo(twoMonthsAgoDate), transactions: twoMonthsAgoTransactions))
-        }
-        
-        // Add archived group if showing archived
-        if showArchivedTransactions && !archivedTransactions.isEmpty {
-            groups.append(TimeGroup(period: .archived, transactions: archivedTransactions))
-        }
-        
-        return groups
+    /// Helper for Empty State Logic
+    private var visibleTransactionsCount: Int {
+        let cutoffDate = archiveCutoffDate
+        return data.transactions.filter { $0.date >= cutoffDate }.count
     }
     
     // MARK: - Actions
     
     private func toggleAllGroups() {
-        let allGroupIDs = Set(visibleTimeGroups.map { $0.id })
+        let allGroupIDs = Set(displayedGroups.map { $0.id })
         let allCollapsed = collapsedGroups.count == allGroupIDs.count
         
         withAnimation {

@@ -20,7 +20,7 @@ struct AccountDetailView: View {
     
     var body: some View {
         List {
-            // NEW: Archived Banner
+            // SECTION: Archived Banner
             if liveAccount.isArchived {
                 Section {
                     HStack {
@@ -41,27 +41,34 @@ struct AccountDetailView: View {
             // SECTION 1: Balance
             balanceSection
             
+            // SECTION 2: Actions (Unlock/Freeze)
+            // Added this here so it appears prominently under the balance
+            accountActionSection
+            
+            // SECTION 3: Verification
             reconciliationStatusSection
             
-            // SECTION 2: Target Progress
+            // SECTION 4: Target Progress
             if shouldShowTargetProgress {
                 targetProgressSection
             }
             
-            // SECTION 3: Installment Calculator
+            // SECTION 5: Installment Calculator
             if shouldShowInstallmentCalculator {
                 installmentCalculatorSection
             }
             
-            // SECTION 4: Statistics
+            // SECTION 6: Statistics
             statisticsSection
             
-            // SECTION 5: Recent Transactions
+            // SECTION 7: Recent Transactions
             recentTransactionsSection
+            
+            // SECTION 8: Archive/Delete Actions
+            archiveSection
         }
         .navigationTitle(liveAccount.name)
         .navigationBarTitleDisplayMode(.inline)
-        // NEW: Consolidated Actions Menu
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
@@ -111,74 +118,173 @@ struct AccountDetailView: View {
         }
     }
     
-    // MARK: - Reconciliation Traffic Light
+    // MARK: - State Machine Actions (Goal/Budget Conversion)
+
+    @ViewBuilder
+    private var accountActionSection: some View {
+        let balance = data.balance(for: liveAccount)
         
-        @ViewBuilder
-        private var reconciliationStatusSection: some View {
-            Section(header: Text("Verification Status")) {
-                HStack(spacing: 12) {
-                    // 1. The Light
-                    Circle()
-                        .fill(reconciliationColor)
-                        .frame(width: 12, height: 12)
-                        .shadow(color: reconciliationColor.opacity(0.5), radius: 4, x: 0, y: 0)
-                    
-                    // 2. The Text
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(reconciliationTitle)
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.primary)
-                        
-                        Text(reconciliationSubtitle)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+        // SCENARIO 1: Goal -> Debit (The "Unlock" Ceremony)
+        if liveAccount.accountType == .goal,
+           let target = liveAccount.targetAmount,
+           balance >= target {
+            
+            Section {
+                VStack(spacing: 12) {
+                    HStack {
+                        Image(systemName: "lock.open.fill")
+                            .font(.title)
+                            .foregroundColor(.green)
+                        VStack(alignment: .leading) {
+                            Text("Goal Reached!")
+                                .font(.headline)
+                            Text("Unlock these funds to spend them.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
                     
-                    Spacer()
-                    
-                    // 3. Action Button (Optional shortcut to Reconcile)
-                    // You can link this to the ReconcileView if you want a direct path
+                    Button {
+                        convertGoalToDebit()
+                    } label: {
+                        Text("Convert to Spending Account")
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.green)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                    }
                 }
                 .padding(.vertical, 4)
             }
         }
         
-        // MARK: - Reconciliation Logic
-        
-        private var daysSinceReconciliation: Int? {
-            guard let date = liveAccount.lastReconciledDate else { return nil }
-            let calendar = Calendar.current
-            let start = calendar.startOfDay(for: date)
-            let end = calendar.startOfDay(for: Date())
-            return calendar.dateComponents([.day], from: start, to: end).day
-        }
-        
-        private var reconciliationColor: Color {
-            guard let days = daysSinceReconciliation else { return .red } // Never reconciled
+        // SCENARIO 2: Budget -> Debt (The "Circuit Breaker")
+        else if liveAccount.accountType == .budget,
+                let limit = liveAccount.targetAmount,
+                balance > limit {
             
-            if days < 7 { return .green }      // Fresh
-            if days < 30 { return .yellow }    // Stale
-            return .red                        // Overdue
-        }
-        
-        private var reconciliationTitle: String {
-            guard let days = daysSinceReconciliation else { return "Never Reconciled" }
-            
-            if days == 0 { return "Verified Today" }
-            if days == 1 { return "Verified Yesterday" }
-            return "Verified \(days) days ago"
-        }
-        
-        private var reconciliationSubtitle: String {
-            guard let days = daysSinceReconciliation else {
-                return "Balance accuracy is unverified."
+            Section {
+                VStack(spacing: 12) {
+                    HStack {
+                        Image(systemName: "snowflake")
+                            .font(.title)
+                            .foregroundColor(.blue) // Cold/Frozen metaphor
+                        VStack(alignment: .leading) {
+                            Text("Budget Exceeded")
+                                .font(.headline)
+                            Text("Freeze spending on this account?")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    
+                    Text("Converting to Debt prevents further outflows until the balance is paid down.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    
+                    Button {
+                        convertBudgetToDebt()
+                    } label: {
+                        Text("Freeze Account & Convert to Debt")
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.red) // Warning color
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                    }
+                }
+                .padding(.vertical, 4)
             }
-            
-            if days < 7 { return "Balance is fresh and trusted." }
-            if days < 30 { return "It might be time for a quick check." }
-            return "Balance may not match reality."
         }
+        
+        // SCENARIO 3: Debt -> Budget (Recovery)
+        else if liveAccount.accountType == .debt,
+                balance <= 0, // Paid off
+                liveAccount.isCredit { // Ensure it's a credit account, not a loan
+            
+            Section {
+                Button {
+                   showingEditSheet = true
+                } label: {
+                    HStack {
+                        Image(systemName: "arrow.counterclockwise")
+                        Text("Reactivate Budget Limit")
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                }
+            }
+        }
+    }
+    
+    // MARK: - Reconciliation Traffic Light
+        
+    @ViewBuilder
+    private var reconciliationStatusSection: some View {
+        Section(header: Text("Verification Status")) {
+            HStack(spacing: 12) {
+                // 1. The Light
+                Circle()
+                    .fill(reconciliationColor)
+                    .frame(width: 12, height: 12)
+                    .shadow(color: reconciliationColor.opacity(0.5), radius: 4, x: 0, y: 0)
+                
+                // 2. The Text
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(reconciliationTitle)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+                    
+                    Text(reconciliationSubtitle)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+            }
+            .padding(.vertical, 4)
+        }
+    }
+    
+    // MARK: - Reconciliation Logic
+    
+    private var daysSinceReconciliation: Int? {
+        guard let date = liveAccount.lastReconciledDate else { return nil }
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: date)
+        let end = calendar.startOfDay(for: Date())
+        return calendar.dateComponents([.day], from: start, to: end).day
+    }
+    
+    private var reconciliationColor: Color {
+        guard let days = daysSinceReconciliation else { return .red } // Never reconciled
+        
+        if days < 7 { return .green }      // Fresh
+        if days < 30 { return .yellow }    // Stale
+        return .red                        // Overdue
+    }
+    
+    private var reconciliationTitle: String {
+        guard let days = daysSinceReconciliation else { return "Never Reconciled" }
+        
+        if days == 0 { return "Verified Today" }
+        if days == 1 { return "Verified Yesterday" }
+        return "Verified \(days) days ago"
+    }
+    
+    private var reconciliationSubtitle: String {
+        guard let days = daysSinceReconciliation else {
+            return "Balance accuracy is unverified."
+        }
+        
+        if days < 7 { return "Balance is fresh and trusted." }
+        if days < 30 { return "It might be time for a quick check." }
+        return "Balance may not match reality."
+    }
     
     // MARK: - Balance Section
     
@@ -812,6 +918,56 @@ struct AccountDetailView: View {
         let end = calendar.date(byAdding: .month, value: 1, to: start)?.addingTimeInterval(-1) ?? now
         return (start, end)
     }
+    
+    // MARK: - Account State Transitions
+
+    private func convertGoalToDebit() {
+        // 1. Create a copy of the account
+        var updatedAccount = liveAccount
+        
+        // 2. Remove the target.
+        // Logic: isCredit (false) + targetAmount (nil) = .debit
+        updatedAccount.targetAmount = nil
+        
+        // 3. Clear the target date/frequency since it's no longer a goal
+        updatedAccount.targetDate = nil
+        updatedAccount.paymentFrequency = nil
+        
+        // 4. Save to AppData
+        // FIX: Find the index and replace the struct directly, then save.
+        // This bypasses the signature mismatch of updateAccount(...)
+        if let index = data.accounts.firstIndex(where: { $0.id == updatedAccount.id }) {
+            data.accounts[index] = updatedAccount
+            data.save() // Triggers persistence and UI updates
+        }
+        
+        // 5. Haptic Feedback for the reward
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.success)
+    }
+
+    private func convertBudgetToDebt() {
+        // 1. Create a copy
+        var updatedAccount = liveAccount
+        
+        // 2. Remove the target (Limit).
+        // Logic: isCredit (true) + targetAmount (nil) = .debt
+        updatedAccount.targetAmount = nil
+        
+        // 3. Keep the isCredit = true setting.
+        
+        // 4. Save
+        // FIX: Find the index and replace the struct directly
+        if let index = data.accounts.firstIndex(where: { $0.id == updatedAccount.id }) {
+            data.accounts[index] = updatedAccount
+            data.save()
+        }
+        
+        // 5. Haptic Feedback
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.warning)
+    }
+
 }
 
 // MARK: - Helper View
