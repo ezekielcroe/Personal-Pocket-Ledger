@@ -213,7 +213,7 @@ struct ExportView: View {
             categories: data.categories,
             tags: data.tags,
             transactions: data.transactions,
-            templates: data.templates, // ENSURED: Templates are passed here
+            templates: data.templates,
             reminderTime: data.reminderTime,
             insightPresets: data.insightPresets
         )
@@ -221,29 +221,34 @@ struct ExportView: View {
     }
 
     private func prepareCSVDocument() -> CSVDocument {
-        let filtered = data.transactions
-            .filter { $0.date >= startDate && $0.date <= endDate }
-            .sorted(by: { $0.date < $1.date })
+            let filtered = data.transactions
+                .filter { $0.date >= startDate && $0.date <= endDate }
+                .sorted(by: { $0.date < $1.date })
 
-        var csv = "ID,Date,Type,Account,Category,Tags,Amount\n"
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-        
-        for tx in filtered {
-            let accountName = data.accounts.first(where: { $0.id == tx.accountID })?.name ?? "Unknown"
-            let categoryName = data.categories.first(where: { $0.id == tx.categoryID })?.name ?? "Unknown"
-            let tagsString = tx.tagIDs
-                .compactMap { id in data.tags.first(where: { $0.id == id })?.name }
-                .joined(separator: "; ")
+            var csv = "ID,Date,Type,Account,Category,Tags,Amount\n"
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd"
             
-            let dateStr = dateFormatter.string(from: tx.date)
-            let amountStr = String(format: "%.2f", tx.amount)
-            let safeTags = tagsString.replacingOccurrences(of: ",", with: " ")
-            
-            csv += "\(tx.id),\(dateStr),\(tx.type.rawValue),\(accountName),\(categoryName),\(safeTags),\(amountStr)\n"
+            for tx in filtered {
+                let accountName = data.accounts.first(where: { $0.id == tx.accountID })?.name ?? "Unknown"
+                let categoryName = data.categories.first(where: { $0.id == tx.categoryID })?.name ?? "Unknown"
+                let tagsString = tx.tagIDs
+                    .compactMap { id in data.tags.first(where: { $0.id == id })?.name }
+                    .joined(separator: "; ")
+                
+                let dateStr = dateFormatter.string(from: tx.date)
+                
+                // FIX 1: Convert Decimal to Double for string formatting
+                let doubleAmount = NSDecimalNumber(decimal: tx.amount).doubleValue
+                let amountStr = String(format: "%.2f", doubleAmount)
+                
+                let safeTags = tagsString.replacingOccurrences(of: ",", with: " ")
+                
+                // FIX 2: Use .uuidString explicitly
+                csv += "\(tx.id.uuidString),\(dateStr),\(tx.type.rawValue),\(accountName),\(categoryName),\(safeTags),\(amountStr)\n"
+            }
+            return CSVDocument(text: csv)
         }
-        return CSVDocument(text: csv)
-    }
 
     // MARK: - Safe Filenames
 

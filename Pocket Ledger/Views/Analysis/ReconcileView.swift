@@ -17,7 +17,7 @@ struct ReconcileInputView: View {
     
     // Logic: Which target is currently being fixed?
     @State private var targetToAdjust: ReconcileTarget?
-    @State private var differenceToAdjust: Double = 0
+    @State private var differenceToAdjust: Decimal = 0
     
     // Sheet States
     @State private var showingAdjustmentSheet = false
@@ -60,7 +60,7 @@ struct ReconcileInputView: View {
             }
         }
         
-        func systemBalance(in data: AppData) -> Double {
+        func systemBalance(in data: AppData) -> Decimal {
             switch self {
             case .account(let a): return data.balance(for: a)
             case .group(let g): return data.groupBalance(g)
@@ -198,7 +198,7 @@ struct ReconcileInputView: View {
     
     private func initializeInputs() { }
     
-    private func prepareForAdjustment(target: ReconcileTarget, diff: Double) {
+    private func prepareForAdjustment(target: ReconcileTarget, diff: Decimal) {
         targetToAdjust = target
         differenceToAdjust = diff
         
@@ -315,7 +315,7 @@ struct AdjustmentDetailSheet: View {
     @Environment(\.dismiss) var dismiss
     
     let targetName: String
-    let difference: Double
+    let difference: Decimal
     let currencySymbol: String
     let onConfirm: (UUID?) -> Void
     

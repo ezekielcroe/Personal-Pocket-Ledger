@@ -12,9 +12,9 @@ extension AppData {
     // MARK: - CREATE Operations
 
     func addAccount(name: String,
-                    initialAmount: Double,
+                    initialAmount: Decimal,
                     isCredit: Bool = false,
-                    targetAmount: Double? = nil,
+                    targetAmount: Decimal? = nil,
                     targetDate: Date? = nil,
                     paymentFrequency: PaymentFrequency? = nil) {
         let account = Account(
@@ -47,13 +47,13 @@ extension AppData {
         save()
     }
 
-    func addTransaction(id: String? = nil,
-                        linkedTransactionID: String? = nil,
+    func addTransaction(id: UUID? = nil,
+                        linkedTransactionID: UUID? = nil,
                         type: TransactionType,
                         accountID: UUID,
                         categoryID: UUID,
                         tagIDs: [UUID],
-                        amount: Double,
+                        amount: Decimal,
                         date: Date,
                         isOutlier: Bool = false) {
         let transaction = Transaction(id: id,
@@ -77,8 +77,8 @@ extension AppData {
 
     func updateAccount(id: UUID,
                        name: String,
-                       initialAmount: Double,
-                       targetAmount: Double? = nil,
+                       initialAmount: Decimal,
+                       targetAmount: Decimal? = nil,
                        targetDate: Date? = nil,
                        paymentFrequency: PaymentFrequency? = nil) {
         if let index = accounts.firstIndex(where: { $0.id == id }) {

@@ -61,7 +61,7 @@ struct TagDetailView: View {
             .sorted { $0.date > $1.date }
     }
     
-    private var totalAmount: Double {
+    private var totalAmount: Decimal {
         filteredTransactions.reduce(0) { $0 + $1.amount }
     }
     

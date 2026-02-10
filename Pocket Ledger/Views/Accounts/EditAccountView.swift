@@ -26,18 +26,18 @@ struct EditAccountView: View {
     init(account: Account) {
         self.account = account
         _name = State(initialValue: account.name)
-        _initialAmountString = State(initialValue: String(format: "%.2f", account.initialAmount))
+        
+        // FIXED: formatted Decimal using 'as NSDecimalNumber'
+        _initialAmountString = State(initialValue: String(format: "%.2f", account.initialAmount as NSDecimalNumber))
         
         // Initialize target
         if let target = account.targetAmount {
-            // Show 0.00 if it's a debt account with explicit 0 target, or any positive target
-            _targetAmountString = State(initialValue: String(format: "%.2f", target))
+            // FIXED: formatted Decimal using 'as NSDecimalNumber'
+            _targetAmountString = State(initialValue: String(format: "%.2f", target as NSDecimalNumber))
         } else {
-            // Nil target means empty string
             _targetAmountString = State(initialValue: "")
         }
         
-        // Initialize target date and frequency
         _hasTargetDate = State(initialValue: account.targetDate != nil)
         _targetDate = State(initialValue: account.targetDate ?? Calendar.current.date(byAdding: .year, value: 1, to: Date()) ?? Date())
         _paymentFrequency = State(initialValue: account.paymentFrequency ?? .monthly)
@@ -70,7 +70,7 @@ struct EditAccountView: View {
                         Text("Starting Balance")
                         Spacer()
                         TextField("0.00", text: $initialAmountString)
-                            .keyboardType(.numbersAndPunctuation) // Changed for math support
+                            .keyboardType(.numbersAndPunctuation)
                             .multilineTextAlignment(.trailing)
                             .focused($focusedField, equals: .amount)
                             .onSubmit {
@@ -85,7 +85,7 @@ struct EditAccountView: View {
                         Text("Target")
                         Spacer()
                         TextField(targetPlaceholder, text: $targetAmountString)
-                            .keyboardType(.numbersAndPunctuation) // Changed for math support
+                            .keyboardType(.numbersAndPunctuation)
                             .multilineTextAlignment(.trailing)
                             .focused($focusedField, equals: .target)
                             .onSubmit {
@@ -160,7 +160,8 @@ struct EditAccountView: View {
                     }
                     
                     // Progress indicator
-                    if let target = Double(targetAmountString), target > 0 {
+                    // FIXED: Added 'string:' label
+                    if let target = Decimal(string: targetAmountString), target > 0 {
                         HStack {
                             Text("Progress")
                             Spacer()
@@ -237,10 +238,10 @@ struct EditAccountView: View {
         case .goal, .debt:
             return true
         case .budget:
-            return false // Budgets don't use installment plans (they're monthly)
+            return false
         case .debit:
             let target = MathParser.calculate(targetAmountString)
-            return target > 0 // Only show if user adds a target
+            return target > 0
         }
     }
     
@@ -266,12 +267,14 @@ struct EditAccountView: View {
         case .debit:
             return balance < 0 ? .red : .primary
         case .goal:
-            if let target = Double(targetAmountString), balance >= target {
+            // FIXED: Added 'string:' label
+            if let target = Decimal(string: targetAmountString), balance >= target {
                 return .green
             }
             return .primary
         case .budget:
-            if let target = Double(targetAmountString), balance > target {
+            // FIXED: Added 'string:' label
+            if let target = Decimal(string: targetAmountString), balance > target {
                 return .red
             }
             return .primary
@@ -287,17 +290,20 @@ struct EditAccountView: View {
         let current = data.balance(for: account)
         let percentage = (current / target) * 100
         
+        // FIXED: cast percentage to NSDecimalNumber for string formatting
+        let pctObj = percentage as NSDecimalNumber
+        
         switch account.accountType {
         case .goal:
             if current >= target {
                 return "Goal reached! 🎉"
             } else {
-                return String(format: "%.0f%% of goal reached", percentage)
+                return String(format: "%.0f%% of goal reached", pctObj.doubleValue)
             }
         case .budget:
-            return String(format: "%.0f%% of budget used", percentage)
+            return String(format: "%.0f%% of budget used", pctObj.doubleValue)
         case .debt:
-            return String(format: "%.0f%% of debt remaining", percentage)
+            return String(format: "%.0f%% of debt remaining", pctObj.doubleValue)
         default:
             return ""
         }
@@ -311,7 +317,7 @@ struct EditAccountView: View {
     
     // MARK: - Calculations
     
-    private func calculatePreview() -> (periods: Int, amountPerPeriod: Double)? {
+    private func calculatePreview() -> (periods: Int, amountPerPeriod: Decimal)? {
         guard hasTargetDate else { return nil }
         
         let current = data.balance(for: account)
@@ -323,20 +329,22 @@ struct EditAccountView: View {
         let periods = paymentFrequency.periodsBetween(from: today, to: targetDate)
         guard periods > 0 else { return nil }
         
-        let remaining: Double
+        let remaining: Decimal
         
         switch account.accountType {
         case .goal:
             // Calculate savings needed
-            remaining = max(target - current, 0)
+            // FIXED: Use Decimal.zero instead of integer 0
+            remaining = max(target - current, Decimal.zero)
         case .debt:
             // Calculate payoff amount
-            remaining = max(current, 0)
+            // FIXED: Use Decimal.zero instead of integer 0
+            remaining = max(current, Decimal.zero)
         default:
             return nil
         }
         
-        let amountPerPeriod = remaining / Double(periods)
+        let amountPerPeriod = remaining / Decimal(periods)
         return (periods, amountPerPeriod)
     }
     
@@ -347,7 +355,7 @@ struct EditAccountView: View {
         let targetRaw = MathParser.calculate(targetAmountString)
         
         // Parse target: empty string or "0" → nil for debt accounts
-        let target: Double?
+        let target: Decimal?
         if isTargetEmptyOrZero(targetAmountString, val: targetRaw) {
             target = nil
         } else {
@@ -366,7 +374,7 @@ struct EditAccountView: View {
     }
     
     /// Helper to determine if we should treat the target as nil
-    private func isTargetEmptyOrZero(_ str: String, val: Double) -> Bool {
+    private func isTargetEmptyOrZero(_ str: String, val: Decimal) -> Bool {
         if str.isEmpty { return true }
         if !account.isCredit && val == 0 { return true } // Debit/Goal: 0 target = nil
         // For Credit/Debt: explicit 0 is a valid target (payoff goal), so we keep it unless empty

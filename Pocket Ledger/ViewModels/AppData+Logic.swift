@@ -11,75 +11,77 @@ import Combine
 extension AppData {
     // MARK: - Query Helpers
 
-    func balance(for account: Account) -> Double {
-        let inflow = transactions
-            .filter { $0.accountID == account.id && $0.type == .inflow }
-            .reduce(0) { $0 + $1.amount }
-        let outflow = transactions
-            .filter { $0.accountID == account.id && $0.type == .outflow }
-            .reduce(0) { $0 + $1.amount }
-        
-        if account.isCredit {
-            return account.initialAmount + outflow - inflow
-        } else {
-            return account.initialAmount + inflow - outflow
+    func balance(for account: Account) -> Decimal {
+            let inflow = transactions
+                .filter { $0.accountID == account.id && $0.type == .inflow }
+                .reduce(Decimal.zero) { $0 + $1.amount }
+            
+            let outflow = transactions
+                .filter { $0.accountID == account.id && $0.type == .outflow }
+                .reduce(Decimal.zero) { $0 + $1.amount }
+            
+            if account.isCredit {
+                return account.initialAmount + outflow - inflow
+            } else {
+                return account.initialAmount + inflow - outflow
+            }
         }
-    }
 
-    func transactions(for account: Account) -> [Transaction] {
-        transactions.filter { $0.accountID == account.id }
-    }
+        func transactions(for account: Account) -> [Transaction] {
+            transactions.filter { $0.accountID == account.id }
+        }
 
-    func transactions(for category: Category) -> [Transaction] {
-        transactions.filter { $0.categoryID == category.id }
-    }
+        func transactions(for category: Category) -> [Transaction] {
+            transactions.filter { $0.categoryID == category.id }
+        }
 
-    func transactions(for tag: Tag) -> [Transaction] {
-        transactions.filter { $0.tagIDs.contains(tag.id) }
-    }
+        func transactions(for tag: Tag) -> [Transaction] {
+            transactions.filter { $0.tagIDs.contains(tag.id) }
+        }
 
-    func stats(for account: Account) -> AccountStats {
-        let accountTransactions = transactions(for: account)
-        let inflowTransactions = accountTransactions.filter { $0.type == .inflow }
-        let outflowTransactions = accountTransactions.filter { $0.type == .outflow }
+        func stats(for account: Account) -> AccountStats {
+            let accountTransactions = transactions(for: account)
+            let inflowTransactions = accountTransactions.filter { $0.type == .inflow }
+            let outflowTransactions = accountTransactions.filter { $0.type == .outflow }
 
-        let totalInflow = inflowTransactions.reduce(0) { $0 + $1.amount }
-        let totalOutflow = outflowTransactions.reduce(0) { $0 + $1.amount }
+            let totalInflow = inflowTransactions.reduce(Decimal.zero) { $0 + $1.amount }
+            let totalOutflow = outflowTransactions.reduce(Decimal.zero) { $0 + $1.amount }
 
-        let dates = accountTransactions.map { $0.date }
-        let start = dates.min() ?? account.created
-        let end = dates.max() ?? account.created
-        
-        let dayComponents = Calendar.current.dateComponents([.day], from: start, to: end)
-        let totalDays = max((dayComponents.day ?? 0) + 1, 1)
-        
-        let weeks = max(Double(totalDays) / 7.0, 1.0)
-        let months = max(Double(totalDays) / 30.0, 1.0)
-        let years = max(Double(totalDays) / 365.0, 1.0)
+            let dates = accountTransactions.map { $0.date }
+            let start = dates.min() ?? account.created
+            let end = dates.max() ?? account.created
+            
+            let dayComponents = Calendar.current.dateComponents([.day], from: start, to: end)
+            let totalDays = max((dayComponents.day ?? 0) + 1, 1)
+            
+            let totalDaysDecimal = Decimal(totalDays)
+            let weeks = max(totalDaysDecimal / 7, 1)
+            let months = max(totalDaysDecimal / 30, 1)
+            let years = max(totalDaysDecimal / 365, 1)
 
-        return AccountStats(
-            totalInflow: totalInflow,
-            totalOutflow: totalOutflow,
-            dailyInflow: totalInflow / Double(totalDays),
-            weeklyInflow: totalInflow / weeks,
-            monthlyInflow: totalInflow / months,
-            yearlyInflow: totalInflow / years,
-            dailyOutflow: totalOutflow / Double(totalDays),
-            weeklyOutflow: totalOutflow / weeks,
-            monthlyOutflow: totalOutflow / months,
-            yearlyOutflow: totalOutflow / years
-        )
-    }
+            return AccountStats(
+                totalInflow: totalInflow,
+                totalOutflow: totalOutflow,
+                dailyInflow: totalInflow / totalDaysDecimal,
+                weeklyInflow: totalInflow / weeks,
+                monthlyInflow: totalInflow / months,
+                yearlyInflow: totalInflow / years,
+                dailyOutflow: totalOutflow / totalDaysDecimal,
+                weeklyOutflow: totalOutflow / weeks,
+                monthlyOutflow: totalOutflow / months,
+                yearlyOutflow: totalOutflow / years
+            )
+        }
     
-    // MARK: - Account Group Operations (Fixed Double-Counting)
+    // MARK: - Account Group Operations
     /// Calculates balance for a group by summing unique member accounts.
     /// This fixes double-counting by flattening the hierarchy into a unique set of accounts.
-    func groupBalance(_ group: AccountGroup) -> Double {
+    func groupBalance(_ group: AccountGroup) -> Decimal {
         // 1. Get all unique account IDs in this group hierarchy
         // (Requires the updated AccountGroup.swift which returns a Set)
         let uniqueAccountIDs = group.allAccountIDs(in: accountGroups, accounts: accounts)
         
-        var total: Double = 0
+        var total: Decimal = 0
         
         // 2. Sum them up (applying Debit vs Credit logic)
         for accountID in uniqueAccountIDs {

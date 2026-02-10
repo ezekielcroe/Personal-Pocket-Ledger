@@ -177,15 +177,15 @@ extension AppData {
             
             // B. BUDGET (Credit): The "Limit is Budget" Lesson
             // We set a 2000 target. The UI will show this as "Available Capacity".
-            addAccount(name: "Daily Driver Card", initialAmount: 0.0, isCredit: true, targetAmount: 2000.0)
+            addAccount(name: "Daily Driver Card", initialAmount: 0.00, isCredit: true, targetAmount: 2000.00)
             
             // C. GOAL: The "Progress Bar" Lesson
             // A savings goal with a target amount.
-            addAccount(name: "Laptop Fund", initialAmount: 450.00, isCredit: false, targetAmount: 2000.0)
+            addAccount(name: "Laptop Fund", initialAmount: 450.00, isCredit: false, targetAmount: 2000.00)
             
             // D. DEBT: The "Black Hole" Lesson
             // A debt account where you can only transfer IN (to pay off).
-            addAccount(name: "Student Loan", initialAmount: 15000.00, isCredit: true, targetAmount: 0.0)
+            addAccount(name: "Student Loan", initialAmount: 15000.00, isCredit: true, targetAmount: 0.00)
         }
         
         // MARK: - 2. Categories (Broad Philosophy)

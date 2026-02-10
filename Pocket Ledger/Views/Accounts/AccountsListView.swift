@@ -379,7 +379,7 @@ struct AccountRow: View {
     
     // MARK: - Computed Properties
     
-    private var currentBalance: Double {
+    private var currentBalance: Decimal {
         data.balance(for: account)
     }
     

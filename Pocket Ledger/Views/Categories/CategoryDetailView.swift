@@ -56,12 +56,12 @@ struct CategoryDetailView: View {
     private var transactions: [Transaction] {
         return data.transactions
             .filter { $0.categoryID == category.id }
-            .filter { dateFilter.contains($0.date) } // UPDATED: Checks the full range
+            .filter { dateFilter.contains($0.date) }
             .sorted { $0.date > $1.date }
     }
     
-    private var totalAmount: Double {
-        transactions.reduce(0) { $0 + $1.amount }
+    private var totalAmount: Decimal {
+        transactions.reduce(Decimal.zero) { $0 + $1.amount }
     }
     
     // Smart formatter to handle "Month" vs "Range"

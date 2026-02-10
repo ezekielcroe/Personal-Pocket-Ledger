@@ -9,9 +9,9 @@ import Foundation
 //
 
 struct MathParser {
-    /// Parses a string input (e.g. "10+2.50" or ".5") and returns a computed Double.
+    /// Parses a string input (e.g. "10+2.50" or ".5") and returns a computed Decimal.
     /// Handles live-typing stability by stripping dangerous characters and invalid sequences.
-    static func calculate(_ input: String) -> Double {
+    static func calculate(_ input: String) -> Decimal {
         // 1. Sanitize: Allow only numbers, dot, and BASIC math operators.
         // We remove spaces entirely to make parsing easier (e.g. "10 + .5" becomes "10+.5")
         let allowed = CharacterSet(charactersIn: "0123456789.+-*/")
@@ -68,18 +68,15 @@ struct MathParser {
         guard !expression.isEmpty, expression.contains(where: { $0.isNumber }) else { return 0 }
         
         // 7. Evaluate using NSExpression safely
-        // Because we sanitized strictly above, this is much less likely to crash.
         let nsExpression = NSExpression(format: expression)
-        
-        if let result = nsExpression.expressionValue(with: nil, context: nil) as? Double {
-            guard result.isFinite else { return 0 }
-            return (result * 100).rounded() / 100
-        } else if let intResult = nsExpression.expressionValue(with: nil, context: nil) as? Int {
-            return Double(intResult)
+            
+            if let result = nsExpression.expressionValue(with: nil, context: nil) as? NSNumber {
+                // Convert the NSNumber result directly to Decimal
+                return result.decimalValue
+            }
+            
+            return Decimal(string: expression) ?? 0
         }
-        
-        return Double(expression) ?? 0
-    }
     
     private static func hasInvalidSequences(_ input: String) -> Bool {
         // Blocks: ++, --, **, //, .., +*, +/, -*, -/, etc.

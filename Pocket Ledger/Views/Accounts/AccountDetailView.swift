@@ -631,77 +631,85 @@ struct AccountDetailView: View {
     }
     
     // MARK: - Helper Views
-    
-    @ViewBuilder
-    private func progressBar(current: Double, target: Double) -> some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.gray.opacity(0.2))
-                    .frame(height: 12)
-                
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(progressBarColor(current: current, target: target))
-                    .frame(width: progressBarWidth(current: current, target: target, totalWidth: geometry.size.width),
-                           height: 12)
+        
+        @ViewBuilder
+        private func progressBar(current: Decimal, target: Decimal) -> some View {
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(height: 12)
+                    
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(progressBarColor(current: current, target: target))
+                        .frame(width: progressBarWidth(current: current, target: target, totalWidth: geometry.size.width),
+                               height: 12)
+                }
             }
+            .frame(height: 12)
         }
-        .frame(height: 12)
-    }
-    
-    @ViewBuilder
-    private func statusBadge(current: Double, target: Double) -> some View {
-        switch liveAccount.accountType {
-        case .budget:
-            let remaining = target - current
-            HStack {
-                Image(systemName: remaining >= 0 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                    .foregroundColor(remaining >= 0 ? .green : .red)
-                if remaining >= 0 {
-                    Text("\(remaining.formattedCurrency(symbol: currencySymbol)) remaining (\(Int((current/target)*100))% used)")
-                } else {
-                    Text("Over budget by \(abs(remaining).formattedCurrency(symbol: currencySymbol))")
-                }
-            }
-            .font(.subheadline)
-            .fontWeight(.medium)
-            .frame(maxWidth: .infinity)
-            .padding(8)
-            .background(remaining >= 0 ? Color.green.opacity(0.1) : Color.red.opacity(0.1))
-            .cornerRadius(8)
-            
-        case .goal:
-            if current >= target {
-                HStack {
-                    Image(systemName: "star.fill")
-                        .foregroundColor(.yellow)
-                    Text("Goal reached! 🎉")
-                }
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .frame(maxWidth: .infinity)
-                .padding(8)
-                .background(Color.green.opacity(0.1))
-                .cornerRadius(8)
-            } else {
+        
+        @ViewBuilder
+        private func statusBadge(current: Decimal, target: Decimal) -> some View {
+            switch liveAccount.accountType {
+            case .budget:
                 let remaining = target - current
                 HStack {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .foregroundColor(.blue)
-                    Text("\(remaining.formattedCurrency(symbol: currencySymbol)) to go (\(Int((current/target)*100))% saved)")
+                    Image(systemName: remaining >= 0 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                        .foregroundColor(remaining >= 0 ? .green : .red)
+                    if remaining >= 0 {
+                        Text("\(remaining.formattedCurrency(symbol: currencySymbol)) remaining (\(calculatePercent(current: current, target: target))% used)")
+                    } else {
+                        let overage = remaining * -1
+                        Text("Over budget by \(overage.formattedCurrency(symbol: currencySymbol))")
+                    }
                 }
                 .font(.subheadline)
                 .fontWeight(.medium)
                 .frame(maxWidth: .infinity)
                 .padding(8)
-                .background(Color.blue.opacity(0.1))
+                .background(remaining >= 0 ? Color.green.opacity(0.1) : Color.red.opacity(0.1))
                 .cornerRadius(8)
+                
+            case .goal:
+                if current >= target {
+                    HStack {
+                        Image(systemName: "star.fill")
+                            .foregroundColor(.yellow)
+                        Text("Goal reached! 🎉")
+                    }
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .frame(maxWidth: .infinity)
+                    .padding(8)
+                    .background(Color.green.opacity(0.1))
+                    .cornerRadius(8)
+                } else {
+                    let remaining = target - current
+                    HStack {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .foregroundColor(.blue)
+                        Text("\(remaining.formattedCurrency(symbol: currencySymbol)) to go (\(calculatePercent(current: current, target: target))% saved)")
+                    }
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .frame(maxWidth: .infinity)
+                    .padding(8)
+                    .background(Color.blue.opacity(0.1))
+                    .cornerRadius(8)
+                }
+                
+            default:
+                EmptyView()
             }
-            
-        default:
-            EmptyView()
         }
-    }
+        
+        // Helper to calculate integer percentage from Decimals
+        private func calculatePercent(current: Decimal, target: Decimal) -> Int {
+            guard target != 0 else { return 0 }
+            let fraction = (current / target) as NSDecimalNumber
+            return Int(fraction.doubleValue * 100)
+        }
     
     // MARK: - Computed Properties
     
@@ -800,66 +808,74 @@ struct AccountDetailView: View {
         }
     }
     
-    private func progressBarWidth(current: Double, target: Double, totalWidth: CGFloat) -> CGFloat {
-        let percentage = min(max(current / target, 0), 1.0)
-        return totalWidth * percentage
-    }
-    
-    private func progressBarColor(current: Double, target: Double) -> Color {
-        let percentage = current / target
-        
-        switch liveAccount.accountType {
-        case .budget:
-            if percentage > 1.0 { return .red }
-            else if percentage > 0.9 { return .orange }
-            else { return .green }
-            
-        case .goal:
-            return percentage >= 1.0 ? .green : .blue
-            
-        case .debt:
-            return .orange
-            
-        default:
-            return .blue
+    private func progressBarWidth(current: Decimal, target: Decimal, totalWidth: CGFloat) -> CGFloat {
+            guard target != 0 else { return 0 }
+            let fraction = (current / target) as NSDecimalNumber
+            let percentage = min(max(fraction.doubleValue, 0), 1.0)
+            return totalWidth * CGFloat(percentage)
         }
-    }
+        
+        private func progressBarColor(current: Decimal, target: Decimal) -> Color {
+            guard target != 0 else { return .blue }
+            let fraction = (current / target) as NSDecimalNumber
+            let percentage = fraction.doubleValue
+            
+            switch liveAccount.accountType {
+            case .budget:
+                if percentage > 1.0 { return .red }
+                else if percentage > 0.9 { return .orange }
+                else { return .green }
+                
+            case .goal:
+                return percentage >= 1.0 ? .green : .blue
+                
+            case .debt:
+                return .orange
+                
+            default:
+                return .blue
+            }
+        }
     
     // MARK: - Installment Calculation
     
-    private func calculateInstallment() -> (periodsRemaining: Int, amountPerPeriod: Double)? {
-        guard let targetDate = liveAccount.targetDate,
-              let frequency = liveAccount.paymentFrequency else {
-            return nil
-        }
+    // MARK: - Installment Calculation
         
-        let today = Date()
-        guard targetDate > today else { return nil }
-        
-        let periodsRemaining = frequency.periodsBetween(from: today, to: targetDate)
-        guard periodsRemaining > 0 else { return nil }
-        
-        let current = data.balance(for: liveAccount)
-        let remaining: Double
-        
-        switch liveAccount.accountType {
-        case .goal:
-            if let target = liveAccount.targetAmount {
-                remaining = max(target - current, 0)
-            } else {
+        private func calculateInstallment() -> (periodsRemaining: Int, amountPerPeriod: Decimal)? {
+            guard let targetDate = liveAccount.targetDate,
+                  let frequency = liveAccount.paymentFrequency else {
                 return nil
             }
             
-        case .debt:
-            remaining = max(current, 0)
+            let today = Date()
+            // Simple comparison; for exact day logic you might want Calendar calls
+            guard targetDate > today else { return nil }
             
-        default:
-            return nil
+            let periodsRemaining = frequency.periodsBetween(from: today, to: targetDate)
+            guard periodsRemaining > 0 else { return nil }
+            
+            let current = data.balance(for: liveAccount)
+            let remaining: Decimal
+            
+            switch liveAccount.accountType {
+            case .goal:
+                if let target = liveAccount.targetAmount {
+                    remaining = max(target - current, 0)
+                } else {
+                    return nil
+                }
+                
+            case .debt:
+                remaining = max(current, 0)
+                
+            default:
+                return nil
+            }
+            
+            // Decimal Division
+            let amountPerPeriod = remaining / Decimal(periodsRemaining)
+            return (periodsRemaining, amountPerPeriod)
         }
-        
-        let amountPerPeriod = remaining / Double(periodsRemaining)
-        return (periodsRemaining, amountPerPeriod)
-    }
     
     // MARK: - View Helpers
     
@@ -880,7 +896,7 @@ struct AccountDetailView: View {
         return "\(formatter.string(from: range.start)) - \(formatter.string(from: range.end))"
     }
     
-    private func calculateCurrentMonthTotals() -> (inflow: Double, outflow: Double) {
+    private func calculateCurrentMonthTotals() -> (inflow: Decimal, outflow: Decimal) {
         let range = getCurrentFiscalRange()
         let accountTransactions = data.transactions(for: liveAccount)
         
@@ -975,7 +991,7 @@ struct AccountDetailView: View {
 /// A consistent row format for displaying labeled monetary values.
 struct StatRow: View {
     let title: String
-    let value: Double
+    let value: Decimal
     let symbol: String
     var color: Color = .primary
     

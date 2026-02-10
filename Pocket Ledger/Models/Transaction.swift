@@ -8,29 +8,28 @@ enum TransactionType: String, Codable, CaseIterable, Identifiable, Sendable {
 }
 
 struct Transaction: Identifiable, Codable, Hashable, Sendable {
-    let id: String
-    // NEW: Points to the other side of the transfer
-    var linkedTransactionID: String?
+    let id: UUID
+    var linkedTransactionID: UUID?
     var type: TransactionType
     var accountID: UUID
     var categoryID: UUID
     var tagIDs: [UUID]
-    var amount: Double
+    var amount: Decimal
     var date: Date
     var isOutlier: Bool = false
 
     init(
-        id: String? = nil,
-        linkedTransactionID: String? = nil, // NEW
+        id: UUID? = nil,
+        linkedTransactionID: UUID? = nil,
         type: TransactionType,
         accountID: UUID,
         categoryID: UUID,
         tagIDs: [UUID] = [],
-        amount: Double,
+        amount: Decimal,
         date: Date = Date(),
         isOutlier: Bool = false
     ) {
-        self.id = id ?? Transaction.generateUniqueTimestampID()
+        self.id = id ?? UUID.v7()
         self.linkedTransactionID = linkedTransactionID
         self.type = type
         self.accountID = accountID

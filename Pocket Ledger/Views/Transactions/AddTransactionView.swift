@@ -66,7 +66,8 @@ struct AddTransactionView: View {
             _accountID = State(initialValue: edit.accountID)
             _categoryID = State(initialValue: edit.categoryID)
             _selectedTagIDs = State(initialValue: Set(edit.tagIDs))
-            _amountString = State(initialValue: String(format: "%.2f", edit.amount))
+            let doubleAmount = NSDecimalNumber(decimal: edit.amount).doubleValue
+            _amountString = State(initialValue: String(format: "%.2f", doubleAmount))
             _date = State(initialValue: edit.date)
             _isOutlier = State(initialValue: edit.isOutlier)
             // Note: Transfer target is loaded in onAppear via findLinkedTransaction
@@ -512,12 +513,32 @@ struct AddTransactionView: View {
                 
             } else {
                 // CREATE NEW LINKED PAIR
-                let id1 = Transaction.generateUniqueTimestampID()
-                let id2 = Transaction.generateUniqueTimestampID() + "-2"
-                
-                let outflow = Transaction(id: id1, linkedTransactionID: id2, type: .outflow, accountID: fromAcc, categoryID: outCatID, tagIDs: tags, amount: amount, date: date, isOutlier: isOutlier)
-                
-                let inflow = Transaction(id: id2, linkedTransactionID: id1, type: .inflow, accountID: toAcc, categoryID: inCatID, tagIDs: tags, amount: amount, date: date, isOutlier: isOutlier)
+                let id1 = UUID.v7()
+                let id2 = UUID.v7()
+
+                let outflow = Transaction(
+                    id: id1,
+                    linkedTransactionID: id2, // Points to the partner
+                    type: .outflow,
+                    accountID: fromAcc,
+                    categoryID: outCatID,
+                    tagIDs: tags,
+                    amount: amount,
+                    date: date,
+                    isOutlier: isOutlier
+                )
+
+                let inflow = Transaction(
+                    id: id2,
+                    linkedTransactionID: id1, // Points back to the first one
+                    type: .inflow,
+                    accountID: toAcc,
+                    categoryID: inCatID,
+                    tagIDs: tags,
+                    amount: amount,
+                    date: date,
+                    isOutlier: isOutlier
+                )
                 
                 data.transactions.append(outflow)
                 data.transactions.append(inflow)

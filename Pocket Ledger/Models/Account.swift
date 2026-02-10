@@ -13,7 +13,7 @@ struct Account: Identifiable, Codable, Hashable, Sendable {
     /// Human-readable name for the account.
     var name: String
     /// Starting balance when the account is first recorded.
-    var initialAmount: Double
+    var initialAmount: Decimal
     /// Date when the account record was created.
     var created: Date
     
@@ -26,7 +26,7 @@ struct Account: Identifiable, Codable, Hashable, Sendable {
     /// - For debit accounts: represents a savings goal to reach
     /// - For budget accounts: represents a spending limit
     /// - For debt accounts: typically nil or 0 (payoff goal)
-    var targetAmount: Double? = nil
+    var targetAmount: Decimal? = nil
     
     /// Optional target date for reaching a goal or paying off debt.
     /// Used to calculate required periodic contributions/payments.
@@ -47,12 +47,12 @@ struct Account: Identifiable, Codable, Hashable, Sendable {
         archivedDate != nil
     }
     
-    init(id: UUID = UUID(),
+    init(id: UUID = UUID.v7(),
          name: String,
-         initialAmount: Double = 0.0,
+         initialAmount: Decimal = 0,
          created: Date = Date(),
          isCredit: Bool = false,
-         targetAmount: Double? = nil,
+         targetAmount: Decimal? = nil,
          targetDate: Date? = nil,
          paymentFrequency: PaymentFrequency? = nil,
          archivedDate: Date? = nil,

@@ -36,7 +36,7 @@ enum AccountStatusBadge {
 
 extension Account {
     /// Determines if account should show a status badge
-    func statusBadge(balance: Double) -> AccountStatusBadge? {
+    func statusBadge(balance: Decimal) -> AccountStatusBadge? {
         if isArchived {
             return .archived
         }

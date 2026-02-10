@@ -25,8 +25,8 @@ struct InsightsView: View {
     @State var excludedCategoryIDs: Set<UUID> = []
     @State var excludedTagIDs: Set<UUID> = []
     @State var excludeOutliers: Bool = false
-    @State var minimumAmount: Double? = nil
-    @State var maximumAmount: Double? = nil
+    @State var minimumAmount: Decimal? = nil
+    @State var maximumAmount: Decimal? = nil
     
     @State private var selectedPresetID: UUID? = nil
 
@@ -271,18 +271,18 @@ struct InsightsView: View {
     // MARK: - Analytics Engine
     
     struct AnalyticsStats {
-        var income: Double
-        var expense: Double
-        var net: Double { income - expense }
+        var income: Decimal
+        var expense: Decimal
+        var net: Decimal { income - expense }
         var breakdownItems: [AnalyticsItem]
-        var totalForBreakdown: Double
+        var totalForBreakdown: Decimal
     }
     
     struct AnalyticsItem: Identifiable {
         let id: UUID
         let name: String
         let icon: String
-        let amount: Double
+        let amount: Decimal
         let color: Color?
     }
     
@@ -319,8 +319,8 @@ struct InsightsView: View {
         // - Transfer TO a pure Debt account: counts as EXPENSE (paying mortgage/loan)
         // - All other transfers: excluded (internal movement or paying credit card balance)
         
-        var income: Double = 0
-        var expense: Double = 0
+        var income: Decimal = 0
+        var expense: Decimal = 0
         
         for tx in filtered {
             let isTransferCategory = transferCategoryIDs.contains(tx.categoryID)
@@ -381,74 +381,85 @@ struct InsightsView: View {
         var breakdown: [AnalyticsItem] = []
         
         switch breakdownMode {
-        case .category:
-            var dict: [UUID: Double] = [:]
-            for tx in breakdownTransactions { dict[tx.categoryID, default: 0] += tx.amount }
-            breakdown = dict.compactMap { (id, amount) in
-                guard let cat = data.categories.first(where: { $0.id == id }) else { return nil }
-                return AnalyticsItem(id: id, name: cat.name, icon: cat.emoji, amount: amount, color: nil)
-            }
-            
-        case .account:
-            var dict: [UUID: Double] = [:]
-            for tx in breakdownTransactions { dict[tx.accountID, default: 0] += tx.amount }
-            breakdown = dict.compactMap { (id, amount) in
-                guard let acc = data.accounts.first(where: { $0.id == id }) else { return nil }
-                return AnalyticsItem(id: id, name: acc.name, icon: acc.accountType.icon, amount: amount, color: acc.accountType.color)
-            }
-            
-        case .group:
-            var dict: [UUID: Double] = [:]
-            var ungroupedAmount: Double = 0
-            
-            var accountToGroupMap: [UUID: UUID] = [:]
-            let topLevelGroups = data.accountGroups.filter { data.depth(of: $0) == 0 }
-            
-            for group in topLevelGroups {
-                let memberAccountIDs = group.allAccountIDs(in: data.accountGroups, accounts: data.accounts)
-                for accID in memberAccountIDs {
-                    accountToGroupMap[accID] = group.id
-                }
-            }
-            
-            for tx in breakdownTransactions {
-                if let groupID = accountToGroupMap[tx.accountID] {
-                    dict[groupID, default: 0] += tx.amount
-                } else {
-                    ungroupedAmount += tx.amount
-                }
-            }
-            
-            breakdown = dict.compactMap { (id, amount) in
-                guard let group = data.accountGroups.first(where: { $0.id == id }) else { return nil }
-                return AnalyticsItem(id: id, name: group.name, icon: "folder.fill", amount: amount, color: .purple)
-            }
-            
-            if ungroupedAmount > 0 {
-                breakdown.append(AnalyticsItem(id: UUID(), name: "Ungrouped", icon: "building.columns", amount: ungroupedAmount, color: .secondary))
-            }
-            
-        case .tag:
-            var dict: [UUID: Double] = [:]
-            var untaggedAmount: Double = 0
-            
-            for tx in breakdownTransactions {
-                if tx.tagIDs.isEmpty {
-                    untaggedAmount += tx.amount
-                } else {
-                    for tagID in tx.tagIDs {
-                        dict[tagID, default: 0] += tx.amount
+                case .category:
+                    var dict: [UUID: Decimal] = [:]
+                    for tx in breakdownTransactions { dict[tx.categoryID, default: 0] += tx.amount }
+                    
+                    breakdown = dict.compactMap { (id, amount) in
+                        guard let cat = data.categories.first(where: { $0.id == id }) else { return nil }
+                        return AnalyticsItem(id: id, name: cat.name, icon: cat.emoji, amount: amount, color: nil)
+                    }
+                    
+                case .account:
+                    var dict: [UUID: Decimal] = [:]
+                    for tx in breakdownTransactions { dict[tx.accountID, default: 0] += tx.amount }
+                    
+                    breakdown = dict.compactMap { (id, amount) in
+                        guard let acc = data.accounts.first(where: { $0.id == id }) else { return nil }
+                        return AnalyticsItem(id: id, name: acc.name, icon: acc.accountType.icon, amount: amount, color: acc.accountType.color)
+                    }
+                    
+                case .group:
+                    // 1. Initialize the missing variables
+                    var ungroupedAmount: Decimal = 0
+                    var accountToGroupMap: [UUID: UUID] = [:]
+                    
+                    // 2. Build the map (Account ID -> Group ID)
+                    let topLevelGroups = data.accountGroups.filter { data.depth(of: $0) == 0 }
+                               
+                    for group in topLevelGroups {
+                    // Use the existing helper in your model to find all recursive accounts
+                        let memberAccountIDs = group.allAccountIDs(in: data.accountGroups, accounts: data.accounts)
+                                    
+                        for accountID in memberAccountIDs {
+                            accountToGroupMap[accountID] = group.id
+                        }
+                    }
+                    
+                    var dict: [UUID: Decimal] = [:]
+                    
+                    // 3. Loop through transactions once
+                    for tx in breakdownTransactions {
+                        if let groupID = accountToGroupMap[tx.accountID] {
+                            dict[groupID, default: 0] += tx.amount
+                        } else {
+                            ungroupedAmount += tx.amount
+                        }
+                    }
+                    
+                    breakdown = dict.compactMap { (id, amount) in
+                        guard let group = data.accountGroups.first(where: { $0.id == id }) else { return nil }
+                        return AnalyticsItem(id: id, name: group.name, icon: "folder.fill", amount: amount, color: .purple)
+                    }
+                    
+                    if ungroupedAmount > 0 {
+                        breakdown.append(AnalyticsItem(id: UUID(), name: "Ungrouped", icon: "building.columns", amount: ungroupedAmount, color: .secondary))
+                    }
+                    
+                case .tag:
+                    // 1. Initialize the missing variable
+                    var untaggedAmount: Decimal = 0
+                    var dict: [UUID: Decimal] = [:]
+                    
+                    for tx in breakdownTransactions {
+                        if tx.tagIDs.isEmpty {
+                            untaggedAmount += tx.amount
+                        } else {
+                            for tagID in tx.tagIDs {
+                                dict[tagID, default: 0] += tx.amount
+                            }
+                        }
+                    }
+                    
+                    breakdown = dict.compactMap { (id, amount) in
+                        guard let tag = data.tags.first(where: { $0.id == id }) else { return nil }
+                        return AnalyticsItem(id: id, name: tag.name, icon: "tag.fill", amount: amount, color: .blue)
+                    }
+                    
+                    if untaggedAmount > 0 {
+                        breakdown.append(AnalyticsItem(id: UUID(), name: "No Tag", icon: "tag.slash", amount: untaggedAmount, color: .secondary))
                     }
                 }
-            }
-            breakdown = dict.compactMap { (id, amount) in
-                guard let tag = data.tags.first(where: { $0.id == id }) else { return nil }
-                return AnalyticsItem(id: id, name: tag.name, icon: "#", amount: amount, color: .blue)
-            }
-            if untaggedAmount > 0 {
-                breakdown.append(AnalyticsItem(id: UUID(), name: "No Tag", icon: "tag.slash", amount: untaggedAmount, color: .secondary))
-            }
-        }
         
         return AnalyticsStats(
             income: income,
@@ -607,8 +618,8 @@ struct TrendHeaderCard: View {
 
 struct StatColumn: View {
     let title: String
-    let amount: Double
-    let prevAmount: Double
+    let amount: Decimal
+    let prevAmount: Decimal
     let color: Color
     let symbol: String
     
@@ -630,7 +641,7 @@ struct StatColumn: View {
                 
                 HStack(spacing: 2) {
                     Image(systemName: isUp ? "arrow.up.right" : "arrow.down.right")
-                    Text("\(String(format: "%.0f", abs(pct)))%")
+                    Text("\(String(format: "%.0f", NSDecimalNumber(decimal: abs(pct)).doubleValue))%")
                 }
                 .font(.caption2)
                 .foregroundColor(indicatorColor)
@@ -646,7 +657,7 @@ struct StatColumn: View {
 
 struct CategoryBarRow: View {
     let item: InsightsView.AnalyticsItem
-    let total: Double
+    let total: Decimal
     let currencySymbol: String
 
     var body: some View {
@@ -671,7 +682,8 @@ struct CategoryBarRow: View {
                         .monospacedDigit()
                     
                     if total > 0 {
-                        Text("\(Int((item.amount / total) * 100))%")
+                        let percentage = (item.amount / total) * 100
+                        Text("\(NSDecimalNumber(decimal: percentage).intValue)%")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }
@@ -697,8 +709,12 @@ struct CategoryBarRow: View {
 
     private func barWidth(totalWidth: CGFloat) -> CGFloat {
         guard total > 0 else { return 0 }
-        let ratio = item.amount / total
-        return totalWidth * CGFloat(min(max(ratio, 0), 1.0))
+        
+        let ratioDecimal = item.amount / total
+        
+        let ratio = NSDecimalNumber(decimal: ratioDecimal).doubleValue
+        
+        return totalWidth * CGFloat(min(max(ratio, 0.0), 1.0))
     }
 }
 

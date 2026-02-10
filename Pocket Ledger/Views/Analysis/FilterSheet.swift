@@ -10,8 +10,8 @@ struct FilterSheet: View {
     @Binding var excludeOutliers: Bool
     
     // NEW: Amount filter bindings
-    @Binding var minimumAmount: Double?
-    @Binding var maximumAmount: Double?
+    @Binding var minimumAmount: Decimal?
+    @Binding var maximumAmount: Decimal?
     
     // State for saving preset
     @State private var showingSaveSheet = false
@@ -233,7 +233,7 @@ struct FilterSheet: View {
                     .multilineTextAlignment(.trailing)
                     .frame(width: 100)
                     .onChange(of: minAmountString) { newValue in
-                        minimumAmount = Double(newValue)
+                        minimumAmount = Decimal(string: newValue)
                     }
             }
             
@@ -245,7 +245,7 @@ struct FilterSheet: View {
                     .multilineTextAlignment(.trailing)
                     .frame(width: 100)
                     .onChange(of: maxAmountString) { newValue in
-                        maximumAmount = Double(newValue)
+                        maximumAmount = Decimal(string: newValue)
                     }
             }
         }
@@ -344,7 +344,7 @@ struct FilterSheet: View {
                     .multilineTextAlignment(.trailing)
                     .frame(width: 100)
                     .onChange(of: minAmountString) { newValue in
-                        minimumAmount = Double(newValue)
+                        minimumAmount = Decimal(string: newValue)
                     }
             }
             
@@ -356,7 +356,7 @@ struct FilterSheet: View {
                     .multilineTextAlignment(.trailing)
                     .frame(width: 100)
                     .onChange(of: maxAmountString) { newValue in
-                        maximumAmount = Double(newValue)
+                        maximumAmount = Decimal(string: newValue)
                     }
             }
         }
@@ -522,10 +522,10 @@ struct FilterSheet: View {
     
     private func initializeAmountStrings() {
         if let min = minimumAmount {
-            minAmountString = String(format: "%.2f", min)
+            minAmountString = String(format: "%.2f", (min as NSDecimalNumber).doubleValue)
         }
         if let max = maximumAmount {
-            maxAmountString = String(format: "%.2f", max)
+            maxAmountString = String(format: "%.2f", (max as NSDecimalNumber).doubleValue)
         }
     }
 }

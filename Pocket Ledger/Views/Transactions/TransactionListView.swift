@@ -569,10 +569,11 @@ struct TransactionListView: View {
                 }
                 
                 // Amount
-                let amountString = String(format: "%.2f", transaction.amount)
+                let doubleAmount = NSDecimalNumber(decimal: transaction.amount).doubleValue
+                let amountString = String(format: "%.2f", doubleAmount)
                 if amountString.contains(lowercasedQuery) { return true }
                 
-                let wholeAmount = String(Int(transaction.amount))
+                let wholeAmount = String(Int(doubleAmount))
                 if wholeAmount == lowercasedQuery || amountString.hasPrefix(lowercasedQuery) { return true }
                 
                 return false
@@ -805,8 +806,8 @@ extension TransactionListView {
         }
         
         /// Net flow: inflows - outflows (transfers excluded)
-        var netFlow: Double {
-            var total: Double = 0
+        var netFlow: Decimal {
+            var total: Decimal = 0
             for tx in transactions {
                 switch tx.type {
                 case .inflow:

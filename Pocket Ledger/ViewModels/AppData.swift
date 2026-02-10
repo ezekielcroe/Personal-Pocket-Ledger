@@ -4,16 +4,16 @@ import Combine
 
 // MARK: - Data Models
 struct AccountStats {
-    var totalInflow: Double
-    var totalOutflow: Double
-    var dailyInflow: Double
-    var weeklyInflow: Double
-    var monthlyInflow: Double
-    var yearlyInflow: Double
-    var dailyOutflow: Double
-    var weeklyOutflow: Double
-    var monthlyOutflow: Double
-    var yearlyOutflow: Double
+    var totalInflow: Decimal
+    var totalOutflow: Decimal
+    var dailyInflow: Decimal
+    var weeklyInflow: Decimal
+    var monthlyInflow: Decimal
+    var yearlyInflow: Decimal
+    var dailyOutflow: Decimal
+    var weeklyOutflow: Decimal
+    var monthlyOutflow: Decimal
+    var yearlyOutflow: Decimal
 }
 
 // MARK: - AppData Store

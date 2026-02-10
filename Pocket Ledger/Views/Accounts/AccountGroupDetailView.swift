@@ -161,7 +161,7 @@ struct AccountGroupDetailView: View {
         return data.transactions.filter { ids.contains($0.accountID) }.sorted { $0.date > $1.date }.prefix(25).map { $0 }
     }
     
-    private func calculateGroupMonthlyTotals() -> (inflow: Double, outflow: Double) {
+    private func calculateGroupMonthlyTotals() -> (inflow: Decimal, outflow: Decimal) {
         let ids = data.allAccountIDs(in: liveGroup)
         let transactions = data.transactions.filter { ids.contains($0.accountID) }
         let range = getCurrentFiscalRange()

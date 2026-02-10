@@ -66,9 +66,9 @@ struct TransactionDetailView: View {
             
             // Metadata
             Section(header: Text("Metadata")) {
-                DetailRow(label: "ID", value: transaction.id)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                DetailRow(label: "ID", value: transaction.id.uuidString)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
             }
         }
         .navigationTitle("Details")

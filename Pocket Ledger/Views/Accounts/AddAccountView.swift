@@ -286,7 +286,7 @@ struct AddAccountView: View {
     
     // MARK: - Calculations
     
-    private func calculatePreview() -> (periods: Int, amountPerPeriod: Double)? {
+    private func calculatePreview() -> (periods: Int, amountPerPeriod: Decimal)? {
         guard hasTargetDate else { return nil }
         
         let initial = MathParser.calculate(initialAmountString)
@@ -298,7 +298,7 @@ struct AddAccountView: View {
         let periods = paymentFrequency.periodsBetween(from: today, to: targetDate)
         guard periods > 0 else { return nil }
         
-        let remaining: Double
+        let remaining: Decimal
         
         if isCredit {
             if target > 0 {
@@ -313,7 +313,7 @@ struct AddAccountView: View {
             remaining = max(target - initial, 0)
         }
         
-        let amountPerPeriod = remaining / Double(periods)
+        let amountPerPeriod = remaining / Decimal(periods)
         return (periods, amountPerPeriod)
     }
     
@@ -335,7 +335,7 @@ struct AddAccountView: View {
         // If Debt (isCredit=true): target can be 0 (payoff goal) or >0 (budget limit).
         // If Debit (isCredit=false): target must be >0 to be a Goal. If 0, it's nil.
         
-        let target: Double?
+        let target: Decimal?
         if isCredit {
             // For credit, we store whatever the user entered (0 or higher) if the string wasn't empty
             if targetAmountString.isEmpty {
