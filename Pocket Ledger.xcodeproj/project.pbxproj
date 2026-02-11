@@ -6,17 +6,126 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		FEC702942F3AF99500B6BC19 /* PocketLedgerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC7025D2F3AF99500B6BC19 /* PocketLedgerApp.swift */; };
+		FEC702952F3AF99500B6BC19 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC7025E2F3AF99500B6BC19 /* ContentView.swift */; };
+		FEC702962F3AF99500B6BC19 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FEC7025C2F3AF99500B6BC19 /* Assets.xcassets */; };
+		FEC702C72F3B002800B6BC19 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = FEC702C42F3B002800B6BC19 /* LaunchScreen.storyboard */; };
+		FEC702C82F3B002800B6BC19 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = FEC702C52F3B002800B6BC19 /* PrivacyInfo.xcprivacy */; };
+		FEC702DC2F3B07EC00B6BC19 /* Account+UI.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702D72F3B07EC00B6BC19 /* Account+UI.swift */; };
+		FEC702DD2F3B07EC00B6BC19 /* AccountStatusBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702D82F3B07EC00B6BC19 /* AccountStatusBadge.swift */; };
+		FEC702DE2F3B07EC00B6BC19 /* SelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702D92F3B07EC00B6BC19 /* SelectionView.swift */; };
+		FEC702DF2F3B07EC00B6BC19 /* StandardFormToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702DA2F3B07EC00B6BC19 /* StandardFormToolbar.swift */; };
+		FEC703052F3B07EC00B6BC19 /* AccountDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702E02F3B07EC00B6BC19 /* AccountDetailView.swift */; };
+		FEC703062F3B07EC00B6BC19 /* AccountGroupDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702E12F3B07EC00B6BC19 /* AccountGroupDetailView.swift */; };
+		FEC703072F3B07EC00B6BC19 /* AccountsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702E22F3B07EC00B6BC19 /* AccountsListView.swift */; };
+		FEC703082F3B07EC00B6BC19 /* AddAccountGroupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702E32F3B07EC00B6BC19 /* AddAccountGroupView.swift */; };
+		FEC703092F3B07EC00B6BC19 /* AddAccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702E42F3B07EC00B6BC19 /* AddAccountView.swift */; };
+		FEC7030A2F3B07EC00B6BC19 /* EditAccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702E52F3B07EC00B6BC19 /* EditAccountView.swift */; };
+		FEC7030B2F3B07EC00B6BC19 /* ReconcileSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702E62F3B07EC00B6BC19 /* ReconcileSelectionView.swift */; };
+		FEC7030C2F3B07EC00B6BC19 /* ReconcileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702E72F3B07EC00B6BC19 /* ReconcileView.swift */; };
+		FEC7030D2F3B07EC00B6BC19 /* FilterSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702E92F3B07EC00B6BC19 /* FilterSheet.swift */; };
+		FEC7030E2F3B07EC00B6BC19 /* InsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702EA2F3B07EC00B6BC19 /* InsightsView.swift */; };
+		FEC7030F2F3B07EC00B6BC19 /* AddCategoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702EC2F3B07EC00B6BC19 /* AddCategoryView.swift */; };
+		FEC703102F3B07EC00B6BC19 /* CategoryDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702ED2F3B07EC00B6BC19 /* CategoryDetailView.swift */; };
+		FEC703112F3B07EC00B6BC19 /* EditCategoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702EE2F3B07EC00B6BC19 /* EditCategoryView.swift */; };
+		FEC703122F3B07EC00B6BC19 /* ManageCategoriesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702EF2F3B07EC00B6BC19 /* ManageCategoriesView.swift */; };
+		FEC703132F3B07EC00B6BC19 /* ExportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702F12F3B07EC00B6BC19 /* ExportView.swift */; };
+		FEC703142F3B07EC00B6BC19 /* HelpView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702F22F3B07EC00B6BC19 /* HelpView.swift */; };
+		FEC703152F3B07EC00B6BC19 /* LockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702F32F3B07EC00B6BC19 /* LockView.swift */; };
+		FEC703162F3B07EC00B6BC19 /* ManageBooksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702F42F3B07EC00B6BC19 /* ManageBooksView.swift */; };
+		FEC703172F3B07EC00B6BC19 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702F52F3B07EC00B6BC19 /* SettingsView.swift */; };
+		FEC703182F3B07EC00B6BC19 /* AddTagView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702F72F3B07EC00B6BC19 /* AddTagView.swift */; };
+		FEC703192F3B07EC00B6BC19 /* EditTagView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702F82F3B07EC00B6BC19 /* EditTagView.swift */; };
+		FEC7031A2F3B07EC00B6BC19 /* ManageTagsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702F92F3B07EC00B6BC19 /* ManageTagsView.swift */; };
+		FEC7031B2F3B07EC00B6BC19 /* TagDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702FA2F3B07EC00B6BC19 /* TagDetailView.swift */; };
+		FEC7031C2F3B07EC00B6BC19 /* EditTemplateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702FC2F3B07EC00B6BC19 /* EditTemplateView.swift */; };
+		FEC7031D2F3B07EC00B6BC19 /* TemplatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702FD2F3B07EC00B6BC19 /* TemplatesView.swift */; };
+		FEC7031E2F3B07EC00B6BC19 /* AddTransactionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702FF2F3B07EC00B6BC19 /* AddTransactionView.swift */; };
+		FEC7031F2F3B07EC00B6BC19 /* TransactionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703002F3B07EC00B6BC19 /* TransactionDetailView.swift */; };
+		FEC703202F3B07EC00B6BC19 /* TransactionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703012F3B07EC00B6BC19 /* TransactionListView.swift */; };
+		FEC703212F3B07EC00B6BC19 /* TransactionRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703022F3B07EC00B6BC19 /* TransactionRow.swift */; };
+		FEC7032C2F3B07F100B6BC19 /* Account.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703232F3B07F100B6BC19 /* Account.swift */; };
+		FEC7032D2F3B07F100B6BC19 /* AccountGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703242F3B07F100B6BC19 /* AccountGroup.swift */; };
+		FEC7032E2F3B07F100B6BC19 /* BookMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703252F3B07F100B6BC19 /* BookMetadata.swift */; };
+		FEC7032F2F3B07F100B6BC19 /* Category.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703262F3B07F100B6BC19 /* Category.swift */; };
+		FEC703302F3B07F100B6BC19 /* SavedData.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703272F3B07F100B6BC19 /* SavedData.swift */; };
+		FEC703312F3B07F100B6BC19 /* Tag.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703282F3B07F100B6BC19 /* Tag.swift */; };
+		FEC703322F3B07F100B6BC19 /* Transaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703292F3B07F100B6BC19 /* Transaction.swift */; };
+		FEC703332F3B07F100B6BC19 /* TransactionTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC7032A2F3B07F100B6BC19 /* TransactionTemplate.swift */; };
+		FEC7033A2F3B07F500B6BC19 /* CurrencyFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703342F3B07F500B6BC19 /* CurrencyFormatter.swift */; };
+		FEC7033B2F3B07F500B6BC19 /* Formatters.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703352F3B07F500B6BC19 /* Formatters.swift */; };
+		FEC7033C2F3B07F500B6BC19 /* MathParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703362F3B07F500B6BC19 /* MathParser.swift */; };
+		FEC7033D2F3B07F500B6BC19 /* StorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703372F3B07F500B6BC19 /* StorageService.swift */; };
+		FEC7033E2F3B07F500B6BC19 /* UUIDv7.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703382F3B07F500B6BC19 /* UUIDv7.swift */; };
+		FEC7034C2F3B07F500B6BC19 /* FinancialCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC7034A2F3B07F500B6BC19 /* FinancialCalculator.swift */; };
+		FEC7034E2F3B093900B6BC19 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC7034D2F3B093900B6BC19 /* NotificationManager.swift */; };
+		FEC703522F3B12C800B6BC19 /* InsightsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703512F3B12C800B6BC19 /* InsightsViewModel.swift */; };
+		FEC703542F3B180D00B6BC19 /* AccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703532F3B180D00B6BC19 /* AccountStore.swift */; };
+		FEC703562F3B181500B6BC19 /* TransactionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703552F3B181500B6BC19 /* TransactionStore.swift */; };
+		FEC7035A2F3B634E00B6BC19 /* AnalyticsTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703592F3B634E00B6BC19 /* AnalyticsTypes.swift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		FE3DBFD32F1B151100D7B598 /* Pocket Ledger.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Pocket Ledger.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		FEC7025C2F3AF99500B6BC19 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		FEC7025D2F3AF99500B6BC19 /* PocketLedgerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketLedgerApp.swift; sourceTree = "<group>"; };
+		FEC7025E2F3AF99500B6BC19 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		FEC702C42F3B002800B6BC19 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		FEC702C52F3B002800B6BC19 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		FEC702D72F3B07EC00B6BC19 /* Account+UI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Account+UI.swift"; sourceTree = "<group>"; };
+		FEC702D82F3B07EC00B6BC19 /* AccountStatusBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStatusBadge.swift; sourceTree = "<group>"; };
+		FEC702D92F3B07EC00B6BC19 /* SelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionView.swift; sourceTree = "<group>"; };
+		FEC702DA2F3B07EC00B6BC19 /* StandardFormToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandardFormToolbar.swift; sourceTree = "<group>"; };
+		FEC702E02F3B07EC00B6BC19 /* AccountDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDetailView.swift; sourceTree = "<group>"; };
+		FEC702E12F3B07EC00B6BC19 /* AccountGroupDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountGroupDetailView.swift; sourceTree = "<group>"; };
+		FEC702E22F3B07EC00B6BC19 /* AccountsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountsListView.swift; sourceTree = "<group>"; };
+		FEC702E32F3B07EC00B6BC19 /* AddAccountGroupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddAccountGroupView.swift; sourceTree = "<group>"; };
+		FEC702E42F3B07EC00B6BC19 /* AddAccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddAccountView.swift; sourceTree = "<group>"; };
+		FEC702E52F3B07EC00B6BC19 /* EditAccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditAccountView.swift; sourceTree = "<group>"; };
+		FEC702E62F3B07EC00B6BC19 /* ReconcileSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReconcileSelectionView.swift; sourceTree = "<group>"; };
+		FEC702E72F3B07EC00B6BC19 /* ReconcileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReconcileView.swift; sourceTree = "<group>"; };
+		FEC702E92F3B07EC00B6BC19 /* FilterSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterSheet.swift; sourceTree = "<group>"; };
+		FEC702EA2F3B07EC00B6BC19 /* InsightsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightsView.swift; sourceTree = "<group>"; };
+		FEC702EC2F3B07EC00B6BC19 /* AddCategoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddCategoryView.swift; sourceTree = "<group>"; };
+		FEC702ED2F3B07EC00B6BC19 /* CategoryDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryDetailView.swift; sourceTree = "<group>"; };
+		FEC702EE2F3B07EC00B6BC19 /* EditCategoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditCategoryView.swift; sourceTree = "<group>"; };
+		FEC702EF2F3B07EC00B6BC19 /* ManageCategoriesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManageCategoriesView.swift; sourceTree = "<group>"; };
+		FEC702F12F3B07EC00B6BC19 /* ExportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportView.swift; sourceTree = "<group>"; };
+		FEC702F22F3B07EC00B6BC19 /* HelpView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpView.swift; sourceTree = "<group>"; };
+		FEC702F32F3B07EC00B6BC19 /* LockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockView.swift; sourceTree = "<group>"; };
+		FEC702F42F3B07EC00B6BC19 /* ManageBooksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManageBooksView.swift; sourceTree = "<group>"; };
+		FEC702F52F3B07EC00B6BC19 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		FEC702F72F3B07EC00B6BC19 /* AddTagView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddTagView.swift; sourceTree = "<group>"; };
+		FEC702F82F3B07EC00B6BC19 /* EditTagView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditTagView.swift; sourceTree = "<group>"; };
+		FEC702F92F3B07EC00B6BC19 /* ManageTagsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManageTagsView.swift; sourceTree = "<group>"; };
+		FEC702FA2F3B07EC00B6BC19 /* TagDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagDetailView.swift; sourceTree = "<group>"; };
+		FEC702FC2F3B07EC00B6BC19 /* EditTemplateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditTemplateView.swift; sourceTree = "<group>"; };
+		FEC702FD2F3B07EC00B6BC19 /* TemplatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplatesView.swift; sourceTree = "<group>"; };
+		FEC702FF2F3B07EC00B6BC19 /* AddTransactionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddTransactionView.swift; sourceTree = "<group>"; };
+		FEC703002F3B07EC00B6BC19 /* TransactionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionDetailView.swift; sourceTree = "<group>"; };
+		FEC703012F3B07EC00B6BC19 /* TransactionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionListView.swift; sourceTree = "<group>"; };
+		FEC703022F3B07EC00B6BC19 /* TransactionRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionRow.swift; sourceTree = "<group>"; };
+		FEC703232F3B07F100B6BC19 /* Account.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Account.swift; sourceTree = "<group>"; };
+		FEC703242F3B07F100B6BC19 /* AccountGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountGroup.swift; sourceTree = "<group>"; };
+		FEC703252F3B07F100B6BC19 /* BookMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookMetadata.swift; sourceTree = "<group>"; };
+		FEC703262F3B07F100B6BC19 /* Category.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Category.swift; sourceTree = "<group>"; };
+		FEC703272F3B07F100B6BC19 /* SavedData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedData.swift; sourceTree = "<group>"; };
+		FEC703282F3B07F100B6BC19 /* Tag.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tag.swift; sourceTree = "<group>"; };
+		FEC703292F3B07F100B6BC19 /* Transaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transaction.swift; sourceTree = "<group>"; };
+		FEC7032A2F3B07F100B6BC19 /* TransactionTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionTemplate.swift; sourceTree = "<group>"; };
+		FEC703342F3B07F500B6BC19 /* CurrencyFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrencyFormatter.swift; sourceTree = "<group>"; };
+		FEC703352F3B07F500B6BC19 /* Formatters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatters.swift; sourceTree = "<group>"; };
+		FEC703362F3B07F500B6BC19 /* MathParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MathParser.swift; sourceTree = "<group>"; };
+		FEC703372F3B07F500B6BC19 /* StorageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageService.swift; sourceTree = "<group>"; };
+		FEC703382F3B07F500B6BC19 /* UUIDv7.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UUIDv7.swift; sourceTree = "<group>"; };
+		FEC7034A2F3B07F500B6BC19 /* FinancialCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinancialCalculator.swift; sourceTree = "<group>"; };
+		FEC7034D2F3B093900B6BC19 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
+		FEC703512F3B12C800B6BC19 /* InsightsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightsViewModel.swift; sourceTree = "<group>"; };
+		FEC703532F3B180D00B6BC19 /* AccountStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStore.swift; sourceTree = "<group>"; };
+		FEC703552F3B181500B6BC19 /* TransactionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionStore.swift; sourceTree = "<group>"; };
+		FEC703592F3B634E00B6BC19 /* AnalyticsTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsTypes.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
-
-/* Begin PBXFileSystemSynchronizedRootGroup section */
-		FE3DBFD52F1B151100D7B598 /* Pocket Ledger */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "Pocket Ledger";
-			sourceTree = "<group>";
-		};
-/* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		FE3DBFD02F1B151100D7B598 /* Frameworks */ = {
@@ -32,7 +141,7 @@
 		FE3DBFCA2F1B151100D7B598 = {
 			isa = PBXGroup;
 			children = (
-				FE3DBFD52F1B151100D7B598 /* Pocket Ledger */,
+				FEC7035B2F3C0AA200B6BC19 /* Pocket Ledger */,
 				FE3DBFD42F1B151100D7B598 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -43,6 +152,222 @@
 				FE3DBFD32F1B151100D7B598 /* Pocket Ledger.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		FEC702992F3AFE9B00B6BC19 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				FEC7025C2F3AF99500B6BC19 /* Assets.xcassets */,
+				FEC7025E2F3AF99500B6BC19 /* ContentView.swift */,
+				FEC7025D2F3AF99500B6BC19 /* PocketLedgerApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		FEC7029B2F3AFED100B6BC19 /* Domain */ = {
+			isa = PBXGroup;
+			children = (
+				FEC703222F3B07F100B6BC19 /* Enums */,
+				FEC7032B2F3B07F100B6BC19 /* Models */,
+			);
+			path = Domain;
+			sourceTree = "<group>";
+		};
+		FEC7029C2F3AFEDA00B6BC19 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				FEC7034B2F3B07F500B6BC19 /* Services */,
+				FEC703392F3B07F500B6BC19 /* Extensions */,
+				FEC703442F3B07F500B6BC19 /* State */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		FEC7029D2F3AFEE500B6BC19 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				FEC703042F3B07EC00B6BC19 /* Features */,
+				FEC702DB2F3B07EC00B6BC19 /* DesignSystem */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		FEC702C62F3B002800B6BC19 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				FEC702C42F3B002800B6BC19 /* LaunchScreen.storyboard */,
+				FEC702C52F3B002800B6BC19 /* PrivacyInfo.xcprivacy */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		FEC702DB2F3B07EC00B6BC19 /* DesignSystem */ = {
+			isa = PBXGroup;
+			children = (
+				FEC702D72F3B07EC00B6BC19 /* Account+UI.swift */,
+				FEC702D82F3B07EC00B6BC19 /* AccountStatusBadge.swift */,
+				FEC702D92F3B07EC00B6BC19 /* SelectionView.swift */,
+				FEC702DA2F3B07EC00B6BC19 /* StandardFormToolbar.swift */,
+			);
+			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+		FEC702E82F3B07EC00B6BC19 /* Accounts */ = {
+			isa = PBXGroup;
+			children = (
+				FEC702E02F3B07EC00B6BC19 /* AccountDetailView.swift */,
+				FEC702E12F3B07EC00B6BC19 /* AccountGroupDetailView.swift */,
+				FEC702E22F3B07EC00B6BC19 /* AccountsListView.swift */,
+				FEC702E32F3B07EC00B6BC19 /* AddAccountGroupView.swift */,
+				FEC702E42F3B07EC00B6BC19 /* AddAccountView.swift */,
+				FEC702E52F3B07EC00B6BC19 /* EditAccountView.swift */,
+				FEC702E62F3B07EC00B6BC19 /* ReconcileSelectionView.swift */,
+				FEC702E72F3B07EC00B6BC19 /* ReconcileView.swift */,
+			);
+			path = Accounts;
+			sourceTree = "<group>";
+		};
+		FEC702EB2F3B07EC00B6BC19 /* Analysis */ = {
+			isa = PBXGroup;
+			children = (
+				FEC703512F3B12C800B6BC19 /* InsightsViewModel.swift */,
+				FEC702E92F3B07EC00B6BC19 /* FilterSheet.swift */,
+				FEC702EA2F3B07EC00B6BC19 /* InsightsView.swift */,
+			);
+			path = Analysis;
+			sourceTree = "<group>";
+		};
+		FEC702F02F3B07EC00B6BC19 /* Categories */ = {
+			isa = PBXGroup;
+			children = (
+				FEC702EC2F3B07EC00B6BC19 /* AddCategoryView.swift */,
+				FEC702ED2F3B07EC00B6BC19 /* CategoryDetailView.swift */,
+				FEC702EE2F3B07EC00B6BC19 /* EditCategoryView.swift */,
+				FEC702EF2F3B07EC00B6BC19 /* ManageCategoriesView.swift */,
+			);
+			path = Categories;
+			sourceTree = "<group>";
+		};
+		FEC702F62F3B07EC00B6BC19 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				FEC702F12F3B07EC00B6BC19 /* ExportView.swift */,
+				FEC702F22F3B07EC00B6BC19 /* HelpView.swift */,
+				FEC702F32F3B07EC00B6BC19 /* LockView.swift */,
+				FEC702F42F3B07EC00B6BC19 /* ManageBooksView.swift */,
+				FEC702F52F3B07EC00B6BC19 /* SettingsView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		FEC702FB2F3B07EC00B6BC19 /* Tags */ = {
+			isa = PBXGroup;
+			children = (
+				FEC702F72F3B07EC00B6BC19 /* AddTagView.swift */,
+				FEC702F82F3B07EC00B6BC19 /* EditTagView.swift */,
+				FEC702F92F3B07EC00B6BC19 /* ManageTagsView.swift */,
+				FEC702FA2F3B07EC00B6BC19 /* TagDetailView.swift */,
+			);
+			path = Tags;
+			sourceTree = "<group>";
+		};
+		FEC702FE2F3B07EC00B6BC19 /* Templates */ = {
+			isa = PBXGroup;
+			children = (
+				FEC702FC2F3B07EC00B6BC19 /* EditTemplateView.swift */,
+				FEC702FD2F3B07EC00B6BC19 /* TemplatesView.swift */,
+			);
+			path = Templates;
+			sourceTree = "<group>";
+		};
+		FEC703032F3B07EC00B6BC19 /* Transactions */ = {
+			isa = PBXGroup;
+			children = (
+				FEC702FF2F3B07EC00B6BC19 /* AddTransactionView.swift */,
+				FEC703002F3B07EC00B6BC19 /* TransactionDetailView.swift */,
+				FEC703012F3B07EC00B6BC19 /* TransactionListView.swift */,
+				FEC703022F3B07EC00B6BC19 /* TransactionRow.swift */,
+			);
+			path = Transactions;
+			sourceTree = "<group>";
+		};
+		FEC703042F3B07EC00B6BC19 /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				FEC702E82F3B07EC00B6BC19 /* Accounts */,
+				FEC702EB2F3B07EC00B6BC19 /* Analysis */,
+				FEC702F02F3B07EC00B6BC19 /* Categories */,
+				FEC702F62F3B07EC00B6BC19 /* Settings */,
+				FEC702FB2F3B07EC00B6BC19 /* Tags */,
+				FEC702FE2F3B07EC00B6BC19 /* Templates */,
+				FEC703032F3B07EC00B6BC19 /* Transactions */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+		FEC703222F3B07F100B6BC19 /* Enums */ = {
+			isa = PBXGroup;
+			children = (
+				FEC703592F3B634E00B6BC19 /* AnalyticsTypes.swift */,
+			);
+			path = Enums;
+			sourceTree = "<group>";
+		};
+		FEC7032B2F3B07F100B6BC19 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				FEC703232F3B07F100B6BC19 /* Account.swift */,
+				FEC703242F3B07F100B6BC19 /* AccountGroup.swift */,
+				FEC703252F3B07F100B6BC19 /* BookMetadata.swift */,
+				FEC703262F3B07F100B6BC19 /* Category.swift */,
+				FEC703282F3B07F100B6BC19 /* Tag.swift */,
+				FEC703292F3B07F100B6BC19 /* Transaction.swift */,
+				FEC7032A2F3B07F100B6BC19 /* TransactionTemplate.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		FEC703392F3B07F500B6BC19 /* Extensions */ = {
+			isa = PBXGroup;
+			children = (
+				FEC703342F3B07F500B6BC19 /* CurrencyFormatter.swift */,
+				FEC703352F3B07F500B6BC19 /* Formatters.swift */,
+				FEC703362F3B07F500B6BC19 /* MathParser.swift */,
+				FEC703382F3B07F500B6BC19 /* UUIDv7.swift */,
+			);
+			path = Extensions;
+			sourceTree = "<group>";
+		};
+		FEC703442F3B07F500B6BC19 /* State */ = {
+			isa = PBXGroup;
+			children = (
+				FEC703552F3B181500B6BC19 /* TransactionStore.swift */,
+				FEC703532F3B180D00B6BC19 /* AccountStore.swift */,
+				FEC703272F3B07F100B6BC19 /* SavedData.swift */,
+			);
+			path = State;
+			sourceTree = "<group>";
+		};
+		FEC7034B2F3B07F500B6BC19 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				FEC7034D2F3B093900B6BC19 /* NotificationManager.swift */,
+				FEC7034A2F3B07F500B6BC19 /* FinancialCalculator.swift */,
+				FEC703372F3B07F500B6BC19 /* StorageService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		FEC7035B2F3C0AA200B6BC19 /* Pocket Ledger */ = {
+			isa = PBXGroup;
+			children = (
+				FEC702992F3AFE9B00B6BC19 /* App */,
+				FEC7029C2F3AFEDA00B6BC19 /* Core */,
+				FEC7029B2F3AFED100B6BC19 /* Domain */,
+				FEC702C62F3B002800B6BC19 /* Resources */,
+				FEC7029D2F3AFEE500B6BC19 /* UI */,
+			);
+			path = "Pocket Ledger";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -59,9 +384,6 @@
 			buildRules = (
 			);
 			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				FE3DBFD52F1B151100D7B598 /* Pocket Ledger */,
 			);
 			name = "Pocket Ledger";
 			packageProductDependencies = (
@@ -109,6 +431,9 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FEC702962F3AF99500B6BC19 /* Assets.xcassets in Resources */,
+				FEC702C72F3B002800B6BC19 /* LaunchScreen.storyboard in Resources */,
+				FEC702C82F3B002800B6BC19 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -119,6 +444,60 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FEC702DC2F3B07EC00B6BC19 /* Account+UI.swift in Sources */,
+				FEC702DD2F3B07EC00B6BC19 /* AccountStatusBadge.swift in Sources */,
+				FEC702DE2F3B07EC00B6BC19 /* SelectionView.swift in Sources */,
+				FEC702DF2F3B07EC00B6BC19 /* StandardFormToolbar.swift in Sources */,
+				FEC703562F3B181500B6BC19 /* TransactionStore.swift in Sources */,
+				FEC703052F3B07EC00B6BC19 /* AccountDetailView.swift in Sources */,
+				FEC703062F3B07EC00B6BC19 /* AccountGroupDetailView.swift in Sources */,
+				FEC703542F3B180D00B6BC19 /* AccountStore.swift in Sources */,
+				FEC703072F3B07EC00B6BC19 /* AccountsListView.swift in Sources */,
+				FEC703082F3B07EC00B6BC19 /* AddAccountGroupView.swift in Sources */,
+				FEC7034C2F3B07F500B6BC19 /* FinancialCalculator.swift in Sources */,
+				FEC703092F3B07EC00B6BC19 /* AddAccountView.swift in Sources */,
+				FEC7030A2F3B07EC00B6BC19 /* EditAccountView.swift in Sources */,
+				FEC7030B2F3B07EC00B6BC19 /* ReconcileSelectionView.swift in Sources */,
+				FEC7030C2F3B07EC00B6BC19 /* ReconcileView.swift in Sources */,
+				FEC7030D2F3B07EC00B6BC19 /* FilterSheet.swift in Sources */,
+				FEC7030E2F3B07EC00B6BC19 /* InsightsView.swift in Sources */,
+				FEC7030F2F3B07EC00B6BC19 /* AddCategoryView.swift in Sources */,
+				FEC703102F3B07EC00B6BC19 /* CategoryDetailView.swift in Sources */,
+				FEC703112F3B07EC00B6BC19 /* EditCategoryView.swift in Sources */,
+				FEC703122F3B07EC00B6BC19 /* ManageCategoriesView.swift in Sources */,
+				FEC703132F3B07EC00B6BC19 /* ExportView.swift in Sources */,
+				FEC703142F3B07EC00B6BC19 /* HelpView.swift in Sources */,
+				FEC703152F3B07EC00B6BC19 /* LockView.swift in Sources */,
+				FEC7035A2F3B634E00B6BC19 /* AnalyticsTypes.swift in Sources */,
+				FEC703162F3B07EC00B6BC19 /* ManageBooksView.swift in Sources */,
+				FEC703172F3B07EC00B6BC19 /* SettingsView.swift in Sources */,
+				FEC703182F3B07EC00B6BC19 /* AddTagView.swift in Sources */,
+				FEC703192F3B07EC00B6BC19 /* EditTagView.swift in Sources */,
+				FEC7033A2F3B07F500B6BC19 /* CurrencyFormatter.swift in Sources */,
+				FEC7033B2F3B07F500B6BC19 /* Formatters.swift in Sources */,
+				FEC7033C2F3B07F500B6BC19 /* MathParser.swift in Sources */,
+				FEC7033D2F3B07F500B6BC19 /* StorageService.swift in Sources */,
+				FEC7033E2F3B07F500B6BC19 /* UUIDv7.swift in Sources */,
+				FEC7031A2F3B07EC00B6BC19 /* ManageTagsView.swift in Sources */,
+				FEC7034E2F3B093900B6BC19 /* NotificationManager.swift in Sources */,
+				FEC7031B2F3B07EC00B6BC19 /* TagDetailView.swift in Sources */,
+				FEC7031C2F3B07EC00B6BC19 /* EditTemplateView.swift in Sources */,
+				FEC7031D2F3B07EC00B6BC19 /* TemplatesView.swift in Sources */,
+				FEC7031E2F3B07EC00B6BC19 /* AddTransactionView.swift in Sources */,
+				FEC7031F2F3B07EC00B6BC19 /* TransactionDetailView.swift in Sources */,
+				FEC703202F3B07EC00B6BC19 /* TransactionListView.swift in Sources */,
+				FEC703212F3B07EC00B6BC19 /* TransactionRow.swift in Sources */,
+				FEC703522F3B12C800B6BC19 /* InsightsViewModel.swift in Sources */,
+				FEC7032C2F3B07F100B6BC19 /* Account.swift in Sources */,
+				FEC7032D2F3B07F100B6BC19 /* AccountGroup.swift in Sources */,
+				FEC7032E2F3B07F100B6BC19 /* BookMetadata.swift in Sources */,
+				FEC7032F2F3B07F100B6BC19 /* Category.swift in Sources */,
+				FEC703302F3B07F100B6BC19 /* SavedData.swift in Sources */,
+				FEC703312F3B07F100B6BC19 /* Tag.swift in Sources */,
+				FEC703322F3B07F100B6BC19 /* Transaction.swift in Sources */,
+				FEC703332F3B07F100B6BC19 /* TransactionTemplate.swift in Sources */,
+				FEC702942F3AF99500B6BC19 /* PocketLedgerApp.swift in Sources */,
+				FEC702952F3AF99500B6BC19 /* ContentView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -265,7 +644,7 @@
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -302,7 +681,7 @@
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
