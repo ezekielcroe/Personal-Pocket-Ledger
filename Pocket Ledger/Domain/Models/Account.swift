@@ -5,7 +5,7 @@ import Foundation
 /// Accounts can be categorized into four types based on `isCredit` and `targetAmount`:
 /// - **Debit** (isCredit: false, targetAmount: nil): Cash, checking accounts
 /// - **Goal** (isCredit: false, targetAmount: set): Savings goals with target dates
-/// - **Budget** (isCredit: true, targetAmount: set): Spending envelopes with monthly limits
+/// - **Limit** (isCredit: true, targetAmount: set): Spending envelopes with monthly limits
 /// - **Debt** (isCredit: true, targetAmount: nil or 0): Loans, installments with payoff goals
 struct Account: Identifiable, Codable, Hashable, Sendable {
     /// Unique identifier for the account.
@@ -24,7 +24,7 @@ struct Account: Identifiable, Codable, Hashable, Sendable {
     
     /// Optional target amount for goal tracking, budget limits, or debt payoff.
     /// - For debit accounts: represents a savings goal to reach
-    /// - For budget accounts: represents a spending limit
+    /// - For limit accounts: represents a spending limit
     /// - For debt accounts: typically nil or 0 (payoff goal)
     var targetAmount: Decimal? = nil
     
@@ -39,7 +39,7 @@ struct Account: Identifiable, Codable, Hashable, Sendable {
     /// Date when the account was archived. If nil, account is active.
     var archivedDate: Date? = nil
     
-    /// NEW: The last time the user verified this balance against reality.
+    /// The last time the user verified this balance against reality.
     var lastReconciledDate: Date? = nil
     
     /// Computed property to check if account is archived
@@ -77,7 +77,7 @@ struct Account: Identifiable, Codable, Hashable, Sendable {
         case (false, .some(let target)) where target > 0:
             return .goal
         case (true, .some(let target)) where target > 0:
-            return .budget
+            return .limit
         case (true, nil), (true, .some(0)):
             return .debt
         default:
@@ -89,33 +89,18 @@ struct Account: Identifiable, Codable, Hashable, Sendable {
 // MARK: - Supporting Enums
 
 enum AccountType: String, Codable, Sendable {
-    case debit = "Debit"
-    case goal = "Goal"
-    case budget = "Budget"
-    case debt = "Debt"
-    
-    /// SF Symbol icon for each account type
-    var icon: String {
-        switch self {
-        case .debit:  return "banknote"
-        case .goal:   return "target"
-        case .budget: return "envelope.fill"
-        case .debt:   return "creditcard.fill"
-        }
-    }
-    
-    /// Section header name (for grouping)
-    var sectionName: String {
-        self.rawValue
-    }
+    case debit  = "Debit"
+    case goal   = "Goal"
+    case limit  = "Limit"
+    case debt   = "Debt"
 }
 
 enum PaymentFrequency: String, Codable, CaseIterable, Identifiable, Sendable {
-    case weekly = "Weekly"
-    case biweekly = "Bi-weekly"
-    case monthly = "Monthly"
-    case quarterly = "Quarterly"
-    case yearly = "Yearly"
+    case weekly     = "Weekly"
+    case biweekly   = "Bi-weekly"
+    case monthly    = "Monthly"
+    case quarterly  = "Quarterly"
+    case yearly     = "Yearly"
     
     var id: String { rawValue }
     
@@ -156,11 +141,6 @@ enum PaymentFrequency: String, Codable, CaseIterable, Identifiable, Sendable {
         
         let difference = calendar.dateComponents([components], from: start, to: end)
         let rawPeriods = difference.value(for: components) ?? 0
-        
-        if multiplier == 1 {
-            return rawPeriods
-        } else {
-            return rawPeriods / multiplier
-        }
+        return multiplier == 1 ? rawPeriods : rawPeriods / multiplier
     }
 }
