@@ -23,7 +23,7 @@ struct HelpView: View {
                             icon: "building.columns.fill",
                             color:.blue,
                             title: "The Four Pillars",
-                            subtitle: "Debit, Goal, Budget, and Debt."
+                            subtitle: "Debit, Goal, Limit, and Debt."
                         )
                     }
                     
@@ -137,7 +137,7 @@ struct AccountsGuideView: View {
                 GuideDetailRow(icon: "key.fill", color:.blue, title: "Maturity Event", description: "Once your balance hits the Target Amount, the account triggers a \"Maturity\" option. You can then convert the account to Debit, unlocking the funds for the purchase.")
             }
             
-            Section(header: Text("🟣 Budget (The Capacity Tank)")) {
+            Section(header: Text("🟣 Limit (The Capacity Tank)")) {
                 GuideDetailRow(icon: "envelope.fill", color:.purple, title: "Concept", description: "Credit as a Finite Resource.")
                 GuideDetailRow(icon: "battery.100", color:.purple, title: "Behavior", description: "We show credit cards as Available Capacity. If you have a $2,000 limit, spending depletes the tank; paying the bill refills it.")
                 GuideDetailRow(icon: "bolt.slash.fill", color:.purple, title: "The Circuit Breaker", description: "If you exceed your limit, you can freeze the account into a Debt account, preventing all further spending (outflows) until you pay down the balance.")

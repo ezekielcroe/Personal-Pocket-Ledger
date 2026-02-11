@@ -30,7 +30,6 @@ struct SavedTransactionData: Codable, Sendable {
     let tags: [Tag]
     let templates: [TransactionTemplate]
     let insightPresets: [InsightPreset]
-    let reminderTime: DateComponents?
 }
 
 

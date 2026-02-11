@@ -206,7 +206,7 @@ struct EditAccountView: View {
         switch account.accountType {
         case .debit:  return .primary
         case .goal:   return .blue
-        case .budget: return .purple
+        case .limit: return .purple
         case .debt:   return .orange
         }
     }
@@ -215,7 +215,7 @@ struct EditAccountView: View {
         switch account.accountType {
         case .debit:  return "Savings Goal (Optional)"
         case .goal:   return "Savings Goal"
-        case .budget: return "Monthly Budget Limit"
+        case .limit: return "Monthly Budget Limit"
         case .debt:   return "Payoff Goal"
         }
     }
@@ -226,7 +226,7 @@ struct EditAccountView: View {
             return "Add a target to convert this into a Goal account for tracking savings progress."
         case .goal:
             return "Your savings target. Progress is tracked automatically."
-        case .budget:
+        case .limit:
             return "Your monthly spending limit. You'll see warnings when approaching this amount."
         case .debt:
             return "Set to $0 to track debt payoff progress. Set higher to create a monthly spending budget."
@@ -236,7 +236,7 @@ struct EditAccountView: View {
     private var targetPlaceholder: String {
         switch account.accountType {
         case .debit, .goal: return "Target Amount"
-        case .budget:       return "Monthly Limit"
+        case .limit:       return "Monthly Limit"
         case .debt:         return "0"
         }
     }
@@ -245,7 +245,7 @@ struct EditAccountView: View {
         switch account.accountType {
         case .goal, .debt:
             return true
-        case .budget:
+        case .limit:
             return false
         case .debit:
             let target = MathParser.calculate(targetAmountString)
@@ -280,7 +280,7 @@ struct EditAccountView: View {
                 return .green
             }
             return .primary
-        case .budget:
+        case .limit:
             // FIXED: Added 'string:' label
             if let target = Decimal(string: targetAmountString), balance > target {
                 return .red
@@ -308,7 +308,7 @@ struct EditAccountView: View {
             } else {
                 return String(format: "%.0f%% of goal reached", pctObj.doubleValue)
             }
-        case .budget:
+        case .limit:
             return String(format: "%.0f%% of budget used", pctObj.doubleValue)
         case .debt:
             return String(format: "%.0f%% of debt remaining", pctObj.doubleValue)

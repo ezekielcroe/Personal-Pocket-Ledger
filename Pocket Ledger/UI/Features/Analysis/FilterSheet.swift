@@ -344,7 +344,7 @@ struct FilterSheet: View {
     // MARK: - Helpers
 
     private var accountsByType: [(type: AccountType, accounts: [Account])] {
-        [AccountType.debit, .goal, .budget, .debt].compactMap { type in
+        [AccountType.debit, .goal, .limit, .debt].compactMap { type in
             let list = accountStore.accounts
                 .filter { $0.accountType == type }
                 .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
@@ -356,7 +356,7 @@ struct FilterSheet: View {
         switch type {
         case .debit:  return .primary
         case .goal:   return .blue
-        case .budget: return .purple
+        case .limit: return .purple
         case .debt:   return .orange
         }
     }

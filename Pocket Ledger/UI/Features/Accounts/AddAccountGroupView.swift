@@ -352,7 +352,7 @@ struct AddAccountGroupView: View {
                 return .green
             }
             return .primary
-        case .budget:
+        case .limit:
             if let target = account.targetAmount, balance > target {
                 return .red
             }

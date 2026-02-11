@@ -161,7 +161,7 @@ struct AccountDetailView: View {
         }
         
         // SCENARIO 2: Budget -> Debt (The "Circuit Breaker")
-        else if liveAccount.accountType == .budget,
+        else if liveAccount.accountType == .limit,
                 let limit = liveAccount.targetAmount,
                 balance > limit {
             
@@ -490,7 +490,7 @@ struct AccountDetailView: View {
                        symbol: currencySymbol,
                        color: .red)
                 
-            case .budget:
+            case .limit:
                 StatRow(title: "Spent (This Month)",
                        value: monthlyTotals.outflow,
                        symbol: currencySymbol,
@@ -525,7 +525,7 @@ struct AccountDetailView: View {
                        value: stats.monthlyOutflow,
                        symbol: currencySymbol)
                 
-            case .budget:
+            case .limit:
                 StatRow(title: "Avg Spending / Month",
                        value: stats.monthlyOutflow,
                        symbol: currencySymbol)
@@ -653,7 +653,7 @@ struct AccountDetailView: View {
         @ViewBuilder
         private func statusBadge(current: Decimal, target: Decimal) -> some View {
             switch liveAccount.accountType {
-            case .budget:
+            case .limit:
                 let remaining = target - current
                 HStack {
                     Image(systemName: remaining >= 0 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
@@ -732,7 +732,7 @@ struct AccountDetailView: View {
         switch liveAccount.accountType {
         case .debit:  return .primary
         case .goal:   return .blue
-        case .budget: return .purple
+        case .limit: return .purple
         case .debt:   return .orange
         }
     }
@@ -741,7 +741,7 @@ struct AccountDetailView: View {
         switch liveAccount.accountType {
         case .debit:  return "Current Balance"
         case .goal:   return "Current Savings"
-        case .budget: return "Spent This Period"
+        case .limit: return "Spent This Period"
         case .debt:   return "Amount Owed"
         }
     }
@@ -759,7 +759,7 @@ struct AccountDetailView: View {
             }
             return .primary
             
-        case .budget:
+        case .limit:
             if let target = liveAccount.targetAmount {
                 return balance > target ? .red : .primary
             }
@@ -785,7 +785,7 @@ struct AccountDetailView: View {
     private var progressSectionTitle: String {
         switch liveAccount.accountType {
         case .goal:   return "Goal Progress"
-        case .budget: return "Budget Progress"
+        case .limit: return "Budget Progress"
         case .debt:   return "Payoff Progress"
         default:      return "Progress"
         }
@@ -794,7 +794,7 @@ struct AccountDetailView: View {
     private var currentAmountLabel: String {
         switch liveAccount.accountType {
         case .goal:   return "Saved"
-        case .budget: return "Spent"
+        case .limit: return "Spent"
         case .debt:   return "Owed"
         default:      return "Current"
         }
@@ -803,7 +803,7 @@ struct AccountDetailView: View {
     private var targetAmountLabel: String {
         switch liveAccount.accountType {
         case .goal:   return "Goal"
-        case .budget: return "Budget"
+        case .limit: return "Budget"
         case .debt:   return "Payoff"
         default:      return "Target"
         }
@@ -822,7 +822,7 @@ struct AccountDetailView: View {
             let percentage = fraction.doubleValue
             
             switch liveAccount.accountType {
-            case .budget:
+            case .limit:
                 if percentage > 1.0 { return .red }
                 else if percentage > 0.9 { return .orange }
                 else { return .green }

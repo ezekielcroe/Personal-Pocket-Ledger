@@ -33,12 +33,15 @@ struct JSONBackupDocument: FileDocument {
     
     init(configuration: ReadConfiguration) throws {
         let data = configuration.file.regularFileContents ?? Data()
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
         self.savedData = try JSONDecoder().decode(SavedData.self, from: data)
     }
     
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
+        encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(savedData)
         return FileWrapper(regularFileWithContents: data)
     }

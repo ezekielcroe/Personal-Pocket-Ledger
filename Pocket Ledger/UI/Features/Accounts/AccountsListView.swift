@@ -38,7 +38,7 @@ struct AccountsListView: View {
     
     private var budgetAccounts: [Account] {
         store.accounts
-            .filter { $0.accountType == .budget && !$0.isArchived }
+            .filter { $0.accountType == .limit && !$0.isArchived }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
@@ -70,7 +70,7 @@ struct AccountsListView: View {
                         DisclosureGroup(
                             isExpanded: $isDebitExpanded,
                             content: { ForEach(debitAccounts) { accountRowLink(for: $0) } },
-                            label: { headerLabel(title: "Debit", count: debitAccounts.count) }
+                            label: { headerLabel(title: "Debit accounts", count: debitAccounts.count) }
                         )
                     }
 
@@ -79,7 +79,7 @@ struct AccountsListView: View {
                         DisclosureGroup(
                             isExpanded: $isGoalsExpanded,
                             content: { ForEach(goalAccounts) { accountRowLink(for: $0) } },
-                            label: { headerLabel(title: "Goals", count: goalAccounts.count) }
+                            label: { headerLabel(title: "Goal accounts", count: goalAccounts.count) }
                         )
                     }
                     
@@ -88,7 +88,7 @@ struct AccountsListView: View {
                         DisclosureGroup(
                             isExpanded: $isBudgetsExpanded,
                             content: { ForEach(budgetAccounts) { accountRowLink(for: $0) } },
-                            label: { headerLabel(title: "Budgets", count: budgetAccounts.count) }
+                            label: { headerLabel(title: "Limit accounts", count: budgetAccounts.count) }
                         )
                     }
                     
@@ -97,7 +97,7 @@ struct AccountsListView: View {
                         DisclosureGroup(
                             isExpanded: $isDebtsExpanded,
                             content: { ForEach(debtAccounts) { accountRowLink(for: $0) } },
-                            label: { headerLabel(title: "Debts", count: debtAccounts.count) }
+                            label: { headerLabel(title: "Debt accounts", count: debtAccounts.count) }
                         )
                     }
                     
@@ -355,7 +355,7 @@ struct AccountRow: View {
                  Text(currentBalance.formattedCurrency(symbol: currencySymbol))
             }
             
-        case .budget:
+        case .limit:
             if let target = account.targetAmount {
                 let isOverBudget = currentBalance > target
                 VStack(alignment: .trailing, spacing: 0) {

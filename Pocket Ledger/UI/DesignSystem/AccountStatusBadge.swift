@@ -12,13 +12,13 @@ import SwiftUI
 
 enum AccountStatusBadge {
     case goalMet
-    case budgetExceeded
+    case limitExceeded
     case archived
     
     var icon: String {
         switch self {
         case .goalMet:        return "checkmark.circle.fill"
-        case .budgetExceeded: return "exclamationmark.triangle.fill"
+        case .limitExceeded: return "exclamationmark.triangle.fill"
         case .archived:       return "archivebox.fill"
         }
     }
@@ -26,7 +26,7 @@ enum AccountStatusBadge {
     var color: Color {
         switch self {
         case .goalMet:        return .green
-        case .budgetExceeded: return .red
+        case .limitExceeded: return .red
         case .archived:       return .secondary
         }
     }
@@ -46,9 +46,9 @@ extension Account {
             if let target = targetAmount, balance >= target {
                 return .goalMet
             }
-        case .budget:
+        case .limit:
             if let target = targetAmount, balance > target {
-                return .budgetExceeded
+                return .limitExceeded
             }
         default:
             break

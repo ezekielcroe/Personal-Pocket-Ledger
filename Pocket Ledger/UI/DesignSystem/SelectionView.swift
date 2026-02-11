@@ -65,7 +65,7 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
     private var activeAccountsByType: [(type: AccountType, accounts: [T])] {
         guard isAccountView else { return [] }
         
-        let typeOrder: [AccountType] = [.debit, .goal, .budget, .debt]
+        let typeOrder: [AccountType] = [.debit, .goal, .limit, .debt]
         // Note: filteredItems is already filtered for isArchived above
         
         return typeOrder.compactMap { type in
@@ -236,7 +236,7 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
         case .goal:
             if let target = account.targetAmount, balance >= target { return .green }
             return .secondary
-        case .budget:
+        case .limit:
             if let target = account.targetAmount, balance > target { return .red }
             return .secondary
         case .debt: return balance > 0 ? .orange : .green

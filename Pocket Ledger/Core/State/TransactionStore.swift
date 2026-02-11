@@ -70,7 +70,6 @@ class TransactionStore: ObservableObject {
             tags: tags,
             templates: templates,
             insightPresets: insightPresets,
-            reminderTime: nil
         )
         Task {
             try? await StorageService.shared.save(data, to: transactionsFilename(for: bookID))
