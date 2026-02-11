@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct AddTagView: View {
     @EnvironmentObject var transactionStore: TransactionStore

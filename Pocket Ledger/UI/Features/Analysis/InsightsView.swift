@@ -18,8 +18,15 @@ struct InsightsView: View {
         NavigationStack {
             ZStack(alignment: .bottomTrailing) {
                 ScrollView {
-                    VStack(spacing: 16) {
+                    VStack(spacing: 12) {
                         pickerSection
+                        
+                        Text(Formatters.formatInterval(viewModel.currentDateInterval))
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+                        .padding(.top, -8) // Pulls it closer to the picker for association
+                        .animation(nil, value: viewModel.timeRange) // Prevents jitter
 
                         if isCustomFilterActive {
                             activeViewBanner
@@ -374,6 +381,7 @@ struct CategoryBarRow: View {
                 Text(item.name)
                     .font(.subheadline)
                     .fontWeight(.medium)
+                    .foregroundColor(.primary)
 
                 Spacer()
 
@@ -381,6 +389,7 @@ struct CategoryBarRow: View {
                     Text(item.amount.formattedCurrency(symbol: currencySymbol))
                         .font(.subheadline)
                         .monospacedDigit()
+                        .foregroundColor(.primary)
 
                     if total > 0 {
                         let percentage = (item.amount / total) * 100
@@ -398,7 +407,7 @@ struct CategoryBarRow: View {
                         .frame(height: 6)
 
                     Capsule()
-                        .fill(item.color ?? .blue)
+                        .fill(item.color ?? .primary)
                         .frame(width: barWidth(totalWidth: geometry.size.width), height: 6)
                 }
             }

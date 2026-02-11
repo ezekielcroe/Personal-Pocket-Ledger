@@ -112,7 +112,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
-        let templateID = response.notification.request.identifier
+        let userInfo = response.notification.request.content.userInfo
+        let templateID = userInfo["templateID"] as? String ?? response.notification.request.identifier
         
         if let store = transactionStore, !store.templates.isEmpty {
             postNotification(templateID: templateID)

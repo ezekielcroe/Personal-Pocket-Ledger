@@ -223,7 +223,7 @@ class InsightsViewModel: ObservableObject {
             
             breakdownItems = dict.compactMap { (id, amount) in
                 guard let cat = categories.first(where: { $0.id == id }) else { return nil }
-                return AnalyticsItem(id: id, name: cat.name, icon: cat.emoji, amount: amount, color: nil)
+                return AnalyticsItem(id: id, name: cat.name, icon: cat.emoji, amount: amount, color: .primary)
             }
             
         case .account:

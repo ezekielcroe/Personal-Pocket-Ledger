@@ -30,4 +30,25 @@ struct Formatters {
         formatter.dateFormat = "MMMM yyyy"
         return formatter
     }()
+    
+    /// Formats a date interval into a user-friendly string (e.g., "Jan 1 – Jan 31").
+    static func formatInterval(_ interval: DateInterval) -> String {
+            let calendar = Calendar.current
+            let currentYear = calendar.component(.year, from: Date())
+            let startYear = calendar.component(.year, from: interval.start)
+            
+            let formatter = DateFormatter()
+            formatter.locale = Locale.current
+            
+            if startYear == currentYear {
+                formatter.dateFormat = "MMM d"
+            } else {
+                formatter.dateFormat = "MMM d, yyyy"
+            }
+            
+            let startStr = formatter.string(from: interval.start)
+            let endStr = formatter.string(from: interval.end)
+            
+            return "\(startStr) – \(endStr)"
+        }
 }

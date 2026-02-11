@@ -1,9 +1,6 @@
 import SwiftUI
 import UIKit // Needed for Haptics
 
-import SwiftUI
-import UIKit // Needed for Haptics
-
 struct ReconcileInputView: View {
     @EnvironmentObject var accountStore: AccountStore
     @EnvironmentObject var transactionStore: TransactionStore
@@ -101,27 +98,34 @@ struct ReconcileInputView: View {
             }
         }
         .navigationTitle("Reconcile")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button("Done") {
-                    handleDone()
+        // IMPROVEMENT 1: Button moved from Toolbar to Bottom Safe Area
+        .safeAreaInset(edge: .bottom) {
+            VStack {
+                Button(action: handleDone) {
+                    Text("Finish Reconciliation")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.blue)
+                        .cornerRadius(12)
                 }
+                .shadow(radius: 4, y: 2)
             }
+            .padding()
+            .background(.ultraThinMaterial)
         }
         .mathPadToolbar(for: activeMathBinding)
         .onAppear { initializeInputs() }
         
         // --- ALERTS & SHEETS ---
         
-        // 1. Success Feedback Alert
         .alert("Verification Complete", isPresented: $showingSuccessAlert) {
-            // CRITICAL FIX: Call onComplete() here, NOT dismiss()
             Button("OK") { onComplete() }
         } message: {
             Text("\(reconciledCount) accounts have been marked as verified.")
         }
         
-        // 2. Adjustment Sheet
         .sheet(isPresented: $showingAdjustmentSheet) {
             if let target = targetToAdjust {
                 let name = selectedAccountForGroupAdjustment?.name ?? target.name
@@ -136,7 +140,6 @@ struct ReconcileInputView: View {
             }
         }
         
-        // 3. Group Picker
         .confirmationDialog("Apply Adjustment To...", isPresented: $showingGroupTargetPicker, titleVisibility: .visible) {
             if case .group(let group) = targetToAdjust {
                 let eligibleAccounts = getAccountsRecursive(for: group)
@@ -180,6 +183,11 @@ struct ReconcileInputView: View {
                     .keyboardType(.numbersAndPunctuation)
                     .multilineTextAlignment(.trailing)
                     .focused($focusedFieldID, equals: target.id)
+                    // IMPROVEMENT 2: Next Button Logic
+                    .submitLabel(.next)
+                    .onSubmit {
+                        moveToNextField(from: target.id)
+                    }
                 
                 if let input = balanceInputs[target.id], !input.isEmpty {
                     let actual = MathParser.calculate(input)
@@ -203,6 +211,21 @@ struct ReconcileInputView: View {
     }
     
     // MARK: - Logic Helpers
+    
+    // NEW HELPER: Handles jumping to the next field
+    private func moveToNextField(from currentID: UUID) {
+        let currentTargets = targets
+        if let idx = currentTargets.firstIndex(where: { $0.id == currentID }) {
+            let nextIdx = idx + 1
+            if nextIdx < currentTargets.count {
+                // Jump to next
+                focusedFieldID = currentTargets[nextIdx].id
+            } else {
+                // End of list, dismiss keyboard
+                focusedFieldID = nil
+            }
+        }
+    }
     
     private func initializeInputs() { }
     
@@ -228,7 +251,6 @@ struct ReconcileInputView: View {
         let count = commitReconciliation()
         
         if count > 0 {
-            // Success State
             reconciledCount = count
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.success)

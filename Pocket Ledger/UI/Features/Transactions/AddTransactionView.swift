@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct AddTransactionView: View {
     @EnvironmentObject var transactionStore: TransactionStore
@@ -477,8 +478,6 @@ struct AddTransactionView: View {
         selectedTagIDs = []
         isOutlier = false
         focusedField = .amount
-        let generator = UINotificationFeedbackGenerator()
-        generator.notificationOccurred(.success)
     }
 
     private func saveTransaction(shouldDismiss: Bool = true) {
@@ -564,7 +563,8 @@ struct AddTransactionView: View {
                 transactionStore.addTransaction(type: type, accountID: accountID, categoryID: categoryID, tagIDs: tags, amount: amount, date: date, isOutlier: isOutlier)
             }
         }
-        
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.success)
         if shouldDismiss {
             dismiss()
         }

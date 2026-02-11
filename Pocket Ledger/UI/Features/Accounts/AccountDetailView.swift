@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Displays details about an account including its transactions and statistics.
 struct AccountDetailView: View {
@@ -67,6 +68,18 @@ struct AccountDetailView: View {
             // SECTION 8: Archive/Delete Actions
             archiveSection
         }
+        
+        .onChange(of: liveAccount.accountType) { _, newType in
+            let generator = UINotificationFeedbackGenerator()
+            
+            // Use "Warning" haptic if converting TO Debt, otherwise "Success"
+            if newType == .debt {
+                generator.notificationOccurred(.warning)
+            } else {
+                generator.notificationOccurred(.success)
+            }
+        }
+        
         .navigationTitle(liveAccount.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -114,7 +127,7 @@ struct AccountDetailView: View {
                 dismiss() // Pop back to list
             }
         } message: {
-            Text("Are you sure? This will permanently remove the account and all its transactions.")
+            Text("Are you sure? This will permanently remove the account. Associated Transactions will appear as 'Unknown'.")
         }
     }
     
@@ -216,6 +229,32 @@ struct AccountDetailView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
                 }
+            }
+        }
+        
+        // SCENARIO 4: Debit -> Goal (Lock to save)
+        else if liveAccount.accountType == .debit {
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Saving up for something?")
+                        .font(.headline)
+                    
+                    Text("Lock this account by setting a target amount to convert it into a Goal account.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Button {
+                        // Action: Open the Edit Sheet so they can add the Target Amount
+                        showingEditSheet = true
+                    } label: {
+                        Label("Convert to Goal", systemImage: "lock.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.blue) // Matches the Goal color theme
+                    .padding(.top, 4)
+                }
+                .padding(.vertical, 4)
             }
         }
     }
@@ -954,10 +993,7 @@ struct AccountDetailView: View {
             accountStore.accounts[index] = updatedAccount
             accountStore.save() // Triggers persistence and UI updates
         }
-        
-        // 5. Haptic Feedback for the reward
-        let generator = UINotificationFeedbackGenerator()
-        generator.notificationOccurred(.success)
+
     }
 
     private func convertBudgetToDebt() {
@@ -976,10 +1012,6 @@ struct AccountDetailView: View {
             accountStore.accounts[index] = updatedAccount
             accountStore.save()
         }
-        
-        // 5. Haptic Feedback
-        let generator = UINotificationFeedbackGenerator()
-        generator.notificationOccurred(.warning)
     }
 
 }

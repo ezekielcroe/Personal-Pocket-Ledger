@@ -1,6 +1,7 @@
 import SwiftUI
 import LocalAuthentication
 import UniformTypeIdentifiers
+import UIKit
 
 struct SettingsView: View {
     @EnvironmentObject var accountStore: AccountStore
