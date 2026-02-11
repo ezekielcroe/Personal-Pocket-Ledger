@@ -22,21 +22,29 @@ class AccountStore: ObservableObject {
     @Published var availableBooks: [BookMetadata] = []
     @Published var activeBook: BookMetadata?
     
+    // MARK: - Balance Cache
+    // Pre-computed balances keyed by account/group ID.
+    // Updated by recomputeBalances(using:) whenever accounts or transactions change.
+    @Published var balances: [UUID: Decimal] = [:]
+    @Published var groupBalances: [UUID: Decimal] = [:]
+    
+    // MARK: - Cross-Store Reference
+    // Weak to avoid a retain cycle. Set by PocketLedgerApp on startup.
+    weak var transactionStore: TransactionStore?
+    
+    // MARK: - Debounce
+    private var saveTask: Task<Void, Never>?
+    
     
     // =========================================================
     // MARK: - App Startup
     // =========================================================
     
-    /// The single entry point called on app launch. It loads the book index,
-    /// resolves which book should be active, then loads that book's data
-    /// (both accounts and transactions) in the correct order.
     func loadBookIndex(transactionStore: TransactionStore) async {
         do {
-            // 1. Try to load the existing book index from disk
             let index = try await StorageService.shared.load(BookIndex.self, from: "book_index.json")
             availableBooks = index.books
             
-            // 2. Determine which book to open (last active, or first available)
             let bookToLoad: BookMetadata
             if let lastID = index.lastActiveBookID,
                let lastBook = index.books.first(where: { $0.id == lastID }) {
@@ -44,35 +52,28 @@ class AccountStore: ObservableObject {
             } else if let firstBook = index.books.first {
                 bookToLoad = firstBook
             } else {
-                // Index file exists but has no books (edge case) — create a default
                 await createDefaultBook(transactionStore: transactionStore)
                 return
             }
             
-            // 3. Load data for that book
             await loadBookData(bookToLoad, transactionStore: transactionStore)
             
         } catch {
-            // book_index.json doesn't exist yet — this is a fresh install
             await createDefaultBook(transactionStore: transactionStore)
         }
     }
     
-    /// Creates the initial "Personal" book on first launch.
     private func createDefaultBook(transactionStore: TransactionStore) async {
         let defaultBook = BookMetadata(name: "Personal")
         availableBooks = [defaultBook]
         activeBook = defaultBook
         transactionStore.activeBook = defaultBook
         
-        // Save the index so it exists next time
         saveBookIndex()
         
-        // Initialize demo accounts and default categories/tags
         initializeDefaultsIfNeeded()
         transactionStore.initializeDefaultsIfNeeded()
         
-        // Persist the initial data under the new book's filename
         save()
         transactionStore.save()
     }
@@ -82,41 +83,32 @@ class AccountStore: ObservableObject {
     // MARK: - Book CRUD
     // =========================================================
 
-    /// Creates a new empty book and immediately switches to it.
     func createBook(name: String, transactionStore: TransactionStore) {
-        // 1. Save current book before leaving
         save()
         transactionStore.save()
         
-        // 2. Create the new book
         let newBook = BookMetadata(name: name)
         availableBooks.append(newBook)
         
-        // 3. Switch to it (clears current data, starts fresh)
         Task {
             await loadBookData(newBook, transactionStore: transactionStore)
         }
     }
     
-    /// Switches to a different existing book, saving the current one first.
     func switchToBook(_ book: BookMetadata, transactionStore: TransactionStore) async {
         guard book.id != activeBook?.id else { return }
         
-        // 1. Save current book before leaving
         save()
         transactionStore.save()
         
-        // 2. Load the selected book
         await loadBookData(book, transactionStore: transactionStore)
     }
     
-    /// Renames a book. Updates the active book reference if it's the one being renamed.
     func renameBook(_ book: BookMetadata, to newName: String) {
         guard let index = availableBooks.firstIndex(where: { $0.id == book.id }) else { return }
         
         availableBooks[index].name = newName
         
-        // Keep the active book reference in sync if this is the current book
         if activeBook?.id == book.id {
             activeBook?.name = newName
         }
@@ -124,26 +116,23 @@ class AccountStore: ObservableObject {
         saveBookIndex()
     }
     
-    /// Permanently deletes a book and both of its data files. Cannot delete the active book.
     func deleteBook(_ book: BookMetadata, transactionStore: TransactionStore) {
         guard book.id != activeBook?.id else { return }
         
-        // 1. Remove from the index
         availableBooks.removeAll { $0.id == book.id }
         saveBookIndex()
         
-        // 2. Delete both data files from disk
         Task {
             try? await StorageService.shared.delete(filename: accountsFilename(for: book.id))
             try? await StorageService.shared.delete(filename: transactionsFilename(for: book.id))
         }
     }
     
-    /// Erases all accounts and transactions in the current book, leaving the book itself intact.
     func resetActiveBook(transactionStore: TransactionStore) {
         accounts = []
         accountGroups = []
         transactionStore.transactions = []
+        recomputeBalances(using: [])
         save()
         transactionStore.save()
     }
@@ -152,18 +141,14 @@ class AccountStore: ObservableObject {
     // MARK: - Book Persistence (Private)
     // =========================================================
     
-    /// Generates the accounts filename for a specific book.
     private func accountsFilename(for bookID: UUID) -> String {
         "accounts_\(bookID.uuidString).json"
     }
     
-    /// Generates the transactions filename for a specific book.
-    /// Exposed as internal so TransactionStore can use the same naming convention.
     func transactionsFilename(for bookID: UUID) -> String {
         "transactions_\(bookID.uuidString).json"
     }
     
-    /// Saves the book index (list of all books + which is active) to disk.
     private func saveBookIndex() {
         let index = BookIndex(
             books: availableBooks,
@@ -174,30 +159,24 @@ class AccountStore: ObservableObject {
         }
     }
     
-    /// Core internal method: sets the active book in both stores, loads their data from disk.
     private func loadBookData(_ book: BookMetadata, transactionStore: TransactionStore) async {
-        // 1. Mark book as active and update its lastOpened timestamp
         var updatedBook = book
         updatedBook.lastOpened = Date()
         activeBook = updatedBook
         transactionStore.activeBook = updatedBook
         
-        // 2. Update the book in the index with the new timestamp
         if let index = availableBooks.firstIndex(where: { $0.id == book.id }) {
             availableBooks[index] = updatedBook
         }
         
-        // 3. Save the updated index
         saveBookIndex()
         
-        // 4. Load account data for this book
         await loadAccounts(for: updatedBook)
         
-        // 5. Load transaction data for this book
+        // Transactions load next; recomputeBalances is called at the end of loadTransactions.
         await transactionStore.loadTransactions(for: updatedBook)
     }
     
-    /// Loads account and group data for a specific book. Initializes defaults if no data exists yet.
     private func loadAccounts(for book: BookMetadata) async {
         do {
             let data = try await StorageService.shared.load(
@@ -207,10 +186,10 @@ class AccountStore: ObservableObject {
             self.accounts = data.accounts
             self.accountGroups = data.accountGroups
         } catch {
-            // No data file for this book yet — start fresh
             self.accounts = []
             self.accountGroups = []
         }
+        // Balance recompute intentionally deferred: happens after transactions load.
     }
     
     func restoreFromBackup(url: URL, transactionStore: TransactionStore) async throws {
@@ -227,6 +206,7 @@ class AccountStore: ObservableObject {
         transactionStore.tags         = backup.tags
         transactionStore.templates    = backup.templates
         
+        recomputeBalances(using: backup.transactions)
         save()
         transactionStore.save()
     }
@@ -236,8 +216,24 @@ class AccountStore: ObservableObject {
     // MARK: - Account Persistence (Public)
     // =========================================================
     
-    /// Saves the current account data to the active book's file.
+    /// Debounced save: coalesces rapid successive calls into a single disk write.
+    /// Multiple calls within 500ms will cancel the previous pending write and restart the timer.
     public func save() {
+        saveTask?.cancel()
+        saveTask = Task { [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms
+            guard !Task.isCancelled else { return }
+            guard let bookID = activeBook?.id else { return }
+            let data = SavedAccountData(accounts: accounts, accountGroups: accountGroups)
+            try? await StorageService.shared.save(data, to: accountsFilename(for: bookID))
+        }
+    }
+    
+    /// Bypasses the debounce and writes to disk immediately.
+    /// Called when the app is backgrounded to ensure no data is lost.
+    public func saveImmediately() {
+        saveTask?.cancel()
         guard let bookID = activeBook?.id else { return }
         let data = SavedAccountData(accounts: accounts, accountGroups: accountGroups)
         Task {
@@ -264,12 +260,14 @@ class AccountStore: ObservableObject {
             paymentFrequency: paymentFrequency
         )
         accounts.append(account)
+        recomputeBalances(using: transactionStore?.transactions ?? [])
         save()
     }
     
     func addAccountGroup(name: String, memberIDs: [UUID]) {
         let group = AccountGroup(name: name, memberIDs: memberIDs)
         accountGroups.append(group)
+        recomputeBalances(using: transactionStore?.transactions ?? [])
         save()
     }
 
@@ -285,25 +283,26 @@ class AccountStore: ObservableObject {
             accounts[index].targetAmount = targetAmount
             accounts[index].targetDate = targetDate
             accounts[index].paymentFrequency = paymentFrequency
+            recomputeBalances(using: transactionStore?.transactions ?? [])
             save()
         }
     }
 
     func deleteAccount(_ account: Account) {
-        // 1. Remove from physical list
         accounts.removeAll { $0.id == account.id }
         
-        // 2. Scrub reference from virtual groups
         for i in 0..<accountGroups.count {
             accountGroups[i].memberIDs.removeAll { $0 == account.id }
         }
         
+        recomputeBalances(using: transactionStore?.transactions ?? [])
         save()
     }
     
     func updateAccountGroup(_ group: AccountGroup) {
         if let index = accountGroups.firstIndex(where: { $0.id == group.id }) {
             accountGroups[index] = group
+            recomputeBalances(using: transactionStore?.transactions ?? [])
             save()
         }
     }
@@ -311,6 +310,7 @@ class AccountStore: ObservableObject {
     func deleteAccountGroup(_ group: AccountGroup) {
         if let index = accountGroups.firstIndex(where: { $0.id == group.id }) {
             accountGroups.remove(at: index)
+            recomputeBalances(using: transactionStore?.transactions ?? [])
             save()
         }
     }
@@ -320,6 +320,8 @@ class AccountStore: ObservableObject {
     // MARK: - Account Balance
     // =========================================================
     
+    /// Direct calculation — retained for use in detail views and reconciliation where
+    /// the full transaction list is already available at the call site.
     func balance(for account: Account, transactions: [Transaction]) -> Decimal {
         FinancialCalculator.balance(for: account, in: transactions)
     }
@@ -333,6 +335,25 @@ class AccountStore: ObservableObject {
         )
     }
     
+    /// Recomputes balances for all accounts and groups from scratch.
+    /// Called whenever accounts change or transactions are loaded/mutated.
+    func recomputeBalances(using transactions: [Transaction]) {
+        var newBalances: [UUID: Decimal] = [:]
+        for account in accounts {
+            newBalances[account.id] = FinancialCalculator.balance(for: account, in: transactions)
+        }
+        balances = newBalances
+        
+        var newGroupBalances: [UUID: Decimal] = [:]
+        for group in accountGroups {
+            newGroupBalances[group.id] = FinancialCalculator.groupBalance(
+                group, in: accountGroups, accounts: accounts, transactions: transactions
+            )
+        }
+        groupBalances = newGroupBalances
+    }
+    
+    
     // =========================================================
     // MARK: - Archive Operations
     // =========================================================
@@ -340,6 +361,7 @@ class AccountStore: ObservableObject {
     func archiveAccount(_ account: Account) {
         if let index = accounts.firstIndex(where: { $0.id == account.id }) {
             accounts[index].archivedDate = Date()
+            recomputeBalances(using: transactionStore?.transactions ?? [])
             save()
         }
     }
@@ -347,15 +369,16 @@ class AccountStore: ObservableObject {
     func unarchiveAccount(_ account: Account) {
         if let index = accounts.firstIndex(where: { $0.id == account.id }) {
             accounts[index].archivedDate = nil
+            recomputeBalances(using: transactionStore?.transactions ?? [])
             save()
         }
     }
     
-    /// Automatically unarchives an account when it appears in a new transaction.
     public func unarchiveAccountIfNeeded(id: UUID) {
         if let index = accounts.firstIndex(where: { $0.id == id }) {
             if accounts[index].isArchived {
                 accounts[index].archivedDate = nil
+                recomputeBalances(using: transactionStore?.transactions ?? [])
                 save()
             }
         }
@@ -366,7 +389,6 @@ class AccountStore: ObservableObject {
     // MARK: - Group Operations
     // =========================================================
     
-    /// Returns all members (accounts + groups) for a group.
     func members(for group: AccountGroup) -> [MemberType] {
         var result: [MemberType] = []
         
@@ -381,7 +403,6 @@ class AccountStore: ObservableObject {
         return result
     }
     
-    /// Safely adds a member to a group (with cycle detection).
     func addMember(_ memberID: UUID, to groupID: UUID) throws {
         guard let index = accountGroups.firstIndex(where: { $0.id == groupID }) else {
             throw GroupError.groupNotFound
@@ -389,44 +410,40 @@ class AccountStore: ObservableObject {
         
         var group = accountGroups[index]
         
-        // Check for cycles if adding a group
         if accountGroups.contains(where: { $0.id == memberID }) {
             if group.wouldCreateCycle(byAdding: memberID, in: accountGroups) {
                 throw GroupError.wouldCreateCycle
             }
         }
         
-        // Check for duplicates
         if group.memberIDs.contains(memberID) {
             throw GroupError.memberAlreadyExists
         }
         
         group.memberIDs.append(memberID)
         accountGroups[index] = group
+        recomputeBalances(using: transactionStore?.transactions ?? [])
         save()
     }
     
-    /// Removes a member from a group.
     func removeMember(_ memberID: UUID, from groupID: UUID) {
         guard let index = accountGroups.firstIndex(where: { $0.id == groupID }) else { return }
         
         var group = accountGroups[index]
         group.memberIDs.removeAll { $0 == memberID }
         accountGroups[index] = group
+        recomputeBalances(using: transactionStore?.transactions ?? [])
         save()
     }
     
-    /// Returns the depth of nesting for a group.
     func depth(of group: AccountGroup) -> Int {
         group.depth(in: accountGroups)
     }
     
-    /// Returns all account IDs in a group (flattened, recursive).
     func allAccountIDs(in group: AccountGroup) -> [UUID] {
         Array(group.allAccountIDs(in: accountGroups, accounts: accounts))
     }
     
-    /// Validates group structure integrity.
     func validateGroupStructure() -> [GroupValidationError] {
         var errors: [GroupValidationError] = []
         

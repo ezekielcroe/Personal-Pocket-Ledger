@@ -1,17 +1,54 @@
 import SwiftUI
 
+// MARK: - Help View (Table of Contents)
+
 struct HelpView: View {
+    /// When true, a "Get Started" button is shown in the toolbar.
+    /// This is used on first launch to mark the guide as seen.
+    var isOnboarding: Bool = false
+    
+    @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding: Bool = false
+    @Environment(\.dismiss) private var dismiss
+    
     var body: some View {
         NavigationStack {
             List {
+                // MARK: - Onboarding Prompt
+                if isOnboarding {
+                    Section {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Welcome to Pocket Ledger")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                            Text("Read through this guide to understand the system, then tap Get Started when you're ready.")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.vertical, 6)
+                        .listRowBackground(Color.clear)
+                    }
+                }
+                
+                // MARK: - 0. Getting Started (first-time only — moved to top)
+                Section(header: Text("New Here?")) {
+                    NavigationLink(destination: GettingStartedView()) {
+                        ManualRow(
+                            icon: "map.fill",
+                            color: .green,
+                            title: "Getting Started",
+                            subtitle: "Your first 10 minutes with the app."
+                        )
+                    }
+                }
+                
                 // MARK: - 1. Introduction
                 Section {
                     NavigationLink(destination: ManifestoView()) {
                         ManualRow(
                             icon: "sparkles",
-                            color:.yellow,
+                            color: .yellow,
                             title: "The Philosophy",
-                            subtitle: "Active Guardianship & Mindful Spending"
+                            subtitle: "Minding your Money."
                         )
                     }
                 }
@@ -21,7 +58,7 @@ struct HelpView: View {
                     NavigationLink(destination: AccountsGuideView()) {
                         ManualRow(
                             icon: "building.columns.fill",
-                            color:.blue,
+                            color: .blue,
                             title: "The Four Pillars",
                             subtitle: "Debit, Goal, Limit, and Debt."
                         )
@@ -30,16 +67,16 @@ struct HelpView: View {
                     NavigationLink(destination: TaxonomyGuideView()) {
                         ManualRow(
                             icon: "tag.fill",
-                            color:.orange,
+                            color: .orange,
                             title: "Taxonomy",
-                            subtitle: "Orthogonal Metadata Strategy."
+                            subtitle: "Categories, Tags, and the Orthogonal Strategy."
                         )
                     }
                     
                     NavigationLink(destination: ReconciliationGuideView()) {
                         ManualRow(
                             icon: "checkmark.seal.fill",
-                            color:.green,
+                            color: .green,
                             title: "Reconciliation",
                             subtitle: "The Traffic Light System & The Plug."
                         )
@@ -51,7 +88,7 @@ struct HelpView: View {
                     NavigationLink(destination: InterfaceGuideView()) {
                         ManualRow(
                             icon: "hand.tap.fill",
-                            color:.purple,
+                            color: .purple,
                             title: "Interface Ergonomics",
                             subtitle: "Thumb-first design and gestures."
                         )
@@ -60,277 +97,573 @@ struct HelpView: View {
                     NavigationLink(destination: PowerUserGuideView()) {
                         ManualRow(
                             icon: "keyboard.fill",
-                            color:.primary,
+                            color: .primary,
                             title: "Power User Features",
-                            subtitle: "Shortcuts & Deep Linking."
+                            subtitle: "Templates, Shortcuts & Deep Linking."
                         )
                     }
                 }
                 
-                // MARK: - 4. Footer
+                // MARK: - Footer
                 Section {
                     HStack {
                         Spacer()
                         VStack(spacing: 4) {
                             Text("Pocket Ledger")
-                               .font(.headline)
+                                .font(.headline)
                             Text("Field Guide v1.0")
-                               .font(.caption)
-                               .foregroundColor(.secondary)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
                         }
                         Spacer()
                     }
-                   .listRowBackground(Color.clear)
+                    .listRowBackground(Color.clear)
                 }
             }
-           .navigationTitle("User Manual")
+            .navigationTitle("User Manual")
+            .toolbar {
+                if isOnboarding {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Get Started") {
+                            hasSeenOnboarding = true
+                            dismiss()
+                        }
+                        .fontWeight(.semibold)
+                        .foregroundColor(.green)
+                    }
+                }
+            }
         }
     }
 }
 
-// MARK: - 1. Philosophy (Manifesto)
+
+// MARK: - 0. Getting Started
+
+struct GettingStartedView: View {
+    var body: some View {
+        List {
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Let's start by setitng up a simple personal finance ecosystem.")
+                        .font(.body)
+                    Text("This guide walks you through setup so you're ready to track from day one.")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+            
+            Section(header: Text("Step 1 — Set Up Your Accounts")) {
+                GuideDetailRow(
+                    icon: "1.circle.fill", color: .blue,
+                    title: "Mirror your real-world accounts",
+                    description: "Start with what you actually have: a checking account, a savings account, and any credit cards. One account in real life = one account in the app."
+                )
+                GuideDetailRow(
+                    icon: "banknote", color: .green,
+                    title: "Debit accounts",
+                    description: "Your checking account, cash wallet, or any account you spend freely from. Set the Initial Balance to what your bank shows right now."
+                )
+                GuideDetailRow(
+                    icon: "creditcard.fill", color: .purple,
+                    title: "Limit accounts",
+                    description: "Your credit cards. Set the Target Amount to your credit limit. The balance shows how much of that limit you've used."
+                )
+                GuideDetailRow(
+                    icon: "target", color: .blue,
+                    title: "Goal accounts",
+                    description: "Savings working toward something specific — a holiday, an emergency fund, a new laptop. Set a Target Amount and work to fill it up."
+                )
+                GuideDetailRow(
+                    icon: "exclamationmark.triangle.fill", color: .orange,
+                    title: "Debt accounts",
+                    description: "Loans, personal debts, anything you owe. Set the Initial Balance to what you owe. Every repayment reduces it."
+                )
+            }
+            
+            Section(header: Text("Step 2 — Set Up Your Categories")) {
+                GuideDetailRow(
+                    icon: "folder.fill", color: .orange,
+                    title: "Keep them broad",
+                    description: "Categories describe the nature of the expense: Housing, Food, Transport, Income, Health. Aim for 5–8 total. You don't need one for every merchant."
+                )
+                GuideDetailRow(
+                    icon: "plus.circle", color: .green,
+                    title: "Create them from Settings",
+                    description: "Go to Settings → Categories and create the ones that fit your life. You can add more at any time."
+                )
+            }
+            
+            Section(header: Text("Step 3 — Record Your First Transaction")) {
+                GuideDetailRow(
+                    icon: "plus.circle.fill", color: .blue,
+                    title: "Tap the + button",
+                    description: "On the Transactions tab, tap the floating + button at the bottom right."
+                )
+                GuideDetailRow(
+                    icon: "arrow.down.circle.fill", color: .green,
+                    title: "Choose a type",
+                    description: "Inflow for money coming in (a salary, a refund). Outflow for money going out (a purchase, a bill). Transfer for moving money between your own accounts."
+                )
+                GuideDetailRow(
+                    icon: "building.columns.fill", color: .blue,
+                    title: "Pick an account",
+                    description: "Which of your accounts was involved? If you paid by credit card, select that Limit account."
+                )
+                GuideDetailRow(
+                    icon: "checkmark.circle.fill", color: .green,
+                    title: "Fill in the rest and save",
+                    description: "Amount, category, and optionally a tag. That's it. The balance on your account updates immediately."
+                )
+            }
+            
+            Section(header: Text("Step 4 — Build a Habit")) {
+                GuideDetailRow(
+                    icon: "bell.fill", color: .blue,
+                    title: "Use Templates for recurring transactions",
+                    description: "Rent, subscriptions, salary — anything that repeats. Create a Template once, and it pre-fills the form every time (except amount). You can attach a scheduled reminder so the app nudges you."
+                )
+                GuideDetailRow(
+                    icon: "checkmark.seal.fill", color: .green,
+                    title: "Reconcile weekly",
+                    description: "Once a week, open your bank app and compare balances. Use the Reconcile tool if anything is off. Green dots mean your data is trusted."
+                )
+                GuideDetailRow(
+                    icon: "clock.arrow.circlepath", color: .secondary,
+                    title: "Don't aim for perfection",
+                    description: "If you miss a day, catch up. If a balance is slightly off, use the Reconcile plug. Consistency over time matters far more than precision on any single day."
+                )
+            }
+            
+            Section(header: Text("What to Ignore for Now")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("You don't need to set up everything on day one. These features exist when you're ready for them:")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                    bulletRow("Account Groups — for grouping related accounts together (e.g. all credit cards)")
+                    bulletRow("Tags — for adding specific context beyond the category (e.g. #DateNight, #WorkExpense)")
+                    bulletRow("Insights — spending charts and breakdowns, more useful once you have a few weeks of data")
+                    bulletRow("Multiple Books — for separating personal and business finances entirely")
+                }
+                .padding(.vertical, 4)
+            }
+        }
+        .navigationTitle("Getting Started")
+    }
+    
+    private func bulletRow(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text("•")
+                .foregroundColor(.secondary)
+            Text(text)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+
+// MARK: - 1. Philosophy
+
 struct ManifestoView: View {
     var body: some View {
-        ScrollView {
-            VStack(alignment:.leading, spacing: 20) {
-                GroupBox {
-                    VStack(alignment:.leading, spacing: 10) {
-                        Label("Active Guardianship", systemImage: "hand.raised.fill")
-                           .font(.headline)
-                           .foregroundColor(.yellow)
-                        
-                        Text("Pocket Ledger is designed to encourage a more mindful and behavioural approach to your money.")
-                           .font(.subheadline)
-                        
-                        Text("By manually entering every transaction, you feel the \"weight\" of your spending. This app is aimed to support you as you actively track and guard your money.")
-                           .font(.subheadline)
-                    }
-                   .frame(maxWidth:.infinity, alignment:.leading)
+        List {
+            Section {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Most finance apps are becoming frictionless; so you open the app, the numbers are already there, and you scroll past them.")
+                        .font(.body)
+                    Text("Pocket Ledger aims to encourage the opposite. You type every transaction in yourself.")
+                        .font(.body)
+                        .fontWeight(.medium)
+                    Text("We want to make friction intentional.")
+                        .font(.body)
+                        .foregroundColor(.secondary)
                 }
+                .padding(.vertical, 4)
             }
-           .padding()
+            
+            Section(header: Text("Active Guardianship")) {
+                GuideDetailRow(
+                    icon: "hand.raised.fill", color: .yellow,
+                    title: "The weight of money",
+                    description: "When you manually record every purchase, you feel each one. Spending stops being invisible. Over time, this changes your relationship with money more effectively."
+                )
+                GuideDetailRow(
+                    icon: "brain", color: .yellow,
+                    title: "Behavioural, not analytical",
+                    description: "The goal isn't a perfect spreadsheet. It's awareness. You don't need to know exactly where every dollar went — you need to feel whether you're on track."
+                )
+                GuideDetailRow(
+                    icon: "eye.fill", color: .yellow,
+                    title: "You are the bank",
+                    description: "Pocket Ledger treats you as the authoritative source of your own financial truth. The app holds what you tell it. Reconciliation is how you verify the data."
+                )
+            }
+            
+            Section(header: Text("The Design Principles")) {
+                GuideDetailRow(
+                    icon: "lock.fill", color: .primary,
+                    title: "Offline first",
+                    description: "Your data never leaves your device unless you explicitly export it. No accounts, no subscriptions, no servers."
+                )
+                GuideDetailRow(
+                    icon: "hand.tap.fill", color: .primary,
+                    title: "Capture is the job",
+                    description: "The conveniences in this app is to make the path from 'I just spent money' to 'it's recorded' feel easy and fast. Everything else is secondary."
+                )
+                GuideDetailRow(
+                    icon: "scalemass.fill", color: .primary,
+                    title: "Consistency over precision",
+                    description: "A balance that's $1.50 off but tracked every day is more valuable than a perfect balance you check once a month. Use the Reconcile feature, then Move on."
+                )
+            }
         }
-       .navigationTitle("Philosophy")
-       .background(Color(.systemGroupedBackground))
+        .navigationTitle("Philosophy")
     }
 }
 
+
 // MARK: - 2. Four Pillars
+
 struct AccountsGuideView: View {
     var body: some View {
         List {
             Section {
-                Text("Your accounts are not just buckets for money; they are behavioral contracts. Pocket Ledger divides the financial world into four distinct types of accounts, each with its own rules of engagement.")
-                   .font(.subheadline)
-                   .foregroundColor(.secondary)
+                Text("Your accounts are not just buckets for money — they are behavioural contracts. Pocket Ledger divides the financial world into four distinct account types, each with its own rules of engagement.")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .padding(.vertical, 4)
             }
             
-            Section(header: Text("🟢 Debit (The Liquid Hub)")) {
-                GuideDetailRow(icon: "banknote", color:.green, title: "Concept", description: "\"Now\" Money.")
-                GuideDetailRow(icon: "arrow.triangle.2.circlepath", color:.green, title: "Behavior", description: "Standard checking accounts or physical cash.")
-                GuideDetailRow(icon: "checkmark.circle", color:.green, title: "Rule", description: "Use this for daily operational spending. Money flows in, money flows out.")
+            Section(header: Text("🟢 Debit — The Liquid Hub")) {
+                GuideDetailRow(icon: "banknote", color: .green,
+                               title: "Concept: Now Money",
+                               description: "Checking accounts, savings accounts used for spending, and physical cash. Money flows freely in and out.")
+                GuideDetailRow(icon: "arrow.triangle.2.circlepath", color: .green,
+                               title: "Behaviour",
+                               description: "Use this for daily operational spending. Record inflows when you get paid, outflows when you spend, and transfers when you move money to savings.")
+                GuideDetailRow(icon: "exclamationmark.circle", color: .red,
+                               title: "Watch for",
+                               description: "A balance that drops below zero. The app highlights this in red — it means you've recorded more spending than you have available.")
             }
             
-            Section(header: Text("🔵 Goal (The Vault)")) {
-                GuideDetailRow(icon: "target", color:.blue, title: "Concept", description: "\"Future\" Money.")
-                GuideDetailRow(icon: "lock.fill", color:.blue, title: "The Lock Protocol", description: "You cannot spend directly from a Goal account. It is \"locked\" to prevent accidental leakage of your savings into daily life.")
-                GuideDetailRow(icon: "key.fill", color:.blue, title: "Maturity Event", description: "Once your balance hits the Target Amount, the account triggers a \"Maturity\" option. You can then convert the account to Debit, unlocking the funds for the purchase.")
+            Section(header: Text("🔵 Goal — The Vault")) {
+                GuideDetailRow(icon: "target", color: .blue,
+                               title: "Concept: Future Money",
+                               description: "Savings earmarked for a specific purpose. A holiday fund, an emergency buffer, a new laptop. Set a Target Amount so the app can show your progress.")
+                GuideDetailRow(icon: "lock.fill", color: .blue,
+                               title: "The Lock Protocol",
+                               description: "You cannot record outflows from a Goal account. It's locked to prevent savings from silently leaking into daily spending. To use the money, you first transfer it to a Debit account.")
+                GuideDetailRow(icon: "key.fill", color: .blue,
+                               title: "Maturity",
+                               description: "When your balance reaches the Target Amount, the account shows a Maturity badge. You can then convert it to Debit, unlocking the funds for the purchase you saved for.")
             }
             
-            Section(header: Text("🟣 Limit (The Capacity Tank)")) {
-                GuideDetailRow(icon: "envelope.fill", color:.purple, title: "Concept", description: "Credit as a Finite Resource.")
-                GuideDetailRow(icon: "battery.100", color:.purple, title: "Behavior", description: "We show credit cards as Available Capacity. If you have a $2,000 limit, spending depletes the tank; paying the bill refills it.")
-                GuideDetailRow(icon: "bolt.slash.fill", color:.purple, title: "The Circuit Breaker", description: "If you exceed your limit, you can freeze the account into a Debt account, preventing all further spending (outflows) until you pay down the balance.")
+            Section(header: Text("🟣 Limit — The Capacity Tank")) {
+                GuideDetailRow(icon: "creditcard.fill", color: .purple,
+                               title: "Concept: Credit as a Finite Resource",
+                               description: "Credit cards don't show a debt balance here — they show available capacity. A $2,000 limit account starts full. Each purchase depletes it. Paying the bill refills it.")
+                GuideDetailRow(icon: "battery.100", color: .purple,
+                               title: "Why this framing matters",
+                               description: "Seeing 'I have $1,200 left on my card' is psychologically different from 'I owe $800'. The tank framing makes limits feel real and finite, not abstract.")
+                GuideDetailRow(icon: "bolt.slash.fill", color: .red,
+                               title: "The Circuit Breaker",
+                               description: "If spending exceeds your limit, you can freeze the account into a Debt account. This blocks all further outflows until you pay down the balance.")
             }
             
-            Section(header: Text("🟠 Debt (The Sink)")) {
-                GuideDetailRow(icon: "exclamationmark.triangle.fill", color:.orange, title: "Concept", description: "The Liability to Destroy.")
-                GuideDetailRow(icon: "arrow.down.to.line", color:.orange, title: "Rule", description: "You cannot spend from a Debt account. You can only transfer money INTO it. Every transfer is a victory, visually shrinking the negative balance.")
+            Section(header: Text("🟠 Debt — The Sink")) {
+                GuideDetailRow(icon: "exclamationmark.triangle.fill", color: .orange,
+                               title: "Concept: The Liability to Destroy",
+                               description: "Loans, personal debts, anything you owe to someone else. The balance represents what you still owe — your goal is to reduce it to zero.")
+                GuideDetailRow(icon: "arrow.down.to.line", color: .orange,
+                               title: "Rule",
+                               description: "You cannot spend from a Debt account. You can only transfer money into it. Each transfer is a visible victory — the balance shrinks, the obligation diminishes.")
+                GuideDetailRow(icon: "checkmark.circle.fill", color: .green,
+                               title: "Zero is the win condition",
+                               description: "When a Debt account reaches zero, you've eliminated that liability. Archive it and move on.")
             }
         }
-       .navigationTitle("Four Pillars")
+        .navigationTitle("Four Pillars")
     }
 }
 
+
 // MARK: - 3. Taxonomy
+
 struct TaxonomyGuideView: View {
     var body: some View {
         List {
-            Section(header: Text("The \"Orthogonal\" Strategy"), footer: Text("We separate the Where, the What, and the Why.")) {
-                GuideDetailRow(icon: "building.columns.fill", color:.blue, title: "Account (Where)", description: "Where did the money come from? (e.g., \"Amex Gold\")")
-                GuideDetailRow(icon: "folder.fill", color:.orange, title: "Category (What)", description: "What is the broad nature of the expense? (e.g., \"Sustenance\")")
-                GuideDetailRow(icon: "tag.fill", color:.purple, title: "Tag (Why/Who)", description: "What was the specific context? (e.g., \"#DateNight\")")
+            Section(header: Text("The Orthogonal Strategy"),
+                    footer: Text("Three independent dimensions of information. Each answers a different question.")) {
+                GuideDetailRow(icon: "building.columns.fill", color: .blue,
+                               title: "Account — Where",
+                               description: "Which of your accounts was involved? (e.g. Amex Gold, Main Checking, Cash Wallet)")
+                GuideDetailRow(icon: "folder.fill", color: .orange,
+                               title: "Category — What",
+                               description: "What is the broad nature of this transaction? (e.g. Housing, Food, Transport, Income)")
+                GuideDetailRow(icon: "tag.fill", color: .purple,
+                               title: "Tag — Why / Who",
+                               description: "What was the specific context? (e.g. #DateNight, #WorkExpense, #Caffeine)")
             }
             
-            Section(footer: Text("Keep Categories broad (Housing, Transport, Food) and use Tags for specifics. This keeps your charts readable.")) {
-                Text("Pro Tip")
-                   .font(.headline)
-                   .foregroundColor(.blue)
+            Section(header: Text("The Golden Rule")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Categories should be broad. Tags should be specific.")
+                        .font(.body)
+                        .fontWeight(.semibold)
+                    Text("If you create a category for every coffee shop, your charts become unreadable. Instead, create one broad 'Food' category and a '#Caffeine' tag. You get clean charts and the ability to filter by coffee spending whenever you want.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 4)
             }
             
             Section(header: Text("Smart Tags & Keywords")) {
-                VStack(alignment:.leading, spacing: 8) {
-                    Text("Don't create a category for every coffee shop. Instead, create a single tag called #Caffeine.")
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Tags can have keywords attached to them. When you search for a keyword, the app surfaces all transactions with that tag — even if you didn't type the tag name directly.")
+                        .font(.subheadline)
                     Divider()
-                    HStack(alignment:.top) {
-                        Image(systemName: "gearshape.fill").foregroundColor(.gray)
-                        Text("How it works: In the Tag settings, add keywords like \"Starbucks,\" \"Dunkin,\" and \"Nespresso\" to the #Caffeine tag.")
-                           .font(.caption).foregroundColor(.secondary)
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "gearshape.fill").foregroundColor(.secondary)
+                        Text("Setup: Create a #Caffeine tag and add keywords like 'Starbucks', 'Dunkin', 'Nespresso'.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
                     }
-                    HStack(alignment:.top) {
-                        Image(systemName: "sparkles").foregroundColor(.yellow)
-                        Text("The Magic: When you search for \"Starbucks\" later, the app automatically finds all #Caffeine transactions.")
-                           .font(.caption).foregroundColor(.secondary)
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "magnifyingglass").foregroundColor(.blue)
+                        Text("Result: Searching 'Starbucks' in Transactions finds every #Caffeine entry, regardless of how you named them.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
                     }
                 }
-               .padding(.vertical, 4)
+                .padding(.vertical, 4)
+            }
+            
+            Section(header: Text("Suggested Starting Setup")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Categories (broad, permanent):")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    tagChipRow(["🍱 Food", "🏠 Housing", "🚗 Transport", "💰 Income", "🎨 Lifestyle", "🏥 Health"])
+                    
+                    Text("Tags (specific, add as needed):")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .padding(.top, 4)
+                    tagChipRow(["#Groceries", "#Dining", "#Coffee", "#Subscriptions", "#WorkExpense", "#DateNight"])
+                }
+                .padding(.vertical, 4)
             }
         }
-       .navigationTitle("Taxonomy")
+        .navigationTitle("Taxonomy")
+    }
+    
+    private func tagChipRow(_ items: [String]) -> some View {
+        FlowLayout(spacing: 6) {
+            ForEach(items, id: \.self) { item in
+                Text(item)
+                    .font(.caption)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(Capsule())
+            }
+        }
     }
 }
 
+
 // MARK: - 4. Reconciliation
+
 struct ReconciliationGuideView: View {
     var body: some View {
         List {
             Section {
-                Text("Since Pocket Ledger is offline-first, it relies on you to tell the truth. Reconciliation is the act of verifying that the App's truth matches Reality (your bank balance).")
-                   .font(.subheadline)
-                   .foregroundColor(.secondary)
+                Text("Since Pocket Ledger is offline-first, it relies on you to tell the truth. Reconciliation is the act of verifying that the app's truth matches reality — your actual bank balance.")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .padding(.vertical, 4)
             }
             
             Section(header: Text("The Traffic Light System")) {
-                HStack {
+                HStack(spacing: 12) {
                     Circle().fill(Color.green).frame(width: 12, height: 12)
-                    Text("Green").bold()
-                    Spacer()
-                    Text("Verified < 7 days ago. Trusted.")
-                       .font(.caption).foregroundColor(.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Green").font(.subheadline).bold()
+                        Text("Verified in the last 7 days. Trusted.")
+                            .font(.subheadline).foregroundColor(.secondary)
+                    }
                 }
-                HStack {
+                HStack(spacing: 12) {
                     Circle().fill(Color.yellow).frame(width: 12, height: 12)
-                    Text("Yellow").bold()
-                    Spacer()
-                    Text("Verified < 30 days ago. Caution.")
-                       .font(.caption).foregroundColor(.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Yellow").font(.subheadline).bold()
+                        Text("Verified within 30 days. Getting stale.")
+                            .font(.subheadline).foregroundColor(.secondary)
+                    }
                 }
-                HStack {
+                HStack(spacing: 12) {
                     Circle().fill(Color.red).frame(width: 12, height: 12)
-                    Text("Red").bold()
-                    Spacer()
-                    Text("Verified > 30 days ago. Stale.")
-                       .font(.caption).foregroundColor(.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Red").font(.subheadline).bold()
+                        Text("More than 30 days since last check. Needs attention.")
+                            .font(.subheadline).foregroundColor(.secondary)
+                    }
                 }
             }
             
-            Section(header: Text("The Plug Feature")) {
-                VStack(alignment:.leading, spacing: 10) {
-                    Text("If your app says you have $500 but your bank says $498.50, don't waste hours hunting for the $1.50.")
-                    
-                    Label("Use the Reconcile tool", systemImage: "wrench.and.screwdriver.fill")
-                       .font(.headline)
-                    
-                    Text("Input the actual balance ($498.50). The app will calculate the difference and automatically generate a \"Reconciliation Adjustment\" transaction to plug the gap.")
-                       .font(.caption)
-                    
+            Section(header: Text("How to Reconcile")) {
+                GuideDetailRow(icon: "1.circle.fill", color: .blue,
+                               title: "Open your bank app",
+                               description: "Find the current balance for the account you want to verify.")
+                GuideDetailRow(icon: "2.circle.fill", color: .blue,
+                               title: "Open Reconcile in Pocket Ledger",
+                               description: "Tap the ··· menu on the Accounts tab and choose Reconcile Accounts. Select the account.")
+                GuideDetailRow(icon: "3.circle.fill", color: .blue,
+                               title: "Enter the real balance",
+                               description: "Type in what your bank shows. The app compares it to its own records.")
+                GuideDetailRow(icon: "checkmark.circle.fill", color: .green,
+                               title: "Confirm",
+                               description: "If they match, the account turns green. If they don't, Pocket Ledger calculates the difference and offers to plug the gap automatically.")
+            }
+            
+            Section(header: Text("The Reconcile Feature")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("If your app shows $500 but your bank shows $498.50, don't spend an hour hunting for the $1.50 discrepancy.")
+                        .font(.body)
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "wrench.and.screwdriver.fill").foregroundColor(.orange)
+                        Text("The Reconcile tool will calculate the $1.50 difference and automatically add a small 'Reconciliation Adjustment' transaction to close the gap.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
                     Text("Perfection is the enemy of consistency.")
-                       .font(.caption)
-                       .italic()
-                       .foregroundColor(.secondary)
+                        .font(.subheadline)
+                        .italic()
+                        .foregroundColor(.secondary)
                 }
-               .padding(.vertical, 4)
+                .padding(.vertical, 4)
             }
         }
-       .navigationTitle("Reconciliation")
+        .navigationTitle("Reconciliation")
     }
 }
 
+
 // MARK: - 5. Interface
+
 struct InterfaceGuideView: View {
     var body: some View {
         List {
             Section {
-                Text("We designed the interface for how you actually hold your phone—with one hand, using your thumb.")
-                   .font(.subheadline)
-                   .foregroundColor(.secondary)
+                Text("The interface is designed for how you actually use your phone — one hand, thumb-first, on the move.")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .padding(.vertical, 4)
             }
             
             Section(header: Text("Ergonomics")) {
-                GuideDetailRow(icon: "arrow.down.to.line", color:.blue, title: "Bottom-Heavy Controls", description: "The \"Save\" and \"Add\" buttons live at the bottom of the screen, right above the keyboard. You never have to reach for the top corners.")
+                GuideDetailRow(icon: "arrow.down.to.line", color: .blue,
+                               title: "Bottom-heavy controls",
+                               description: "The Save and Add buttons live at the bottom of the screen, just above the keyboard. No reaching for the top corners.")
+                GuideDetailRow(icon: "plus.circle.fill", color: .blue,
+                               title: "Floating + button",
+                               description: "The add button on each tab is always visible in the bottom-right corner. One tap to start recording, wherever you are in the app.")
+                GuideDetailRow(icon: "eye.slash", color: .secondary,
+                               title: "Collapse sections",
+                               description: "Any section header can be tapped to collapse that group. Use this to reduce visual noise when you only care about certain account types.")
             }
             
             Section(header: Text("The Math Engine")) {
-                VStack(alignment:.leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     Label("Every amount field is a calculator.", systemImage: "function")
-                       .font(.headline)
-                    
-                    Text("Scenario: You paid for dinner ($45.00) but split it with a friend.")
-                       .font(.caption)
-                    
-                    HStack {
-                        Text("Action:")
-                           .font(.caption).bold()
-                        Text("Type 45.00 / 2 directly into the field.")
-                           .font(.caption).monospaced()
+                        .font(.headline)
+                    Text("Scenario: You paid for dinner ($45.00) and split it with a friend.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    HStack(spacing: 4) {
+                        Text("Type:")
+                            .font(.subheadline).bold()
+                        Text("45.00 / 2")
+                            .font(.subheadline).monospaced()
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(Color(.secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 5))
                     }
-                    
-                    Text("The app calculates $22.50 instantly. You can also chain operators like 12 + 5.50 + 3.")
-                       .font(.caption)
-                       .foregroundColor(.secondary)
+                    Text("The app resolves it to $22.50 instantly. You can also chain operators: 12 + 5.50 + 3.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
                 }
-               .padding(.vertical, 4)
+                .padding(.vertical, 4)
             }
             
             Section(header: Text("Swipe Gestures")) {
-                SwipeGuideRow(direction: "Right", color:.blue, action: "Edit", icon: "pencil")
-                SwipeGuideRow(direction: "Left", color:.red, action: "Delete", icon: "trash.fill")
-                SwipeGuideRow(direction: "Left", color:.orange, action: "Archive", icon: "archivebox.fill")
+                SwipeGuideRow(direction: "Right →", color: .blue, action: "Edit", icon: "pencil")
+                SwipeGuideRow(direction: "← Left", color: .orange, action: "Archive", icon: "archivebox.fill")
+                SwipeGuideRow(direction: "← Left", color: .red, action: "Delete", icon: "trash.fill")
+            }
+            
+            Section(header: Text("Multi-Select")) {
+                GuideDetailRow(icon: "checkmark.circle", color: .blue,
+                               title: "Batch operations on transactions",
+                               description: "Tap the select button (top right on the Transactions tab) to enter multi-select mode. Select multiple transactions to delete them or apply tags to all of them at once.")
             }
         }
-       .navigationTitle("Interface")
+        .navigationTitle("Interface")
     }
 }
 
+
 // MARK: - 6. Power User
+
 struct PowerUserGuideView: View {
     var body: some View {
         List {
-            Section(header: Text("Keyboard Shortcuts (iPad / Mac)"), footer: Text("Pocket Ledger supports full navigation without touching the screen.")) {
-                HotkeyDisplayRow(keys: ["⌘", "1-4"], action: "Switch Tabs")
+            Section(header: Text("Templates")) {
+                GuideDetailRow(icon: "doc.on.doc.fill", color: .blue,
+                               title: "What they are",
+                               description: "A template is a pre-filled transaction form. Create one for anything you record repeatedly: rent, salary, a weekly grocery run, a subscription.")
+                GuideDetailRow(icon: "bell.fill", color: .blue,
+                               title: "Scheduled reminders",
+                               description: "Attach a reminder schedule to a template — daily, weekly on a chosen day, or monthly on a chosen date. At that time, a notification arrives.")
+                GuideDetailRow(icon: "arrow.forward.circle.fill", color: .green,
+                               title: "Deep linking",
+                               description: "Tapping the notification opens Pocket Ledger directly into the pre-filled form for that template. Review it, adjust the amount if needed, and tap Save. Done in seconds.")
+            }
+            
+            Section(header: Text("Keyboard Shortcuts (iPad / Mac)"),
+                    footer: Text("Pocket Ledger supports full navigation with hardware keyboards.")) {
+                HotkeyDisplayRow(keys: ["⌘", "1"], action: "Accounts tab")
+                HotkeyDisplayRow(keys: ["⌘", "2"], action: "Transactions tab")
                 HotkeyDisplayRow(keys: ["⌘", "T"], action: "New Transaction")
                 HotkeyDisplayRow(keys: ["⌘", "A"], action: "New Account")
                 HotkeyDisplayRow(keys: ["⌘", "G"], action: "New Account Group")
             }
             
-            Section(header: Text("Notification Deep Linking")) {
-                VStack(alignment:.leading, spacing: 12) {
-                    Text("Pocket Ledger allows users to create templates (with scheduled reminders) to log a recurring bill.")
-                       .font(.caption)
-                       .foregroundColor(.secondary)
-                    
-                    HStack(alignment:.top) {
-                        Image(systemName: "1.circle.fill").foregroundColor(.gray)
-                        Text("Create a Template: Go to the Templates tab and create a transaction for \"Rent.\"")
-                           .font(.caption)
-                    }
-                    HStack(alignment:.top) {
-                        Image(systemName: "2.circle.fill").foregroundColor(.gray)
-                        Text("Add a Schedule: Set it to remind you \"Monthly on the 1st.\"")
-                           .font(.caption)
-                    }
-                    HStack(alignment:.top) {
-                        Image(systemName: "3.circle.fill").foregroundColor(.blue)
-                        Text("The Deep Link: When the notification arrives, long-press or tap it. The app launches directly into the pre-filled form. Just tap Save.")
-                           .font(.caption)
-                    }
-                }
-               .padding(.vertical, 4)
+            Section(header: Text("Multiple Books")) {
+                GuideDetailRow(icon: "books.vertical.fill", color: .primary,
+                               title: "What books are for",
+                               description: "A book is a completely isolated set of accounts and transactions. Use multiple books if you want to keep personal finances separate from other finances.")
+                GuideDetailRow(icon: "arrow.2.squarepath", color: .secondary,
+                               title: "Switching books",
+                               description: "Open Settings and tap the book name at the top. Each book has its own accounts, transactions, categories, and templates.")
+            }
+            
+            Section(header: Text("Backup & Export")) {
+                GuideDetailRow(icon: "externaldrive.fill", color: .primary,
+                               title: "JSON Backup",
+                               description: "A full backup of everything — accounts, transactions, templates, categories, and tags. Use this to move your data to a new device or keep a personal archive.")
+                GuideDetailRow(icon: "tablecells.fill", color: .secondary,
+                               title: "CSV Export",
+                               description: "A flat spreadsheet export of transactions within a date range. Use this for tax purposes, sharing with an accountant, or importing into another tool.")
             }
         }
-       .navigationTitle("Power User")
+        .navigationTitle("Power User")
     }
 }
+
 
 // MARK: - Reusable Components
 
@@ -343,19 +676,19 @@ struct ManualRow: View {
     var body: some View {
         HStack(spacing: 16) {
             Image(systemName: icon)
-               .font(.title2)
-               .foregroundColor(color)
-               .frame(width: 32)
+                .font(.title2)
+                .foregroundColor(color)
+                .frame(width: 32)
             
-            VStack(alignment:.leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                   .font(.headline)
+                    .font(.headline)
                 Text(subtitle)
-                   .font(.caption)
-                   .foregroundColor(.secondary)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
             }
         }
-       .padding(.vertical, 4)
+        .padding(.vertical, 4)
     }
 }
 
@@ -366,20 +699,23 @@ struct GuideDetailRow: View {
     let description: String
     
     var body: some View {
-        HStack(alignment:.top, spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
-               .foregroundColor(color)
-               .frame(width: 24)
+                .foregroundColor(color)
+                .frame(width: 24)
+                .padding(.top, 2)
             
-            VStack(alignment:.leading, spacing: 4) {
-                Text(title).bold()
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
                 Text(description)
-                   .font(.caption)
-                   .foregroundColor(.secondary)
-                   .fixedSize(horizontal: false, vertical: true)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-       .padding(.vertical, 4)
+        .padding(.vertical, 4)
     }
 }
 
@@ -392,19 +728,19 @@ struct HotkeyDisplayRow: View {
             HStack(spacing: 4) {
                 ForEach(keys, id: \.self) { key in
                     Text(key)
-                       .font(.system(.caption, design:.monospaced))
-                       .fontWeight(.bold)
-                       .foregroundColor(.primary)
-                       .padding(.horizontal, 6)
-                       .padding(.vertical, 4)
-                       .background(Color.secondary.opacity(0.2))
-                       .cornerRadius(4)
+                        .font(.system(.subheadline, design: .monospaced))
+                        .fontWeight(.bold)
+                        .foregroundColor(.primary)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 5)
+                        .background(Color.secondary.opacity(0.2))
+                        .cornerRadius(5)
                 }
             }
             Spacer()
             Text(action)
-               .font(.subheadline)
-               .foregroundColor(.secondary)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
         }
     }
 }
@@ -417,20 +753,64 @@ struct SwipeGuideRow: View {
     
     var body: some View {
         HStack {
-            Text("Swipe \(direction)")
-               .font(.subheadline)
+            Text(direction)
+                .font(.subheadline)
             Spacer()
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Image(systemName: icon)
                 Text(action)
             }
-           .font(.caption)
-           .fontWeight(.bold)
-           .foregroundColor(.white)
-           .padding(.horizontal, 8)
-           .padding(.vertical, 4)
-           .background(color)
-           .cornerRadius(4)
+            .font(.subheadline)
+            .fontWeight(.bold)
+            .foregroundColor(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(color)
+            .cornerRadius(5)
+        }
+    }
+}
+
+/// A simple flow layout for wrapping chips onto multiple lines.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+    
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 0
+        var height: CGFloat = 0
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > width && x > 0 {
+                y += rowHeight + spacing
+                x = 0
+                rowHeight = 0
+            }
+            rowHeight = max(rowHeight, size.height)
+            x += size.width + spacing
+        }
+        height = y + rowHeight
+        return CGSize(width: width, height: height)
+    }
+    
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        var y = bounds.minY
+        var rowHeight: CGFloat = 0
+        
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > bounds.maxX && x > bounds.minX {
+                y += rowHeight + spacing
+                x = bounds.minX
+                rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            rowHeight = max(rowHeight, size.height)
+            x += size.width + spacing
         }
     }
 }
@@ -438,5 +818,6 @@ struct SwipeGuideRow: View {
 struct HelpView_Previews: PreviewProvider {
     static var previews: some View {
         HelpView()
+        HelpView(isOnboarding: true)
     }
 }

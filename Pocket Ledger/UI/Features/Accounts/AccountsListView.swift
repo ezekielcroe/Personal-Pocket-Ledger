@@ -58,7 +58,6 @@ struct AccountsListView: View {
         NavigationStack {
             ZStack(alignment: .bottomTrailing) {
                 List {
-                    // ... [List Content remains unchanged] ...
                     if store.accounts.isEmpty && store.accountGroups.isEmpty {
                         Text("No accounts yet. Tap + to add one.")
                             .foregroundColor(.secondary)
@@ -114,7 +113,8 @@ struct AccountsListView: View {
                                             Text(group.name)
                                                 .fontWeight(.medium)
                                             Spacer()
-                                            Text(store.groupBalance(group, transactions: transactionStore.transactions).formattedCurrency(symbol: currencySymbol))
+                                            // Read from cache — O(1) dictionary lookup
+                                            Text((store.groupBalances[group.id] ?? 0).formattedCurrency(symbol: currencySymbol))
                                                 .font(.system(.body, design: .monospaced))
                                                 .foregroundColor(.secondary)
                                         }
@@ -154,7 +154,8 @@ struct AccountsListView: View {
                                                 .foregroundColor(.secondary)
                                             }
                                             Spacer()
-                                            Text(store.balance(for: account, transactions: transactionStore.transactions).formattedCurrency(symbol: currencySymbol))
+                                            // Read from cache — O(1) dictionary lookup
+                                            Text((store.balances[account.id] ?? 0).formattedCurrency(symbol: currencySymbol))
                                                 .font(.system(.body, design: .monospaced))
                                                 .foregroundColor(.secondary)
                                                 .opacity(0.6)
@@ -173,44 +174,43 @@ struct AccountsListView: View {
                     Color.clear.frame(height: 80).listRowBackground(Color.clear)
                 }
                 
-                // FAB Menu (UPDATED)
+                // FAB Menu
                 Menu {
                     Button { globalAddAccountTrigger = true } label: { Label("New Account", systemImage: "plus") }
                     Button { globalAddGroupTrigger = true } label: { Label("New Account Group", systemImage: "folder.badge.plus") }
                     
                     Divider()
                     
-                    // NEW: Reconcile Action
+                    // Reconcile Action
                     Button { showingReconcileSheet = true } label: {
                         Label("Reconcile Accounts", systemImage: "checkmark.seal")
                     }
                 } label: {
-                    Image(systemName: "plus")
-                        .font(.title2.weight(.bold))
-                        .foregroundColor(.white)
-                        .frame(width: 56, height: 56)
-                        .background(Color.blue)
-                        .clipShape(Circle())
-                        .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 4)
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 56))
+                        .foregroundColor(.blue)
+                        .shadow(radius: 4)
+                        .padding()
                 }
-                .padding()
             }
             .navigationTitle("Accounts")
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button { toggleAllSections() } label: {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: toggleAllSections) {
                         let anyExpanded = isDebitExpanded || isGoalsExpanded || isBudgetsExpanded || isDebtsExpanded || isGroupsExpanded
                         Image(systemName: anyExpanded ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
-                            .font(.subheadline)
                     }
                 }
             }
-            .sheet(isPresented: $globalAddAccountTrigger) { AddAccountView() }
-            .sheet(isPresented: $globalAddGroupTrigger) { AddAccountGroupView() }
-            .sheet(item: $accountToEdit) { account in EditAccountView(account: account) }
-            .sheet(item: $groupToEdit) { group in AddAccountGroupView(groupToEdit: group) }
-            
-            // NEW: Reconcile Sheet
+            .sheet(item: $accountToEdit) { account in
+                EditAccountView(account: account)
+                    .environmentObject(store)
+            }
+            .sheet(item: $groupToEdit) { group in
+                AddAccountGroupView(groupToEdit: group)
+                    .environmentObject(store)
+                    .environmentObject(transactionStore)
+            }
             .sheet(isPresented: $showingReconcileSheet) {
                 ReconcileSelectionView()
                     .environmentObject(store)
@@ -263,11 +263,13 @@ struct AccountsListView: View {
         }
     }
 }
+
 // MARK: - Account Row
 
 struct AccountRow: View {
+    // AccountRow now only needs AccountStore — balances come from the cache,
+    // so there is no need to observe TransactionStore directly.
     @EnvironmentObject var store: AccountStore
-    @EnvironmentObject var transactionStore: TransactionStore
     @AppStorage("currencySymbol") private var currencySymbol: String = "$"
     let account: Account
 
@@ -287,7 +289,7 @@ struct AccountRow: View {
                             .scaleEffect(0.75)
                     }
                     
-                    // NEW: Reconciliation Status Dot
+                    // Reconciliation Status Dot
                     if let dotColor = reconciliationColor {
                         Circle()
                             .fill(dotColor)
@@ -326,9 +328,9 @@ struct AccountRow: View {
         let end = calendar.startOfDay(for: Date())
         let days = calendar.dateComponents([.day], from: start, to: end).day ?? 0
         
-        if days < 7 { return .green }      // Verified recently
-        if days < 30 { return .yellow }    // Stale
-        return .red                        // Needs Attention
+        if days < 7 { return .green }
+        if days < 30 { return .yellow }
+        return .red
     }
     
     // MARK: - Balance View
@@ -378,8 +380,9 @@ struct AccountRow: View {
     
     // MARK: - Computed Properties
     
+    /// O(1) dictionary lookup from the pre-computed balance cache.
     private var currentBalance: Decimal {
-        store.balance(for: account, transactions: transactionStore.transactions)
+        store.balances[account.id] ?? 0
     }
     
     private var accountTypeLabel: String {

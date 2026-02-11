@@ -19,6 +19,7 @@ struct PocketLedgerApp: App {
     
     @AppStorage("isAppLockEnabled") private var isAppLockEnabled: Bool = false
     @AppStorage("selectedTheme") private var selectedTheme: Int = 0
+    @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding: Bool = false
     
     @Environment(\.scenePhase) private var scenePhase
     @State private var isLocked = false
@@ -47,20 +48,33 @@ struct PocketLedgerApp: App {
                         .transition(.opacity)
                 }
             }
-            // Single coordinated startup: AccountStore loads the book index,
-            // resolves the active book, then loads both accounts and transactions
-            // in the correct sequence.
+            // Wire the two stores together BEFORE loading any data.
+            // This ensures the very first loadTransactions call triggers a balance recompute.
             .task {
+                transactionStore.accountStore = accountStore
+                accountStore.transactionStore = transactionStore
                 await accountStore.loadBookIndex(transactionStore: transactionStore)
             }
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .inactive || newPhase == .background {
                     if isAppLockEnabled { isLocked = true }
+                    // Bypass the debounce and flush any pending writes immediately.
+                    accountStore.saveImmediately()
+                    transactionStore.saveImmediately()
                 }
             }
             .onAppear {
                 if isAppLockEnabled { isLocked = true }
                 appDelegate.transactionStore = transactionStore
+            }
+            
+            // Show the User Manual on first launch only.
+            // HelpView sets hasSeenOnboarding = true when the user taps "Get Started".
+            .fullScreenCover(isPresented: Binding(
+            get: { !hasSeenOnboarding },
+            set: { _ in }
+            )) {
+            HelpView(isOnboarding: true)
             }
         }
         .commands {

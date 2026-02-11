@@ -20,6 +20,13 @@ class TransactionStore: ObservableObject {
     /// Set by AccountStore during book switches. Used to derive the correct save filename.
     @Published var activeBook: BookMetadata?
     
+    // MARK: - Cross-Store Reference
+    // Weak to avoid a retain cycle. Set by PocketLedgerApp on startup.
+    weak var accountStore: AccountStore?
+    
+    // MARK: - Debounce
+    private var saveTask: Task<Void, Never>?
+    
     
     // =========================================================
     // MARK: - Persistence
@@ -29,14 +36,10 @@ class TransactionStore: ObservableObject {
         transactions.filter { $0.accountID == account.id }
     }
     
-    /// The transactions filename for a specific book.
-    /// Kept in sync with AccountStore.transactionsFilename(for:).
     private func transactionsFilename(for bookID: UUID) -> String {
         "transactions_\(bookID.uuidString).json"
     }
     
-    /// Called by AccountStore when switching to or loading a book.
-    /// Loads transaction data scoped to that book's file.
     func loadTransactions(for book: BookMetadata) async {
         do {
             let data = try await StorageService.shared.load(
@@ -50,26 +53,48 @@ class TransactionStore: ObservableObject {
             self.insightPresets = data.insightPresets
         } catch {
             // No data file for this book yet — start fresh with empty state.
-            // Categories and tags are NOT reset here so a new book can inherit
-            // them from whatever was previously loaded, or you can choose to
-            // clear them too by uncommenting the lines below.
-            self.transactions   = []
-            // self.categories  = []
-            // self.tags        = []
-            // self.templates   = []
-            // self.insightPresets = []
+            self.transactions = []
+        }
+        
+        // Recompute balances once after all data is loaded for this book.
+        accountStore?.recomputeBalances(using: self.transactions)
+        
+        if let book = activeBook {
+            NotificationManager.shared.updateReminders(for: templates, bookID: book.id)
         }
     }
     
-    /// Saves all transaction data to the active book's file.
+    /// Debounced save: coalesces rapid successive calls into a single disk write.
+    /// Multiple calls within 500ms will cancel the previous pending write and restart the timer.
     public func save() {
+        saveTask?.cancel()
+        saveTask = Task { [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms
+            guard !Task.isCancelled else { return }
+            guard let bookID = activeBook?.id else { return }
+            let data = SavedTransactionData(
+                transactions: transactions,
+                categories: categories,
+                tags: tags,
+                templates: templates,
+                insightPresets: insightPresets
+            )
+            try? await StorageService.shared.save(data, to: transactionsFilename(for: bookID))
+        }
+    }
+    
+    /// Bypasses the debounce and writes to disk immediately.
+    /// Called when the app is backgrounded to ensure no data is lost.
+    public func saveImmediately() {
+        saveTask?.cancel()
         guard let bookID = activeBook?.id else { return }
         let data = SavedTransactionData(
             transactions: transactions,
             categories: categories,
             tags: tags,
             templates: templates,
-            insightPresets: insightPresets,
+            insightPresets: insightPresets
         )
         Task {
             try? await StorageService.shared.save(data, to: transactionsFilename(for: bookID))
@@ -80,15 +105,15 @@ class TransactionStore: ObservableObject {
     @MainActor
     func initializeDefaultsIfNeeded() {
         if categories.isEmpty {
-            addCategory(name: "Sustenance",  type: .outflow, emoji: "🍱")
+            addCategory(name: "Food",  type: .outflow, emoji: "🍱")
             addCategory(name: "Housing",     type: .outflow, emoji: "🏠")
             addCategory(name: "Lifestyle",   type: .outflow, emoji: "🎨")
             addCategory(name: "Income",      type: .inflow,  emoji: "💰")
         }
         
         if tags.isEmpty {
-            addTag(name: "#Caffeine",   keywords: ["starbucks", "dunkin", "espresso"])
-            addTag(name: "#Recurring",  keywords: ["netflix", "spotify"])
+            addTag(name: "Caffeine",   keywords: ["starbucks", "dunkin", "espresso"])
+            addTag(name: "Subscriptions",  keywords: ["netflix", "spotify"])
         }
     }
 
@@ -116,6 +141,7 @@ class TransactionStore: ObservableObject {
                                       date: date,
                                       isOutlier: isOutlier)
         transactions.append(transaction)
+        accountStore?.recomputeBalances(using: transactions)
         save()
     }
     
@@ -135,22 +161,22 @@ class TransactionStore: ObservableObject {
                 transactions[linkedIndex] = partner
             }
             
+            accountStore?.recomputeBalances(using: transactions)
             save()
         }
     }
     
     func deleteTransaction(_ transaction: Transaction) {
-        // 1. Remove the target transaction
         if let index = transactions.firstIndex(where: { $0.id == transaction.id }) {
             transactions.remove(at: index)
         }
         
-        // 2. Remove the linked partner if it exists
         if let linkedID = transaction.linkedTransactionID,
            let linkedIndex = transactions.firstIndex(where: { $0.id == linkedID }) {
             transactions.remove(at: linkedIndex)
         }
         
+        accountStore?.recomputeBalances(using: transactions)
         save()
     }
 
@@ -252,7 +278,6 @@ class TransactionStore: ObservableObject {
         }
     }
     
-    // Used by ManageTagsView
     func updateTag(id: UUID, name: String, keywords: [String]) {
         if let index = tags.firstIndex(where: { $0.id == id }) {
             tags[index].name     = name
@@ -273,14 +298,11 @@ class TransactionStore: ObservableObject {
         save()
     }
 
-    // Used by TagDetailView
     func transactions(for tag: Tag) -> [Transaction] {
         transactions.filter { $0.tagIDs.contains(tag.id) }
     }
 
-    // Used by TransactionListView (bulk delete in edit mode)
     func deleteTransactions(withIDs ids: Set<UUID>) {
-        // Include linked partners in deletion
         var allIDs = ids
         for id in ids {
             if let linked = transactions.first(where: { $0.id == id })?.linkedTransactionID {
@@ -288,10 +310,10 @@ class TransactionStore: ObservableObject {
             }
         }
         transactions.removeAll { allIDs.contains($0.id) }
+        accountStore?.recomputeBalances(using: transactions)
         save()
     }
 
-    // Used by TransactionListView (batch tagging in edit mode)
     func applyTags(_ tagIDs: Set<UUID>, toTransactionIDs transactionIDs: Set<UUID>) {
         for id in transactionIDs {
             if let index = transactions.firstIndex(where: { $0.id == id }) {

@@ -32,7 +32,10 @@ struct EditTemplateView: View {
             _dayOfMonth = State(initialValue: schedule.dayOfMonth ?? 1)
             
             let calendar = Calendar.current
-            let date = calendar.date(from: schedule.time) ?? Date()
+            var components = DateComponents()
+            components.hour = schedule.hour
+            components.minute = schedule.minute
+            let date = calendar.date(from: components) ?? Date()
             _reminderTime = State(initialValue: date)
         }
     }
@@ -99,7 +102,8 @@ struct EditTemplateView: View {
             let components = Calendar.current.dateComponents([.hour, .minute], from: reminderTime)
             let schedule = ReminderSchedule(
                 frequency: frequency,
-                time: components,
+                hour: components.hour ?? 9,
+                minute: components.minute ?? 0,
                 dayOfWeek: frequency == .weekly ? dayOfWeek : nil,
                 dayOfMonth: frequency == .monthly ? dayOfMonth : nil
             )

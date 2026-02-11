@@ -29,8 +29,8 @@ class NotificationManager {
         ]
         
         var dateComponents = DateComponents()
-        dateComponents.hour = schedule.time.hour
-        dateComponents.minute = schedule.time.minute
+        dateComponents.hour = schedule.hour
+        dateComponents.minute = schedule.minute
         
         switch schedule.frequency {
         case .daily:

@@ -182,6 +182,7 @@ struct SettingsView: View {
                     transactionStore.tags         = backup.tags
                     transactionStore.templates    = backup.templates
                     
+                    accountStore.recomputeBalances(using: backup.transactions)
                     accountStore.save()
                     transactionStore.save()
                     triggerHaptic(.success)

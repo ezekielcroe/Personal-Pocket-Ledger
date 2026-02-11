@@ -4,7 +4,7 @@ import SwiftUI
 
 struct SelectionView<T: Identifiable>: View where T: Hashable {
     @EnvironmentObject var accountStore: AccountStore
-    @EnvironmentObject var transactionStore: TransactionStore
+    // transactionStore removed: balances now come from accountStore.balances cache
     @AppStorage("currencySymbol") private var currencySymbol: String = "$"
     
     let title: String
@@ -125,6 +125,9 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
     @ViewBuilder
     private func accountSelectionRow(for item: T) -> some View {
         if let account = item as? Account {
+            // O(1) cache lookup instead of scanning all transactions per row
+            let balance = accountStore.balances[account.id] ?? 0
+            
             Button {
                 selectAndDismiss(item.id)
             } label: {
@@ -135,7 +138,7 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
                         HStack(spacing: 6) {
                             Text(account.name)
                                 .foregroundColor(.primary)
-                            if let badge = account.statusBadge(balance: FinancialCalculator.balance(for: account, in: transactionStore.transactions)) {
+                            if let badge = account.statusBadge(balance: balance) {
                                 AccountStatusBadgeView(badge: badge)
                             }
                         }
@@ -146,9 +149,9 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
                     
                     Spacer()
                     
-                    Text(FinancialCalculator.balance(for: account, in: transactionStore.transactions).formattedCurrency(symbol: currencySymbol))
+                    Text(balance.formattedCurrency(symbol: currencySymbol))
                         .font(.subheadline)
-                        .foregroundColor(balanceColor(for: account))
+                        .foregroundColor(balanceColor(balance, for: account))
                     
                     if item.id == selectedID {
                         Image(systemName: "checkmark.circle.fill")
@@ -229,26 +232,27 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
         dismiss()
     }
     
-    private func balanceColor(for account: Account) -> Color {
-        let balance = FinancialCalculator.balance(for: account, in: transactionStore.transactions)
+    /// Determines balance text colour. Accepts a pre-computed balance to avoid
+    /// a second cache lookup at the call site.
+    private func balanceColor(_ balance: Decimal, for account: Account) -> Color {
         switch account.accountType {
-        case .debit: return balance < 0 ? .red : .secondary
+        case .debit:   return balance < 0 ? .red : .secondary
         case .goal:
             if let target = account.targetAmount, balance >= target { return .green }
             return .secondary
         case .limit:
             if let target = account.targetAmount, balance > target { return .red }
             return .secondary
-        case .debt: return balance > 0 ? .orange : .green
+        case .debt:    return balance > 0 ? .orange : .green
         }
     }
 }
 
 // MARK: - Multiple Selection View
 
-/// A searchable list for multiple selection (Tags) with Keyboard-first creation logic
+/// A searchable list for multiple selection (Tags) with keyboard-first creation logic.
 struct MultiSelectionView: View {
-    @EnvironmentObject var accountStore: AccountStore
+    // accountStore removed: this view only manages tags, not balances
     @EnvironmentObject var transactionStore: TransactionStore
     let title: String
     let items: [Tag]

@@ -23,7 +23,8 @@ struct ReminderSchedule: Codable, Hashable, Equatable, Sendable {
     }
     
     var frequency: Frequency
-    var time: DateComponents // Stores hour, minute
-    var dayOfWeek: Int? // 1 = Sunday, 2 = Monday... (For Weekly)
-    var dayOfMonth: Int? // 1-31 (For Monthly)
+    var hour: Int
+    var minute: Int
+    var dayOfWeek: Int?
+    var dayOfMonth: Int?
 }
