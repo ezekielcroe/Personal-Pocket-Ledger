@@ -4,20 +4,18 @@ import LocalAuthentication
 struct LockView: View {
     @Binding var isLocked: Bool
     @State private var errorText: String = ""
-    
-    // Add an environment check to ensure we only scan when active
-    @Environment(\.scenePhase) var scenePhase
+    @State private var isAuthenticating = false
 
     var body: some View {
         VStack(spacing: 20) {
             Image(systemName: "lock.shield.fill")
                 .font(.system(size: 64))
                 .foregroundColor(.blue)
-            
+
             Text("Pocket Ledger is Locked")
                 .font(.title2)
                 .fontWeight(.bold)
-            
+
             if !errorText.isEmpty {
                 Text(errorText)
                     .foregroundColor(.red)
@@ -25,58 +23,71 @@ struct LockView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
             }
-            
+
             Button("Unlock") {
                 authenticate()
             }
             .buttonStyle(.borderedProminent)
             .padding(.top)
+            .disabled(isAuthenticating)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(UIColor.systemBackground))
         .ignoresSafeArea()
-        // Use .task instead of .onAppear for better async handling
-        .task {
-            // Wait slightly for the app to finish the "opening" animation
-            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-            authenticate()
+        .onAppear {
+            // Small delay so the lock screen finishes animating in
+            // before the Face ID sheet appears
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                authenticate()
+            }
         }
     }
 
     private func authenticate() {
+        // Prevent overlapping authentication attempts
+        guard !isAuthenticating else { return }
+        isAuthenticating = true
+        errorText = ""
+
         let context = LAContext()
         var error: NSError?
 
-        // Check if device supports FaceID/TouchID
-        if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
-            let reason = "Unlock your ledger"
+        // .deviceOwnerAuthentication allows passcode as fallback
+        // if biometrics fail or are unavailable
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+            errorText = "Authentication not available. Please ensure Face ID or a passcode is set up in iOS Settings."
+            isAuthenticating = false
+            return
+        }
 
-            context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason) { success, authenticationError in
-                DispatchQueue.main.async {
-                    if success {
-                        // Success: Unlock
-                        isLocked = false
-                        errorText = ""
-                    } else {
-                        // Failure: Show specific error
-                        if let err = authenticationError {
-                            // If it was canceled by system, tell user to tap button
-                            if let laError = err as? LAError, laError.code == .systemCancel {
-                                errorText = "System interrupted Face ID. Tap Unlock to try again."
-                            } else if let laError = err as? LAError, laError.code == .userCancel {
-                                errorText = "Authentication canceled."
-                            } else {
-                                errorText = err.localizedDescription
-                            }
-                        } else {
-                            errorText = "Authentication failed."
-                        }
+        context.evaluatePolicy(
+            .deviceOwnerAuthentication,
+            localizedReason: "Unlock your ledger"
+        ) { success, authenticationError in
+            DispatchQueue.main.async {
+                isAuthenticating = false
+
+                if success {
+                    isLocked = false
+                    errorText = ""
+                } else if let error = authenticationError as? LAError {
+                    switch error.code {
+                    case .systemCancel:
+                        // System dismissed Face ID (e.g. incoming call)
+                        // Don't show an error — user can tap Unlock to retry
+                        break
+                    case .userCancel:
+                        // User tapped Cancel — don't show an error
+                        break
+                    case .biometryNotEnrolled:
+                        errorText = "Face ID is not set up. Please enable it in iOS Settings."
+                    case .biometryLockout:
+                        errorText = "Face ID is locked. Enter your passcode to unlock."
+                    default:
+                        errorText = error.localizedDescription
                     }
                 }
             }
-        } else {
-            // Fallback for devices without FaceID or if permissions are missing
-            errorText = "Biometrics not available. Please ensure Face ID is enabled for Pocket Ledger in iOS Settings."
         }
     }
 }

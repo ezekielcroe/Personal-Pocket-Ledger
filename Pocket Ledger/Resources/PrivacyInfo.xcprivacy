@@ -1,27 +1,29 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-
 <!--
    PrivacyInfo.xcprivacy
    Pocket Ledger
-
    Created by Zhi Zheng Yeo on 9/2/26.
    Copyright (c) 2026 ___GeekeyZekey___. All rights reserved.
 -->
-
 <plist version="1.0">
 <dict>
+    <!-- No tracking or cross-app data collection -->
     <key>NSPrivacyTracking</key>
     <false/>
-    
+
     <key>NSPrivacyTrackingDomains</key>
     <array/>
-    
+
+    <!-- No user data is collected or sent off device -->
     <key>NSPrivacyCollectedDataTypes</key>
     <array/>
-    
+
     <key>NSPrivacyAccessedAPITypes</key>
     <array>
+
+        <!-- @AppStorage / UserDefaults: currency symbol, theme, app lock,
+             haptics, fiscal start day, default tab, archived transactions toggle -->
         <dict>
             <key>NSPrivacyAccessedAPIType</key>
             <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
@@ -30,7 +32,8 @@
                 <string>CA92.1</string>
             </array>
         </dict>
-        
+
+        <!-- StorageService: reading and writing book/account/transaction JSON files -->
         <dict>
             <key>NSPrivacyAccessedAPIType</key>
             <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
@@ -39,6 +42,18 @@
                 <string>C617.1</string>
             </array>
         </dict>
+
+        <!-- UUID.v7(): uses system time to generate time-ordered identifiers
+             for transactions, accounts, and other records -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>35F9.1</string>
+            </array>
+        </dict>
+
     </array>
 </dict>
 </plist>

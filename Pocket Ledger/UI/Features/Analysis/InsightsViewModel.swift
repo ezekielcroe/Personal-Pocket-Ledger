@@ -30,6 +30,19 @@ class InsightsViewModel: ObservableObject {
     @Published var maximumAmount: Decimal? = nil
     @Published var selectedPresetID: UUID? = nil
 
+    // MARK: - Current Date Interval (used by InsightsView for detail navigation)
+
+    /// The date interval currently displayed. Exposed so InsightsView can pass
+    /// it to detail views (CategoryDetailView, TagDetailView) as a filter.
+    var currentDateInterval: DateInterval {
+        let fiscalStart = UserDefaults.standard.integer(forKey: "fiscalStartDay")
+        return timeRange.dateInterval(
+            relativeTo: selectedAnchorDate,
+            fiscalStartDay: fiscalStart,
+            offset: 0
+        )
+    }
+
     // MARK: - Calculation Logic
     
     /// Triggers a background calculation of the analytics data.
@@ -140,13 +153,13 @@ class InsightsViewModel: ObservableObject {
         let filtered = transactions.filter { tx in
             let date = tx.date
             
-            if !dateInterval.contains(date)                                              { return false }
-            if filters.excludeOutliers && tx.isOutlier                                  { return false }
-            if filters.excludedAccounts.contains(tx.accountID)                          { return false }
-            if filters.excludedCategories.contains(tx.categoryID)                       { return false }
+            if !dateInterval.contains(date)                                                  { return false }
+            if filters.excludeOutliers && tx.isOutlier                                      { return false }
+            if filters.excludedAccounts.contains(tx.accountID)                              { return false }
+            if filters.excludedCategories.contains(tx.categoryID)                           { return false }
             if !tx.tagIDs.isEmpty && !Set(tx.tagIDs).isDisjoint(with: filters.excludedTags) { return false }
-            if let min = filters.min, tx.amount < min                                   { return false }
-            if let max = filters.max, tx.amount > max                                   { return false }
+            if let min = filters.min, tx.amount < min                                       { return false }
+            if let max = filters.max, tx.amount > max                                       { return false }
             
             return true
         }

@@ -9,8 +9,7 @@ struct InsightsView: View {
     @EnvironmentObject var accountStore: AccountStore
     @EnvironmentObject var transactionStore: TransactionStore
     @StateObject private var viewModel = InsightsViewModel()
-    
-    // UI State
+
     @State private var showingFilterSheet = false
     @State private var showingPresetPicker = false
     @AppStorage("currencySymbol") private var currencySymbol: String = "$"
@@ -20,54 +19,46 @@ struct InsightsView: View {
             ZStack(alignment: .bottomTrailing) {
                 ScrollView {
                     VStack(spacing: 16) {
-                        // 1. Controls (Date Range)
                         pickerSection
-                        
-                        // 2. Active Filter Banner
+
                         if isCustomFilterActive {
                             activeViewBanner
                         }
-                        
-                        // 3. Trend Header
+
                         TrendHeaderCard(
                             current: viewModel.stats,
                             previous: viewModel.previousStats,
                             rangeName: viewModel.timeRange.rawValue,
                             currencySymbol: currencySymbol
                         )
-                        
-                        // 4. Breakdown Controls & List
+
                         VStack(alignment: .leading, spacing: 12) {
                             breakdownControls
-                            
+
                             if viewModel.stats.breakdownItems.isEmpty {
                                 contentUnavailableView
                             } else {
                                 LazyVStack(spacing: 0) {
                                     ForEach(viewModel.stats.breakdownItems) { item in
-                                        CategoryBarRow(item: item, total: viewModel.stats.totalForBreakdown, currencySymbol: currencySymbol)
+                                        rowWithNavigation(for: item)
                                     }
                                 }
                             }
                         }
                         .padding(.vertical)
-                        
-                        // Footer space for FAB
+
                         Color.clear.frame(height: 80)
                     }
                 }
-                
-                // 5. FAB Menu
+
                 fabMenu
             }
             .navigationTitle("Insights")
-            // 6. Reactive Updates
             .onAppear                                    { recalculate() }
             .onChange(of: viewModel.timeRange)           { _, _ in recalculate() }
             .onChange(of: viewModel.breakdownMode)       { _, _ in recalculate() }
             .onChange(of: viewModel.breakdownType)       { _, _ in recalculate() }
             .onChange(of: transactionStore.transactions) { _, _ in recalculate() }
-            // 7. Sheets
             .sheet(isPresented: $showingFilterSheet) {
                 FilterSheet(
                     excludedAccountIDs: $viewModel.excludedAccountIDs,
@@ -91,9 +82,51 @@ struct InsightsView: View {
             }
         }
     }
-    
+
+    // MARK: - Navigation Destination Builder
+
+    /// Wraps each breakdown row in the correct NavigationLink.
+    /// Pseudo-items like "Ungrouped" and "No Tag" have no real model
+    /// to navigate to, so they render as plain non-tappable rows.
+    @ViewBuilder
+    private func rowWithNavigation(for item: AnalyticsItem) -> some View {
+        let row = CategoryBarRow(
+            item: item,
+            total: viewModel.stats.totalForBreakdown,
+            currencySymbol: currencySymbol
+        )
+        let dateInterval = viewModel.currentDateInterval
+
+        switch viewModel.breakdownMode {
+        case .category:
+            if let category = transactionStore.categories.first(where: { $0.id == item.id }) {
+                NavigationLink(destination: CategoryDetailView(category: category, dateFilter: dateInterval)) { row }
+            } else {
+                row
+            }
+        case .tag:
+            if let tag = transactionStore.tags.first(where: { $0.id == item.id }) {
+                NavigationLink(destination: TagDetailView(tag: tag, dateFilter: dateInterval)) { row }
+            } else {
+                row
+            }
+        case .account:
+            if let account = accountStore.accounts.first(where: { $0.id == item.id }) {
+                NavigationLink(destination: AccountDetailView(account: account)) { row }
+            } else {
+                row
+            }
+        case .group:
+            if let group = accountStore.accountGroups.first(where: { $0.id == item.id }) {
+                NavigationLink(destination: AccountGroupDetailView(group: group)) { row }
+            } else {
+                row
+            }
+        }
+    }
+
     // MARK: - Subviews
-    
+
     var pickerSection: some View {
         Picker("Range", selection: $viewModel.timeRange) {
             ForEach(TimeRange.allCases, id: \.self) { range in
@@ -103,7 +136,7 @@ struct InsightsView: View {
         .pickerStyle(.segmented)
         .padding()
     }
-    
+
     var breakdownControls: some View {
         VStack(spacing: 12) {
             HStack {
@@ -111,7 +144,7 @@ struct InsightsView: View {
                     .font(.headline)
                 Spacer()
             }
-            
+
             HStack {
                 Picker("Type", selection: $viewModel.breakdownType) {
                     Text("Expense").tag(TransactionType.outflow)
@@ -119,9 +152,9 @@ struct InsightsView: View {
                 }
                 .pickerStyle(.segmented)
                 .fixedSize()
-                
+
                 Spacer()
-                
+
                 Picker("Breakdown", selection: $viewModel.breakdownMode) {
                     ForEach(BreakdownMode.allCases, id: \.self) { mode in
                         Text(mode.rawValue).tag(mode)
@@ -133,7 +166,7 @@ struct InsightsView: View {
         }
         .padding(.horizontal)
     }
-    
+
     var fabMenu: some View {
         Menu {
             Button { showingPresetPicker = true } label: {
@@ -154,10 +187,12 @@ struct InsightsView: View {
         .padding()
         .padding(.bottom, 10)
     }
-    
+
     var activeViewBanner: some View {
         HStack {
-            Image(systemName: viewModel.selectedPresetID != nil ? "bookmark.fill" : "line.3.horizontal.decrease.circle.fill")
+            Image(systemName: viewModel.selectedPresetID != nil
+                  ? "bookmark.fill"
+                  : "line.3.horizontal.decrease.circle.fill")
             Text(
                 viewModel.selectedPresetID != nil
                 ? (transactionStore.insightPresets.first(where: { $0.id == viewModel.selectedPresetID })?.name ?? "View")
@@ -173,7 +208,7 @@ struct InsightsView: View {
         .cornerRadius(8)
         .padding(.horizontal)
     }
-    
+
     var contentUnavailableView: some View {
         VStack(spacing: 12) {
             Image(systemName: "tray")
@@ -185,9 +220,9 @@ struct InsightsView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
     }
-    
+
     // MARK: - Logic Helpers
-    
+
     private var isCustomFilterActive: Bool {
         !viewModel.excludedAccountIDs.isEmpty ||
         !viewModel.excludedCategoryIDs.isEmpty ||
@@ -195,13 +230,11 @@ struct InsightsView: View {
         viewModel.excludeOutliers ||
         viewModel.minimumAmount != nil
     }
-    
-    /// Single call site for triggering a recalculation. Keeps all the .onChange
-    /// and .onAppear modifiers readable and consistent.
+
     private func recalculate() {
         viewModel.calculate(accountStore: accountStore, transactionStore: transactionStore)
     }
-    
+
     private func applyReset() {
         viewModel.excludedAccountIDs = []
         viewModel.excludedCategoryIDs = []
@@ -230,7 +263,7 @@ struct TrendHeaderCard: View {
     let previous: AnalyticsStats
     let rangeName: String
     let currencySymbol: String
-    
+
     var body: some View {
         VStack(spacing: 16) {
             VStack(spacing: 4) {
@@ -238,17 +271,17 @@ struct TrendHeaderCard: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .textCase(.uppercase)
-                
+
                 let net = current.net
                 Text("\(net >= 0 ? "+" : "")\(net.formattedCurrency(symbol: currencySymbol))")
                     .font(.system(size: 34, weight: .bold, design: .rounded))
                     .foregroundColor(net >= 0 ? .primary : .red)
-                
+
                 if previous.net != 0 {
                     let diff = net - previous.net
                     let icon = diff >= 0 ? "arrow.up" : "arrow.down"
                     let color: Color = diff >= 0 ? .green : .red
-                    
+
                     HStack(spacing: 4) {
                         Image(systemName: icon)
                         Text("\(abs(diff).formattedCurrency(symbol: currencySymbol)) vs previous")
@@ -261,9 +294,9 @@ struct TrendHeaderCard: View {
                     .cornerRadius(8)
                 }
             }
-            
+
             Divider()
-            
+
             HStack {
                 StatColumn(title: "Income",   amount: current.income,  prevAmount: previous.income,  color: .green, symbol: currencySymbol)
                 Divider()
@@ -286,23 +319,25 @@ struct StatColumn: View {
     let prevAmount: Decimal
     let color: Color
     let symbol: String
-    
+
     var body: some View {
         VStack(spacing: 4) {
             Text(title)
                 .font(.caption2)
                 .fontWeight(.semibold)
                 .foregroundColor(.secondary)
-            
+
             Text(amount.formattedCurrency(symbol: symbol))
                 .font(.headline)
                 .foregroundColor(color)
-            
+
             if prevAmount > 0 {
                 let pct = ((amount - prevAmount) / prevAmount) * 100
                 let isUp = pct > 0
-                let indicatorColor: Color = (title == "Expenses" ? (isUp ? .red : .green) : (isUp ? .green : .red))
-                
+                let indicatorColor: Color = (title == "Expenses"
+                    ? (isUp ? .red : .green)
+                    : (isUp ? .green : .red))
+
                 HStack(spacing: 2) {
                     Image(systemName: isUp ? "arrow.up.right" : "arrow.down.right")
                     Text("\(String(format: "%.0f", NSDecimalNumber(decimal: abs(pct)).doubleValue))%")
@@ -335,18 +370,18 @@ struct CategoryBarRow: View {
                     Image(systemName: item.icon)
                         .foregroundColor(item.color ?? .primary)
                 }
-                
+
                 Text(item.name)
                     .font(.subheadline)
                     .fontWeight(.medium)
-                
+
                 Spacer()
-                
+
                 VStack(alignment: .trailing, spacing: 0) {
                     Text(item.amount.formattedCurrency(symbol: currencySymbol))
                         .font(.subheadline)
                         .monospacedDigit()
-                    
+
                     if total > 0 {
                         let percentage = (item.amount / total) * 100
                         Text("\(NSDecimalNumber(decimal: percentage).intValue)%")
@@ -355,13 +390,13 @@ struct CategoryBarRow: View {
                     }
                 }
             }
-            
+
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
                     Capsule()
                         .fill(Color(.secondarySystemBackground))
                         .frame(height: 6)
-                    
+
                     Capsule()
                         .fill(item.color ?? .blue)
                         .frame(width: barWidth(totalWidth: geometry.size.width), height: 6)
@@ -385,13 +420,13 @@ struct CategoryBarRow: View {
 struct PresetPickerSheet: View {
     @EnvironmentObject var transactionStore: TransactionStore
     @Environment(\.dismiss) var dismiss
-    
+
     @Binding var selectedPresetID: UUID?
     let onSelect: (InsightPreset) -> Void
     let onReset: () -> Void
-    
+
     @State private var presetToEdit: InsightPreset?
-    
+
     var body: some View {
         NavigationStack {
             List {
@@ -401,19 +436,16 @@ struct PresetPickerSheet: View {
                         dismiss()
                     } label: {
                         HStack {
-                            Image(systemName: "square.grid.2x2")
-                                .foregroundColor(.blue)
+                            Image(systemName: "square.grid.2x2").foregroundColor(.blue)
                             Text("All Data")
                             Spacer()
                             if selectedPresetID == nil {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(.blue)
-                                    .fontWeight(.bold)
+                                Image(systemName: "checkmark").foregroundColor(.blue).fontWeight(.bold)
                             }
                         }
                     }
                 }
-                
+
                 if !transactionStore.insightPresets.isEmpty {
                     Section(header: Text("Saved Views")) {
                         ForEach(transactionStore.insightPresets) { preset in
@@ -422,14 +454,11 @@ struct PresetPickerSheet: View {
                                 dismiss()
                             } label: {
                                 HStack {
-                                    Image(systemName: "bookmark.fill")
-                                        .foregroundColor(.blue)
+                                    Image(systemName: "bookmark.fill").foregroundColor(.blue)
                                     Text(preset.name)
                                     Spacer()
                                     if selectedPresetID == preset.id {
-                                        Image(systemName: "checkmark")
-                                            .foregroundColor(.blue)
-                                            .fontWeight(.bold)
+                                        Image(systemName: "checkmark").foregroundColor(.blue).fontWeight(.bold)
                                     }
                                 }
                             }
@@ -478,16 +507,16 @@ struct PresetPickerSheet: View {
 struct EditPresetSheet: View {
     @EnvironmentObject var transactionStore: TransactionStore
     @Environment(\.dismiss) var dismiss
-    
+
     let preset: InsightPreset
     @State private var presetName: String
     @FocusState private var isNameFieldFocused: Bool
-    
+
     init(preset: InsightPreset) {
         self.preset = preset
         _presetName = State(initialValue: preset.name)
     }
-    
+
     var body: some View {
         NavigationStack {
             Form {
@@ -497,8 +526,11 @@ struct EditPresetSheet: View {
                         .submitLabel(.done)
                         .onSubmit { if canSave { saveChanges() } }
                 }
-                
-                Section(header: Text("Filter Summary"), footer: Text("To change filters, apply the view and modify filters from the main screen.")) {
+
+                Section(
+                    header: Text("Filter Summary"),
+                    footer: Text("To change filters, apply the view and modify filters from the main screen.")
+                ) {
                     if !preset.excludedAccountIDs.isEmpty {
                         HStack {
                             Text("Excluded Accounts")
@@ -523,7 +555,6 @@ struct EditPresetSheet: View {
                     if preset.excludeOutliers {
                         Text("Excludes outlier transactions").foregroundColor(.secondary)
                     }
-                    
                     if preset.excludedAccountIDs.isEmpty &&
                        preset.excludedCategoryIDs.isEmpty &&
                        preset.excludedTagIDs.isEmpty &&
@@ -548,11 +579,11 @@ struct EditPresetSheet: View {
         }
         .presentationDetents([.medium])
     }
-    
+
     private var canSave: Bool {
         !presetName.trimmingCharacters(in: .whitespaces).isEmpty && presetName != preset.name
     }
-    
+
     private func saveChanges() {
         var updatedPreset = preset
         updatedPreset.name = presetName
