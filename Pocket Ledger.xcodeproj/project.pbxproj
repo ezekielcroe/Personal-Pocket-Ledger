@@ -636,8 +636,9 @@
 				DEVELOPMENT_TEAM = 9Y77PNP57U;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = "Pocket-Ledger-Info.plist";
-				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = YES;
+				INFOPLIST_FILE = "";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_ITSEncryptionExportComplianceCode = "";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Pocket Ledger uses Face ID to securely unlock your financial data.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -674,8 +675,9 @@
 				DEVELOPMENT_TEAM = 9Y77PNP57U;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = "Pocket-Ledger-Info.plist";
-				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = YES;
+				INFOPLIST_FILE = "";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_ITSEncryptionExportComplianceCode = "";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Pocket Ledger uses Face ID to securely unlock your financial data.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
