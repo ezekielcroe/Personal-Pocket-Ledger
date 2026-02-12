@@ -75,6 +75,8 @@ class AccountStore: ObservableObject {
         
         save()
         transactionStore.save()
+        
+        isLoaded = true
     }
     
     
@@ -159,6 +161,8 @@ class AccountStore: ObservableObject {
     }
     
     private func loadBookData(_ book: BookMetadata, transactionStore: TransactionStore) async {
+        isLoaded = false
+        
         var updatedBook = book
         updatedBook.lastOpened = Date()
         activeBook = updatedBook
