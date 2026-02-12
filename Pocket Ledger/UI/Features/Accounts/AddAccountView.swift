@@ -331,24 +331,14 @@ struct AddAccountView: View {
         let amount = MathParser.calculate(initialAmountString)
         let targetRaw = MathParser.calculate(targetAmountString)
         
-        // Logic for Target:
-        // If Debt (isCredit=true): target can be 0 (payoff goal) or >0 (budget limit).
-        // If Debit (isCredit=false): target must be >0 to be a Goal. If 0, it's nil.
-        
         let target: Decimal?
         if isCredit {
-            // For credit, we store whatever the user entered (0 or higher) if the string wasn't empty
-            if targetAmountString.isEmpty {
-                target = nil
-            } else {
-                target = targetRaw
-            }
+            target = targetAmountString.isEmpty ? nil : targetRaw
         } else {
-            // For debit, 0 means "Standard Debit Account", so we convert to nil
             target = targetRaw > 0 ? targetRaw : nil
         }
-        
-        let newAccount = Account(
+
+        accountStore.addAccount(
             name: name,
             initialAmount: amount,
             isCredit: isCredit,
@@ -357,16 +347,17 @@ struct AddAccountView: View {
             paymentFrequency: hasTargetDate ? paymentFrequency : nil
         )
         
-        accountStore.accounts.append(newAccount)
-        
-        // Add to selected groups
-        for groupID in selectedGroupIDs {
-            if let index = accountStore.accountGroups.firstIndex(where: { $0.id == groupID }) {
-                accountStore.accountGroups[index].memberIDs.append(newAccount.id)
+        // Add to any selected groups now that the account exists in the store
+        if !selectedGroupIDs.isEmpty,
+           let newAccount = accountStore.accounts.last(where: { $0.name == name }) {
+            for groupID in selectedGroupIDs {
+                if let index = accountStore.accountGroups.firstIndex(where: { $0.id == groupID }) {
+                    accountStore.accountGroups[index].memberIDs.append(newAccount.id)
+                }
             }
+            accountStore.save()
         }
         
-        accountStore.save()
         dismiss()
     }
     
