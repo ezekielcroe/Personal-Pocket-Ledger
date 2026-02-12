@@ -13,12 +13,11 @@ import SwiftUI
 class AccountStore: ObservableObject {
     
     // MARK: - State
-    
     @Published var accounts: [Account] = []
     @Published var accountGroups: [AccountGroup] = []
+    @Published var isLoaded: Bool = false
     
     // MARK: - Book Management State
-    
     @Published var availableBooks: [BookMetadata] = []
     @Published var activeBook: BookMetadata?
     
@@ -175,6 +174,8 @@ class AccountStore: ObservableObject {
         
         // Transactions load next; recomputeBalances is called at the end of loadTransactions.
         await transactionStore.loadTransactions(for: updatedBook)
+        
+        isLoaded = true 
     }
     
     private func loadAccounts(for book: BookMetadata) async {

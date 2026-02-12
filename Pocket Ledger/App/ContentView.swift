@@ -65,6 +65,15 @@ struct ContentView: View {
                 pendingTemplate = foundTemplate
             }
         }
+        
+        .sheet(isPresented: $showAddAccount) {
+            AddAccountView()
+        }
+        
+        .sheet(isPresented: $showAddGroup) {
+            AddAccountGroupView()
+        }
+                
         .sheet(item: $pendingTemplate) { template in
             AddTransactionView(initialType: template.type, template: template)
                 .environmentObject(transactionStore)

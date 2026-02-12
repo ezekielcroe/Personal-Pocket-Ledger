@@ -42,12 +42,30 @@ struct PocketLedgerApp: App {
                 .environmentObject(transactionStore)
                 .preferredColorScheme(selectedTheme == 0 ? nil : (selectedTheme == 1 ? .light : .dark))
                 
+                // Loading overlay — blocks interaction until book data is fully loaded.
+                // Prevents the silent-drop bug where saves fail because activeBook is nil.
+                if !accountStore.isLoaded {
+                    ZStack {
+                        Color(.systemBackground).ignoresSafeArea()
+                        VStack(spacing: 16) {
+                            ProgressView()
+                                .scaleEffect(1.2)
+                            Text("Loading...")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .transition(.opacity)
+                    .zIndex(2)
+                }
+                
                 if isLocked {
                     LockView(isLocked: $isLocked)
-                        .zIndex(1)
+                        .zIndex(3)
                         .transition(.opacity)
                 }
             }
+            .animation(.easeOut(duration: 0.2), value: accountStore.isLoaded)
             // Wire the two stores together BEFORE loading any data.
             // This ensures the very first loadTransactions call triggers a balance recompute.
             .task {

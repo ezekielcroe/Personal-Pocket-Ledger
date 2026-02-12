@@ -53,7 +53,11 @@ class TransactionStore: ObservableObject {
             self.insightPresets = data.insightPresets
         } catch {
             // No data file for this book yet — start fresh with empty state.
-            self.transactions = []
+            self.transactions   = []
+            self.categories     = []
+            self.tags           = []
+            self.templates      = []
+            self.insightPresets = []
         }
         
         // Recompute balances once after all data is loaded for this book.
@@ -105,7 +109,7 @@ class TransactionStore: ObservableObject {
     @MainActor
     func initializeDefaultsIfNeeded() {
         if categories.isEmpty {
-            addCategory(name: "Food",  type: .outflow, emoji: "🍱")
+            addCategory(name: "Food",        type: .outflow, emoji: "🍱")
             addCategory(name: "Housing",     type: .outflow, emoji: "🏠")
             addCategory(name: "Lifestyle",   type: .outflow, emoji: "🎨")
             addCategory(name: "Income",      type: .inflow,  emoji: "💰")
