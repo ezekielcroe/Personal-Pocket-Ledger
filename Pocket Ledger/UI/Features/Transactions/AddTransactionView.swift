@@ -491,9 +491,7 @@ struct AddTransactionView: View {
             let inCatID = ensureTransferCategory(type: .inflow)
             
             if var existing = editingTransaction, let linkedID = existing.linkedTransactionID {
-                // UPDATE EXISTING LINKED PAIR
-                
-                // 1. Update the transaction we are editing
+                // UPDATE EXISTING LINKED PAIR — already uses updateTransaction(), no change needed
                 existing.accountID = fromAcc
                 existing.amount = amount
                 existing.date = date
@@ -501,7 +499,6 @@ struct AddTransactionView: View {
                 existing.isOutlier = isOutlier
                 transactionStore.updateTransaction(existing)
                 
-                // 2. Update the linked partner
                 if var partner = transactionStore.transactions.first(where: { $0.id == linkedID }) {
                     partner.accountID = toAcc
                     partner.amount = amount
@@ -513,12 +510,15 @@ struct AddTransactionView: View {
                 
             } else {
                 // CREATE NEW LINKED PAIR
+                // Use pre-generated IDs so the two transactions can reference each other.
                 let id1 = UUID.v7()
                 let id2 = UUID.v7()
 
-                let outflow = Transaction(
+                // Use addTransaction() so recomputeBalances() is called for each leg.
+                // The debouncer coalesces the two resulting save() calls into one disk write.
+                transactionStore.addTransaction(
                     id: id1,
-                    linkedTransactionID: id2, // Points to the partner
+                    linkedTransactionID: id2,
                     type: .outflow,
                     accountID: fromAcc,
                     categoryID: outCatID,
@@ -527,10 +527,9 @@ struct AddTransactionView: View {
                     date: date,
                     isOutlier: isOutlier
                 )
-
-                let inflow = Transaction(
+                transactionStore.addTransaction(
                     id: id2,
-                    linkedTransactionID: id1, // Points back to the first one
+                    linkedTransactionID: id1,
                     type: .inflow,
                     accountID: toAcc,
                     categoryID: inCatID,
@@ -539,14 +538,10 @@ struct AddTransactionView: View {
                     date: date,
                     isOutlier: isOutlier
                 )
-                
-                transactionStore.transactions.append(outflow)
-                transactionStore.transactions.append(inflow)
-                transactionStore.save()
             }
             
         } else {
-            // NORMAL TRANSACTION
+            // NORMAL TRANSACTION — unchanged, already correct
             guard let accountID = accountID, let categoryID = categoryID else { return }
             
             if let existing = editingTransaction {
@@ -560,7 +555,15 @@ struct AddTransactionView: View {
                 updated.isOutlier = isOutlier
                 transactionStore.updateTransaction(updated)
             } else {
-                transactionStore.addTransaction(type: type, accountID: accountID, categoryID: categoryID, tagIDs: tags, amount: amount, date: date, isOutlier: isOutlier)
+                transactionStore.addTransaction(
+                    type: type,
+                    accountID: accountID,
+                    categoryID: categoryID,
+                    tagIDs: tags,
+                    amount: amount,
+                    date: date,
+                    isOutlier: isOutlier
+                )
             }
         }
         let generator = UINotificationFeedbackGenerator()
@@ -569,14 +572,13 @@ struct AddTransactionView: View {
             dismiss()
         }
     }
-    
+
     private func ensureTransferCategory(type: CategoryType) -> UUID {
         if let existing = transactionStore.categories.first(where: { $0.name == "Transfer" && $0.type == type }) {
             return existing.id
         }
-        let newCat = Category(name: "Transfer", type: type, emoji: "⇆")
-        transactionStore.categories.append(newCat)
-        transactionStore.save()
-        return newCat.id
+        // Use addCategory() for consistency — previously used direct array mutation
+        transactionStore.addCategory(name: "Transfer", type: type, emoji: "⇆")
+        return transactionStore.categories.last(where: { $0.name == "Transfer" && $0.type == type })!.id
     }
 }
