@@ -73,4 +73,4 @@ The built-in User Manual (tap **Help** in Settings) covers every feature in deta
 
 ## License
 
-This project is for personal and educational use. See [LICENSE](LICENSE) for details.
+This project is a personal project for learning. Copyright © 2026 Zhi Zheng Yeo
