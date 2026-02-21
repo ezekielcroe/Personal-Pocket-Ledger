@@ -21,13 +21,8 @@ struct InsightsView: View {
                     VStack(spacing: 12) {
                         pickerSection
                         
-                        Text(Formatters.formatInterval(viewModel.currentDateInterval))
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.secondary)
-                        .padding(.top, -8) // Pulls it closer to the picker for association
-                        .animation(nil, value: viewModel.timeRange) // Prevents jitter
-
+                        periodNavigator
+                        
                         if isCustomFilterActive {
                             activeViewBanner
                         }
@@ -62,7 +57,11 @@ struct InsightsView: View {
             }
             .navigationTitle("Insights")
             .onAppear                                    { recalculate() }
-            .onChange(of: viewModel.timeRange)           { _, _ in recalculate() }
+            .onChange(of: viewModel.timeRange)           { _, _ in
+                viewModel.periodOffset = 0   // Reset to current period on range change
+                recalculate()
+            }
+            .onChange(of: viewModel.periodOffset)        { _, _ in recalculate() }
             .onChange(of: viewModel.breakdownMode)       { _, _ in recalculate() }
             .onChange(of: viewModel.breakdownType)       { _, _ in recalculate() }
             .onChange(of: transactionStore.transactions) { _, _ in recalculate() }
@@ -142,6 +141,60 @@ struct InsightsView: View {
         }
         .pickerStyle(.segmented)
         .padding()
+    }
+    
+    // MARK: - Period Navigator
+    
+    /// Shows the current date interval with back/forward chevrons for stepping
+    /// through periods. Hidden for "All Time" since offsets have no meaning there.
+    var periodNavigator: some View {
+        Group {
+            if viewModel.supportsNavigation {
+                HStack(spacing: 16) {
+                    // Back arrow (always enabled — you can always go further back)
+                    Button {
+                        viewModel.goBack()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.body.weight(.semibold))
+                            .foregroundColor(.blue)
+                    }
+                    .buttonStyle(.plain)
+                    
+                    // Period label — tappable to jump back to "today"
+                    Button {
+                        viewModel.returnToCurrentPeriod()
+                    } label: {
+                        Text(Formatters.formatInterval(viewModel.currentDateInterval))
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(viewModel.periodOffset == 0 ? .secondary : .primary)
+                    }
+                    .buttonStyle(.plain)
+                    .animation(nil, value: viewModel.periodOffset)
+                    
+                    // Forward arrow (disabled when already at current period)
+                    Button {
+                        viewModel.goForward()
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.body.weight(.semibold))
+                            .foregroundColor(viewModel.canGoForward ? .blue : .clear)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!viewModel.canGoForward)
+                }
+                .padding(.top, -8)
+            } else {
+                // "All Time" — just show the label, no arrows
+                Text(Formatters.formatInterval(viewModel.currentDateInterval))
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(.secondary)
+                    .padding(.top, -8)
+                    .animation(nil, value: viewModel.timeRange)
+            }
+        }
     }
 
     var breakdownControls: some View {

@@ -150,15 +150,43 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         if let store = transactionStore, !store.templates.isEmpty {
             postNotification(templateID: templateID)
         } else {
+            // FIX: Store the ID and poll until templates are loaded
             pendingTemplateID = templateID
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                self.processPendingNotification()
-            }
+            startPollingForPendingNotification()
         }
         
         completionHandler()
     }
     
+    // FIX: Retry up to 10 times (every 0.5s = ~5s total) to handle cold launches where templates haven't loaded yet.
+    private func startPollingForPendingNotification() {
+        var attempts = 0
+        let maxAttempts = 10
+        
+        func poll() {
+            guard let templateID = pendingTemplateID else { return }
+            attempts += 1
+            
+            if let store = transactionStore,
+               store.templates.contains(where: { $0.id.uuidString == templateID }) {
+                postNotification(templateID: templateID)
+                pendingTemplateID = nil
+            } else if attempts < maxAttempts {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    poll()
+                }
+            } else {
+                print("Deep link: gave up waiting for template \(templateID) after \(maxAttempts) attempts")
+                pendingTemplateID = nil
+            }
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            poll()
+        }
+    }
+    
+    // Keep this public so BudgetApp.onAppear can flush any pending deep link
     func processPendingNotification() {
         guard let templateID = pendingTemplateID else { return }
         

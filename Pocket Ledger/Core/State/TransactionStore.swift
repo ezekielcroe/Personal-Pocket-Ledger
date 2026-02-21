@@ -217,44 +217,58 @@ class TransactionStore: ObservableObject {
     // MARK: - Templates
     // =========================================================
 
-    func addTemplate(name: String,
-                     type: TransactionType,
-                     accountID: UUID? = nil,
-                     categoryID: UUID? = nil,
-                     tagIDs: [UUID] = [],
-                     isOutlier: Bool = false,
-                     transferTargetAccountID: UUID? = nil) {
-        let template = TransactionTemplate(name: name,
-                                           type: type,
-                                           accountID: accountID,
-                                           categoryID: categoryID,
-                                           tagIDs: tagIDs,
-                                           isOutlier: isOutlier,
-                                           transferTargetAccountID: transferTargetAccountID)
-        templates.append(template)
-        save()
-        updateReminders()
-    }
-    
-    func updateTemplate(_ template: TransactionTemplate) {
-        if let index = templates.firstIndex(where: { $0.id == template.id }) {
-            templates[index] = template
+        func addTemplate(name: String,
+                         type: TransactionType,
+                         accountID: UUID? = nil,
+                         categoryID: UUID? = nil,
+                         tagIDs: [UUID] = [],
+                         isOutlier: Bool = false,
+                         transferTargetAccountID: UUID? = nil) {
+            let template = TransactionTemplate(name: name,
+                                               type: type,
+                                               accountID: accountID,
+                                               categoryID: categoryID,
+                                               tagIDs: tagIDs,
+                                               isOutlier: isOutlier,
+                                               transferTargetAccountID: transferTargetAccountID)
+            templates.append(template)
             save()
             updateReminders()
         }
-    }
-
-    func removeTemplate(_ template: TransactionTemplate) {
-        templates.removeAll { $0.id == template.id }
-        save()
-        updateReminders()
-    }
-    
-    private func updateReminders() {
-        if let book = activeBook {
-            NotificationManager.shared.updateReminders(for: templates, bookID: book.id)
+        
+        func updateTemplate(_ template: TransactionTemplate) {
+            if let index = templates.firstIndex(where: { $0.id == template.id }) {
+                let oldTemplate = templates[index]
+                templates[index] = template
+                
+                // If a reminder was removed, immediately cancel that specific notification
+                // as a direct safety net (don't rely solely on the batch update).
+                if oldTemplate.reminderSchedule != nil && template.reminderSchedule == nil {
+                    if let book = activeBook {
+                        NotificationManager.shared.removeReminder(for: template.id, bookID: book.id)
+                    }
+                }
+                
+                save()
+                updateReminders()
+            }
         }
-    }
+
+        func removeTemplate(_ template: TransactionTemplate) {
+            // Immediately cancel the notification for this specific template first
+            if template.reminderSchedule != nil, let book = activeBook {
+                NotificationManager.shared.removeReminder(for: template.id, bookID: book.id)
+            }
+            templates.removeAll { $0.id == template.id }
+            save()
+            updateReminders()
+        }
+        
+        private func updateReminders() {
+            if let book = activeBook {
+                NotificationManager.shared.updateReminders(for: templates, bookID: book.id)
+            }
+        }
     
     
     // =========================================================

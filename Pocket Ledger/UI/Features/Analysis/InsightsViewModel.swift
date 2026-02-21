@@ -21,6 +21,9 @@ class InsightsViewModel: ObservableObject {
     @Published var breakdownType: TransactionType = .outflow
     @Published var selectedAnchorDate = Date()
     
+    /// Signed offset from the current period. 0 = now, -1 = previous, -2 = two periods back, etc.
+    @Published var periodOffset: Int = 0
+    
     // MARK: - Filters
     @Published var excludedAccountIDs: Set<UUID> = []
     @Published var excludedCategoryIDs: Set<UUID> = []
@@ -39,8 +42,33 @@ class InsightsViewModel: ObservableObject {
         return timeRange.dateInterval(
             relativeTo: selectedAnchorDate,
             fiscalStartDay: fiscalStart,
-            offset: 0
+            offset: periodOffset
         )
+    }
+
+    // MARK: - Period Navigation
+    
+    /// Whether a forward arrow should be enabled (can't go past the current period).
+    var canGoForward: Bool {
+        periodOffset < 0
+    }
+    
+    /// Whether period navigation makes sense for the selected range.
+    var supportsNavigation: Bool {
+        timeRange != .allTime
+    }
+    
+    func goBack() {
+        periodOffset -= 1
+    }
+    
+    func goForward() {
+        guard canGoForward else { return }
+        periodOffset += 1
+    }
+    
+    func returnToCurrentPeriod() {
+        periodOffset = 0
     }
 
     // MARK: - Calculation Logic
@@ -60,6 +88,7 @@ class InsightsViewModel: ObservableObject {
         // 2. Capture configuration
         let currentRange  = self.timeRange
         let currentAnchor = self.selectedAnchorDate
+        let currentOffset = self.periodOffset
         let fiscalStart   = UserDefaults.standard.integer(forKey: "fiscalStartDay")
         let mode          = self.breakdownMode
         let type          = self.breakdownType
@@ -76,10 +105,10 @@ class InsightsViewModel: ObservableObject {
         // 3. Run on background thread
         Task.detached(priority: .userInitiated) {
             
-            // A. Calculate current period
+            // A. Calculate current period (shifted by periodOffset)
             let currentStats = await self.performCalculation(
                 range: currentRange,
-                offset: 0,
+                offset: currentOffset,
                 anchor: currentAnchor,
                 fiscalStart: fiscalStart,
                 transactions: transactions,
@@ -92,10 +121,10 @@ class InsightsViewModel: ObservableObject {
                 breakdownType: type
             )
             
-            // B. Calculate previous period (for comparison)
+            // B. Calculate previous period (one further back for comparison)
             let prevStats = await self.performCalculation(
                 range: currentRange,
-                offset: -1,
+                offset: currentOffset - 1,
                 anchor: currentAnchor,
                 fiscalStart: fiscalStart,
                 transactions: transactions,

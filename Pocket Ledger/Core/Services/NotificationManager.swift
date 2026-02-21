@@ -9,13 +9,11 @@ import Foundation
 import UserNotifications
 
 class NotificationManager {
-    static let shared = NotificationManager() // Singleton is okay for system services
-
+    static let shared = NotificationManager()
+    
     // MARK: - Scheduling
     
-    // CRITICAL FIX: We added 'bookID' as a parameter because this class
-    // doesn't know what the "activeBook" is.
-    func scheduleNotification(for template: TransactionTemplate, schedule: ReminderSchedule, bookID: UUID) {
+    private func scheduleNotification(for template: TransactionTemplate, schedule: ReminderSchedule, bookID: UUID) {
         let center = UNUserNotificationCenter.current()
         
         let content = UNMutableNotificationContent()
@@ -43,8 +41,7 @@ class NotificationManager {
         
         let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
         
-        // We use the passed bookID here to create the unique ID
-        let identifier = "\(bookID.uuidString)_\(template.id.uuidString)"
+        let identifier = Self.identifier(for: template.id, bookID: bookID)
         
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
         
@@ -55,28 +52,54 @@ class NotificationManager {
         }
     }
     
+    // MARK: - Identifier Helper
+    
+    private static func identifier(for templateID: UUID, bookID: UUID) -> String {
+        "\(bookID.uuidString)_\(templateID.uuidString)"
+    }
+    
     // MARK: - Batch Update (The "Public" API)
     
+    /// Synchronously removes all stale notifications for this book, then schedules valid ones.
+    /// No Task wrapper — the caller is responsible for calling this on the right queue.
     func updateReminders(for templates: [TransactionTemplate], bookID: UUID) {
-        Task {
-            let center = UNUserNotificationCenter.current()
-            let requests = await center.pendingNotificationRequests()
+        let center = UNUserNotificationCenter.current()
+        let currentBookPrefix = bookID.uuidString + "_"
+        
+        // 1. Build the set of notification IDs that SHOULD exist
+        let validIDs = Set(
+            templates
+                .filter { $0.reminderSchedule != nil }
+                .map { Self.identifier(for: $0.id, bookID: bookID) }
+        )
+        
+        // 2. Query pending requests and remove stale ones
+        center.getPendingNotificationRequests { [weak self] requests in
+            guard let self else { return }
             
-            let currentBookPrefix = bookID.uuidString + "_"
-            
-            // 1. Clear old notifications for this specific book
-            let idsToRemove = requests
-                .filter { $0.identifier.hasPrefix(currentBookPrefix) }
+            // Find notification IDs belonging to this book that are no longer valid
+            let staleIDs = requests
                 .map { $0.identifier }
+                .filter { $0.hasPrefix(currentBookPrefix) && !validIDs.contains($0) }
             
-            center.removePendingNotificationRequests(withIdentifiers: idsToRemove)
+            if !staleIDs.isEmpty {
+                center.removePendingNotificationRequests(withIdentifiers: staleIDs)
+            }
             
-            // 2. Schedule new ones
+            // 3. Schedule (or replace) all templates that have an active reminder
             for template in templates {
                 if let schedule = template.reminderSchedule {
                     self.scheduleNotification(for: template, schedule: schedule, bookID: bookID)
                 }
             }
         }
+    }
+    
+    // MARK: - Single Removal (for quick cleanup on delete)
+    
+    func removeReminder(for templateID: UUID, bookID: UUID) {
+        let identifier = Self.identifier(for: templateID, bookID: bookID)
+        UNUserNotificationCenter.current()
+            .removePendingNotificationRequests(withIdentifiers: [identifier])
     }
 }
