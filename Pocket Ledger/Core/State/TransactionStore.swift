@@ -64,7 +64,7 @@ class TransactionStore: ObservableObject {
         accountStore?.recomputeBalances(using: self.transactions)
         
         if let book = activeBook {
-            NotificationManager.shared.updateReminders(for: templates, bookID: book.id)
+            NotificationManager.shared.purgeAndReschedule(for: templates, bookID: book.id)
         }
     }
     
