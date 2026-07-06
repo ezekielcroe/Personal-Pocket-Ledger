@@ -73,6 +73,15 @@ struct HelpView: View {
                         )
                     }
                     
+                    NavigationLink(destination: InsightsGuideView()) {
+                        ManualRow(
+                            icon: "chart.bar.fill",
+                            color: .teal,
+                            title: "Insights",
+                            subtitle: "Breakdowns, Buckets, and the Remark Lookup."
+                        )
+                    }
+                    
                     NavigationLink(destination: ReconciliationGuideView()) {
                         ManualRow(
                             icon: "checkmark.seal.fill",
@@ -111,7 +120,7 @@ struct HelpView: View {
                         VStack(spacing: 4) {
                             Text("Pocket Ledger")
                                 .font(.headline)
-                            Text("Field Guide v1.0")
+                            Text("Field Guide v2.0")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                         }
@@ -214,7 +223,7 @@ struct GettingStartedView: View {
                 GuideDetailRow(
                     icon: "checkmark.circle.fill", color: .green,
                     title: "Fill in the rest and save",
-                    description: "Amount, category, and optionally a remark. That's it. The balance on your account updates immediately."
+                    description: "Amount, category, and optionally a remark — the form walks you through them, landing on the remark so you can type straight away. Save, and the balance updates immediately."
                 )
             }
             
@@ -243,7 +252,7 @@ struct GettingStartedView: View {
                         .foregroundColor(.secondary)
                     bulletRow("Account Groups — for grouping related accounts together (e.g. all credit cards)")
                     bulletRow("Remarks — a free-text note for the payee or context (e.g. Starbucks, Anniversary dinner)")
-                    bulletRow("Insights — spending charts and breakdowns, more useful once you have a few weeks of data")
+                    bulletRow("Insights & Buckets — spending charts, breakdowns, and remark groupings, more useful once you have a few weeks of data")
                     bulletRow("Multiple Books — for separating personal and business finances entirely")
                 }
                 .padding(.vertical, 4)
@@ -441,6 +450,27 @@ struct TaxonomyGuideView: View {
                 .padding(.vertical, 4)
             }
             
+            Section(header: Text("Buckets — Grouping Remarks")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("A bucket is a named umbrella over remark terms. \"Coffee\" with the terms starbucks, coffeebean, and joe's counts every transaction whose remark contains any of them.")
+                        .font(.subheadline)
+                    Divider()
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "clock.arrow.2.circlepath").foregroundColor(.teal)
+                        Text("Buckets are searches, not labels. Add a term today and it retroactively groups every matching transaction you've ever recorded.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "gearshape.fill").foregroundColor(.secondary)
+                        Text("Manage them in Settings → Remark Buckets, or save one straight from the Remark Lookup on the Insights page.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            
             Section(header: Text("Suggested Starting Setup")) {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Categories (broad, permanent):")
@@ -471,6 +501,62 @@ struct TaxonomyGuideView: View {
                     .clipShape(Capsule())
             }
         }
+    }
+}
+
+
+// MARK: - Insights
+
+struct InsightsGuideView: View {
+    var body: some View {
+        List {
+            Section {
+                Text("Insights answers where your money went. Everything on the page respects the same period, filters, and Spending/Income toggle, so the numbers agree with each other.")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .padding(.vertical, 4)
+            }
+            
+            Section(header: Text("Breakdowns")) {
+                GuideDetailRow(icon: "folder.fill", color: .orange,
+                               title: "Category, Account, Group",
+                               description: "Each mode slices the period's spending a different way. Every dollar lands in exactly one row, so the percentages sum to the whole.")
+                GuideDetailRow(icon: "text.magnifyingglass", color: .teal,
+                               title: "Bucket",
+                               description: "Slices spending by your remark buckets. Buckets can overlap — one transaction can count toward several — so rows show absolute totals instead of percentages, and the largest bucket sets the bar scale.")
+                GuideDetailRow(icon: "questionmark.circle", color: .secondary,
+                               title: "Unmatched",
+                               description: "Spending that no bucket caught. A large Unmatched row means your buckets have gaps, or your remarks are inconsistent.")
+                GuideDetailRow(icon: "hand.tap.fill", color: .blue,
+                               title: "Tap any row",
+                               description: "Opens a detail view listing the transactions behind the number. Bucket details also show a six-month trend for that bucket.")
+            }
+            
+            Section(header: Text("The Remark Lookup")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("At the bottom of the Insights page. Type any word — a shop, a person, a project — and get its total, count, and average for the current period, plus a trend chart over recent periods.")
+                        .font(.subheadline)
+                    Divider()
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "plus.circle").foregroundColor(.teal)
+                        Text("Tap Save as Bucket to keep the term as a bucket. Add sibling terms later in Settings → Remark Buckets, and history regroups instantly.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            
+            Section(header: Text("Time Travel")) {
+                GuideDetailRow(icon: "chevron.left.circle", color: .blue,
+                               title: "Period navigation",
+                               description: "The arrows step backward and forward through weeks, months, or years. The header card compares the visible period to the one before it.")
+                GuideDetailRow(icon: "line.3.horizontal.decrease.circle", color: .blue,
+                               title: "Filters & saved views",
+                               description: "Exclude accounts, categories, or outliers, set amount limits, and save a combination as a named view you can re-apply in one tap.")
+            }
+        }
+        .navigationTitle("Insights")
     }
 }
 
@@ -599,8 +685,26 @@ struct InterfaceGuideView: View {
                 .padding(.vertical, 4)
             }
             
+            Section(header: Text("Remark Autocomplete")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("The remark field completes your words.", systemImage: "text.cursor")
+                        .font(.headline)
+                    Text("As you type, the app suggests words you've used in past remarks, ranked by how often you use them. Tap a suggestion, or press Return, to complete the current word — the top suggestion is taken and a space is added so you can keep going.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Text("Press Return again on an empty word to finish. On iPad and Mac hardware keyboards, Tab also completes the top suggestion.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Text("Accepting suggestions keeps your spelling consistent, which is what makes searches and buckets reliable.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+            
             Section(header: Text("Swipe Gestures")) {
                 SwipeGuideRow(direction: "Right →", color: .blue, action: "Edit", icon: "pencil")
+                SwipeGuideRow(direction: "Right →", color: .orange, action: "Duplicate", icon: "plus.square.on.square")
                 SwipeGuideRow(direction: "← Left", color: .orange, action: "Archive", icon: "archivebox.fill")
                 SwipeGuideRow(direction: "← Left", color: .red, action: "Delete", icon: "trash.fill")
             }
@@ -631,6 +735,12 @@ struct PowerUserGuideView: View {
                 GuideDetailRow(icon: "arrow.forward.circle.fill", color: .green,
                                title: "Deep linking",
                                description: "Tapping the notification opens Pocket Ledger directly into the pre-filled form for that template. Review it, adjust the amount if needed, and tap Save. Done in seconds.")
+            }
+            
+            Section(header: Text("Duplicate Instead of Retype")) {
+                GuideDetailRow(icon: "plus.square.on.square", color: .orange,
+                               title: "Swipe right on any transaction",
+                               description: "Duplicate opens a new, pre-filled form — same account, category, amount, and remark, with today's date. One tap to save. For a repeat purchase, this is faster than a template.")
             }
             
             Section(header: Text("Keyboard Shortcuts (iPad / Mac)"),
