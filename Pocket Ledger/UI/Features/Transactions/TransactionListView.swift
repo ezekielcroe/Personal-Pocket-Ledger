@@ -11,14 +11,11 @@ struct TransactionListView: View {
     
     // MARK: - State
     @State private var transactionToEdit: Transaction?
+    @State private var transactionToDuplicate: Transaction?
     
     // Multi-Selection State
     @State private var selection = Set<Transaction.ID>()
     @State private var isEditMode = false
-    
-    // Batch Tagging State
-    @State private var isPresentingBatchTagSheet = false
-    @State private var batchTagsToAdd: Set<UUID> = []
     
     // MARK: - Temporal Grouping State
     // 1. CHANGED: This is now the source of truth for the list
@@ -106,8 +103,9 @@ struct TransactionListView: View {
                 AddTransactionView(editingTransaction: transaction)
                     .environmentObject(transactionStore)
             }
-            .sheet(isPresented: $isPresentingBatchTagSheet) {
-                batchTagSheet
+            .sheet(item: $transactionToDuplicate) { transaction in
+                AddTransactionView(duplicatingTransaction: transaction)
+                    .environmentObject(transactionStore)
             }
             // MARK: - ASYNC SEARCH TRIGGERS
             // 2. CHANGED: Watch for text changes, debounce, and calculate
@@ -145,7 +143,7 @@ struct TransactionListView: View {
                     Image(systemName: "magnifyingglass")
                         .foregroundColor(.secondary)
                     
-                    TextField("Search tags, categories, accounts, amounts...", text: $searchText)
+                    TextField("Search remarks, categories, accounts, amounts...", text: $searchText)
                         .focused($isSearchFocused)
                         .submitLabel(.search)
                         .autocorrectionDisabled()
@@ -237,7 +235,7 @@ struct TransactionListView: View {
                 .foregroundColor(.secondary)
             Text("No results for \"\(searchText)\"")
                 .font(.headline)
-            Text("Try searching for tags, categories, accounts, or amounts")
+            Text("Try searching for remarks, categories, accounts, or amounts")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -349,6 +347,13 @@ struct TransactionListView: View {
                     Label("Edit", systemImage: "pencil")
                 }
                 .tint(.blue)
+                
+                Button {
+                    transactionToDuplicate = transaction
+                } label: {
+                    Label("Duplicate", systemImage: "plus.square.on.square")
+                }
+                .tint(.orange)
             }
             .swipeActions(edge: .trailing) {
                 Button(role: .destructive) {
@@ -372,6 +377,13 @@ struct TransactionListView: View {
                 Label("Edit", systemImage: "pencil")
             }
             .tint(.blue)
+            
+            Button {
+                transactionToDuplicate = transaction
+            } label: {
+                Label("Duplicate", systemImage: "plus.square.on.square")
+            }
+            .tint(.orange)
         }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
@@ -434,20 +446,6 @@ struct TransactionListView: View {
                 
                 Spacer()
                 
-                // Add Tags button
-                Button {
-                    batchTagsToAdd = []
-                    isPresentingBatchTagSheet = true
-                } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: "tag")
-                            .font(.title3)
-                        Text("Add Tags")
-                            .font(.caption2)
-                    }
-                }
-                .foregroundColor(.blue)
-                
                 // Delete button
                 Button(role: .destructive) {
                     deleteSelectedTransactions()
@@ -485,50 +483,6 @@ struct TransactionListView: View {
         .padding(.bottom, 10)
     }
     
-    // MARK: - Batch Tag Sheet
-    
-    private var batchTagSheet: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                BatchTagSelectionContent(
-                    selectedIDs: $batchTagsToAdd,
-                    onApply: { applyTagsToSelection() }
-                )
-            }
-            .navigationTitle("Add Tags")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        isPresentingBatchTagSheet = false
-                    }
-                }
-            }
-            .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 0) {
-                    Divider()
-                    
-                    Button {
-                        applyTagsToSelection()
-                    } label: {
-                        Text("Apply Tags")
-                            .fontWeight(.semibold)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(batchTagsToAdd.isEmpty ? Color.gray : Color.blue)
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
-                    }
-                    .disabled(batchTagsToAdd.isEmpty)
-                    .padding(.horizontal)
-                    .padding(.vertical, 12)
-                    .background(Color(.systemBackground))
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
-    }
-    
     // MARK: - Async Search & Grouping Logic
     
     // 6. CHANGED: This entire block was moved from being computed properties to an async function.
@@ -539,7 +493,6 @@ struct TransactionListView: View {
         // We capture these here so we can pass them into the background sorting
         // without worrying about MainActor warnings later.
         let allTransactions = transactionStore.transactions
-        let allTags = transactionStore.tags
         let allCategories = transactionStore.categories
         let allAccounts = accountStore.accounts
         let currentSearchText = searchText
@@ -554,11 +507,8 @@ struct TransactionListView: View {
             func matchesSearch(_ transaction: Transaction, query: String) -> Bool {
                 let lowercasedQuery = query.lowercased()
                 
-                // Tags
-                let tagNames = transaction.tagIDs.compactMap { tagID in
-                    allTags.first(where: { $0.id == tagID })?.name.lowercased()
-                }
-                if tagNames.contains(where: { $0.contains(lowercasedQuery) }) { return true }
+                // Remark
+                if transaction.remark.lowercased().contains(lowercasedQuery) { return true }
                 
                 // Category
                 if let category = allCategories.first(where: { $0.id == transaction.categoryID }) {
@@ -721,34 +671,6 @@ struct TransactionListView: View {
         }
     }
 
-    private func applyTagsToSelection() {
-        guard !batchTagsToAdd.isEmpty else { return }
-        
-        for id in selection {
-            if let index = transactionStore.transactions.firstIndex(where: { $0.id == id }) {
-                var transaction = transactionStore.transactions[index]
-                
-                // Merge existing tags with new tags
-                let existingTags = Set(transaction.tagIDs)
-                let mergedTags = existingTags.union(batchTagsToAdd)
-                
-                transaction.tagIDs = Array(mergedTags)
-                transactionStore.transactions[index] = transaction
-            }
-        }
-        
-        transactionStore.save()
-        
-        // Reset state
-        batchTagsToAdd = []
-        isPresentingBatchTagSheet = false
-        selection = []
-        isEditMode = false
-        
-        // Haptic feedback
-        let generator = UINotificationFeedbackGenerator()
-        generator.notificationOccurred(.success)
-    }
 }
 
 // MARK: - Supporting Types
@@ -856,135 +778,5 @@ extension TransactionListView {
     
     struct TimeGroupID: Hashable {
         let value: String
-    }
-}
-
-// MARK: - Batch Tag Selection Content
-
-struct BatchTagSelectionContent: View {
-    @EnvironmentObject var transactionStore: TransactionStore
-    @Binding var selectedIDs: Set<UUID>
-    let onApply: () -> Void
-    
-    @State private var searchText = ""
-    @FocusState private var isSearchFocused: Bool
-    
-    var filteredItems: [Tag] {
-        let list = searchText.isEmpty
-            ? transactionStore.tags
-            : transactionStore.tags.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
-        return list.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-    }
-    
-    var showCreationRow: Bool {
-        !searchText.isEmpty && !transactionStore.tags.contains(where: { $0.name.caseInsensitiveCompare(searchText) == .orderedSame })
-    }
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            // Search Header
-            HStack {
-                Image(systemName: "tag")
-                    .foregroundColor(.secondary)
-                TextField("Find or create tags...", text: $searchText)
-                    .focused($isSearchFocused)
-                    .submitLabel(.done)
-                    .onSubmit {
-                        handleKeyboardSubmit()
-                    }
-                if !searchText.isEmpty {
-                    Button {
-                        searchText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
-                    }
-                }
-            }
-            .padding(8)
-            .background(Color(.secondarySystemBackground))
-            .cornerRadius(10)
-            .padding()
-            
-            // Tag List
-            List {
-                if showCreationRow {
-                    Button(action: createAndSelectTag) {
-                        HStack {
-                            Image(systemName: "plus.circle.fill")
-                                .foregroundColor(.green)
-                            Text("Create \"\(searchText)\"")
-                                .fontWeight(.medium)
-                        }
-                    }
-                }
-
-                ForEach(filteredItems) { item in
-                    Button {
-                        toggleSelection(item)
-                    } label: {
-                        HStack {
-                            Text(item.name)
-                            Spacer()
-                            if selectedIDs.contains(item.id) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(.blue)
-                                    .fontWeight(.bold)
-                            } else {
-                                Image(systemName: "circle")
-                                    .foregroundColor(.secondary.opacity(0.3))
-                            }
-                        }
-                    }
-                    .foregroundColor(.primary)
-                }
-                
-                // Spacer for bottom toolbar
-                Color.clear.frame(height: 80).listRowBackground(Color.clear)
-            }
-        }
-        .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                isSearchFocused = true
-            }
-        }
-    }
-    
-    // MARK: - Helpers
-    
-    private func handleKeyboardSubmit() {
-        if searchText.isEmpty {
-            if !selectedIDs.isEmpty {
-                onApply()
-            }
-        } else if filteredItems.count == 1 {
-            toggleSelection(filteredItems[0])
-            searchText = ""
-            isSearchFocused = true
-        } else if showCreationRow {
-            createAndSelectTag()
-        }
-    }
-    
-    private func toggleSelection(_ item: Tag) {
-        if selectedIDs.contains(item.id) {
-            selectedIDs.remove(item.id)
-        } else {
-            selectedIDs.insert(item.id)
-        }
-    }
-    
-    private func createAndSelectTag() {
-        let cleanName = searchText.trimmingCharacters(in: .whitespaces)
-        guard !cleanName.isEmpty else { return }
-        
-        transactionStore.addTag(name: cleanName)
-        
-        if let newTag = transactionStore.tags.first(where: { $0.name == cleanName }) {
-            selectedIDs.insert(newTag.id)
-        }
-        
-        searchText = ""
-        isSearchFocused = true
     }
 }

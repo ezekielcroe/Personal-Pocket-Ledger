@@ -66,10 +66,10 @@ struct HelpView: View {
                     
                     NavigationLink(destination: TaxonomyGuideView()) {
                         ManualRow(
-                            icon: "tag.fill",
+                            icon: "text.alignleft",
                             color: .orange,
                             title: "Taxonomy",
-                            subtitle: "Categories, Tags, and the Orthogonal Strategy."
+                            subtitle: "Categories, Remarks, and the Orthogonal Strategy."
                         )
                     }
                     
@@ -214,7 +214,7 @@ struct GettingStartedView: View {
                 GuideDetailRow(
                     icon: "checkmark.circle.fill", color: .green,
                     title: "Fill in the rest and save",
-                    description: "Amount, category, and optionally a tag. That's it. The balance on your account updates immediately."
+                    description: "Amount, category, and optionally a remark. That's it. The balance on your account updates immediately."
                 )
             }
             
@@ -242,7 +242,7 @@ struct GettingStartedView: View {
                         .font(.body)
                         .foregroundColor(.secondary)
                     bulletRow("Account Groups — for grouping related accounts together (e.g. all credit cards)")
-                    bulletRow("Tags — for adding specific context beyond the category (e.g. #DateNight, #WorkExpense)")
+                    bulletRow("Remarks — a free-text note for the payee or context (e.g. Starbucks, Anniversary dinner)")
                     bulletRow("Insights — spending charts and breakdowns, more useful once you have a few weeks of data")
                     bulletRow("Multiple Books — for separating personal and business finances entirely")
                 }
@@ -403,37 +403,37 @@ struct TaxonomyGuideView: View {
                 GuideDetailRow(icon: "folder.fill", color: .orange,
                                title: "Category — What",
                                description: "What is the broad nature of this transaction? (e.g. Housing, Food, Transport, Income)")
-                GuideDetailRow(icon: "tag.fill", color: .purple,
-                               title: "Tag — Why / Who",
-                               description: "What was the specific context? (e.g. #DateNight, #WorkExpense, #Caffeine)")
+                GuideDetailRow(icon: "text.alignleft", color: .purple,
+                               title: "Remark — Who / Why",
+                               description: "The specific detail: payee, purpose, or anything worth remembering. (e.g. Starbucks, Anniversary dinner, Client lunch)")
             }
             
             Section(header: Text("The Golden Rule")) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Categories should be broad. Tags should be specific.")
+                    Text("Categories should be broad. Remarks should be specific.")
                         .font(.body)
                         .fontWeight(.semibold)
-                    Text("If you create a category for every coffee shop, your charts become unreadable. Instead, create one broad 'Food' category and a '#Caffeine' tag. You get clean charts and the ability to filter by coffee spending whenever you want.")
+                    Text("If you create a category for every coffee shop, your charts become unreadable. Instead, create one broad 'Food' category and write the shop name in the remark. You get clean charts and can search any shop name whenever you want.")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
                 .padding(.vertical, 4)
             }
             
-            Section(header: Text("Smart Tags & Keywords")) {
+            Section(header: Text("Remarks & Autocomplete")) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Tags can have keywords attached to them. When you search for a keyword, the app surfaces all transactions with that tag — even if you didn't type the tag name directly.")
+                    Text("As you type a remark, the app suggests remarks you've used before, ranked by how often you use them. Tapping a suggestion keeps your spelling consistent, so searches find everything.")
                         .font(.subheadline)
                     Divider()
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: "gearshape.fill").foregroundColor(.secondary)
-                        Text("Setup: Create a #Caffeine tag and add keywords like 'Starbucks', 'Dunkin', 'Nespresso'.")
+                        Text("Habit: Write the payee in the remark — 'Starbucks', 'Netflix', 'FairPrice'.")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: "magnifyingglass").foregroundColor(.blue)
-                        Text("Result: Searching 'Starbucks' in Transactions finds every #Caffeine entry, regardless of how you named them.")
+                        Text("Result: Searching 'Starbucks' in Transactions finds every coffee run, with the total right there.")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
@@ -448,11 +448,11 @@ struct TaxonomyGuideView: View {
                         .fontWeight(.semibold)
                     tagChipRow(["🍱 Food", "🏠 Housing", "🚗 Transport", "💰 Income", "🎨 Lifestyle", "🏥 Health"])
                     
-                    Text("Tags (specific, add as needed):")
+                    Text("Remarks (specific, written as you go):")
                         .font(.subheadline)
                         .fontWeight(.semibold)
                         .padding(.top, 4)
-                    tagChipRow(["#Groceries", "#Dining", "#Coffee", "#Subscriptions", "#WorkExpense", "#DateNight"])
+                    tagChipRow(["Starbucks", "FairPrice", "Netflix", "Client lunch", "Anniversary dinner"])
                 }
                 .padding(.vertical, 4)
             }
@@ -608,7 +608,7 @@ struct InterfaceGuideView: View {
             Section(header: Text("Multi-Select")) {
                 GuideDetailRow(icon: "checkmark.circle", color: .blue,
                                title: "Batch operations on transactions",
-                               description: "Tap the select button (top right on the Transactions tab) to enter multi-select mode. Select multiple transactions to delete them or apply tags to all of them at once.")
+                               description: "Tap the select button (top right on the Transactions tab) to enter multi-select mode. Select multiple transactions to delete them at once.")
             }
         }
         .navigationTitle("Interface")
@@ -654,7 +654,7 @@ struct PowerUserGuideView: View {
             Section(header: Text("Backup & Export")) {
                 GuideDetailRow(icon: "externaldrive.fill", color: .primary,
                                title: "JSON Backup",
-                               description: "A full backup of everything — accounts, transactions, templates, categories, and tags. Use this to move your data to a new device or keep a personal archive.")
+                               description: "A full backup of everything — accounts, transactions, templates, and categories. Use this to move your data to a new device or keep a personal archive.")
                 GuideDetailRow(icon: "tablecells.fill", color: .secondary,
                                title: "CSV Export",
                                description: "A flat spreadsheet export of transactions within a date range. Use this for tax purposes, sharing with an accountant, or importing into another tool.")

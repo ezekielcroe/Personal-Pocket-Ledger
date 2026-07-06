@@ -129,7 +129,7 @@ enum BreakdownMode: String, CaseIterable, Identifiable, Hashable {
     case category = "Category"
     case account  = "Account"
     case group    = "Group"
-    case tag      = "Tag"
+    case bucket   = "Bucket"
     
     var id: String { rawValue }
 }

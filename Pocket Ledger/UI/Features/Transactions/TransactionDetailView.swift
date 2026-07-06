@@ -39,28 +39,16 @@ struct TransactionDetailView: View {
                 DetailRow(label: "Account", value: accountName)
                 DetailRow(label: "Category", value: categoryName)
                 
+                if !transaction.remark.isEmpty {
+                    DetailRow(label: "Remark", value: transaction.remark)
+                }
+                
                 if transaction.isOutlier {
                     HStack {
                         Text("Outlier")
                         Spacer()
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundColor(.orange)
-                    }
-                }
-            }
-            
-            // Tags Section
-            if !transaction.tagIDs.isEmpty {
-                Section(header: Text("Tags")) {
-                    ForEach(transaction.tagIDs, id: \.self) { tagID in
-                        if let tag = transactionStore.tags.first(where: { $0.id == tagID }) {
-                            HStack {
-                                Image(systemName: "tag.fill")
-                                    .font(.caption)
-                                    .foregroundColor(.blue)
-                                Text(tag.name)
-                            }
-                        }
                     }
                 }
             }

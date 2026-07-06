@@ -179,7 +179,7 @@ class AccountStore: ObservableObject {
         // Transactions load next; recomputeBalances is called at the end of loadTransactions.
         await transactionStore.loadTransactions(for: updatedBook)
         
-        isLoaded = true 
+        isLoaded = true
     }
     
     private func loadAccounts(for book: BookMetadata) async {
@@ -208,10 +208,13 @@ class AccountStore: ObservableObject {
         accountGroups = backup.accountGroups
         transactionStore.transactions = backup.transactions
         transactionStore.categories   = backup.categories
-        transactionStore.tags         = backup.tags
         transactionStore.templates    = backup.templates
+        transactionStore.remarkBuckets = backup.remarkBuckets
         
-        recomputeBalances(using: backup.transactions)
+        // Fold tags from pre-remark backups into remarks
+        transactionStore.migrateLegacyTags(backup.legacyTags)
+        
+        recomputeBalances(using: transactionStore.transactions)
         save()
         transactionStore.save()
     }

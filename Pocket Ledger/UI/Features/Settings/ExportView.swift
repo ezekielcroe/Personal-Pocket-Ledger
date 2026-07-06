@@ -74,7 +74,6 @@ struct ExportView: View {
         accounts: [],
         accountGroups: [],
         categories: [],
-        tags: [],
         transactions: [],
         templates: [],
         insightPresets: []
@@ -109,7 +108,6 @@ struct ExportView: View {
                         summaryRow(label: "Accounts", value: "\(accountStore.accounts.count)")
                         summaryRow(label: "Templates", value: "\(transactionStore.templates.count)")
                         summaryRow(label: "Categories", value: "\(transactionStore.categories.count)")
-                        summaryRow(label: "Tags", value: "\(transactionStore.tags.count)")
                     }
                 }
                 
@@ -214,10 +212,10 @@ struct ExportView: View {
             accounts: accountStore.accounts,
             accountGroups: accountStore.accountGroups,
             categories: transactionStore.categories,
-            tags: transactionStore.tags,
             transactions: transactionStore.transactions,
             templates: transactionStore.templates,
-            insightPresets: transactionStore.insightPresets
+            insightPresets: transactionStore.insightPresets,
+            remarkBuckets: transactionStore.remarkBuckets
         )
         return JSONBackupDocument(data: snapshot)
     }
@@ -227,27 +225,26 @@ struct ExportView: View {
                 .filter { $0.date >= startDate && $0.date <= endDate }
                 .sorted(by: { $0.date < $1.date })
 
-            var csv = "ID,Date,Type,Account,Category,Tags,Amount\n"
+            var csv = "ID,Date,Type,Account,Category,Remark,Amount\n"
             let dateFormatter = DateFormatter()
             dateFormatter.dateFormat = "yyyy-MM-dd"
             
             for tx in filtered {
                 let accountName = accountStore.accounts.first(where: { $0.id == tx.accountID })?.name ?? "Unknown"
                 let categoryName = transactionStore.categories.first(where: { $0.id == tx.categoryID })?.name ?? "Unknown"
-                let tagsString = tx.tagIDs
-                    .compactMap { id in transactionStore.tags.first(where: { $0.id == id })?.name }
-                    .joined(separator: "; ")
-                
                 let dateStr = dateFormatter.string(from: tx.date)
                 
                 // FIX 1: Convert Decimal to Double for string formatting
                 let doubleAmount = NSDecimalNumber(decimal: tx.amount).doubleValue
                 let amountStr = String(format: "%.2f", doubleAmount)
                 
-                let safeTags = tagsString.replacingOccurrences(of: ",", with: " ")
+                // Commas and newlines would break the CSV column layout
+                let safeRemark = tx.remark
+                    .replacingOccurrences(of: ",", with: " ")
+                    .replacingOccurrences(of: "\n", with: " ")
                 
                 // FIX 2: Use .uuidString explicitly
-                csv += "\(tx.id.uuidString),\(dateStr),\(tx.type.rawValue),\(accountName),\(categoryName),\(safeTags),\(amountStr)\n"
+                csv += "\(tx.id.uuidString),\(dateStr),\(tx.type.rawValue),\(accountName),\(categoryName),\(safeRemark),\(amountStr)\n"
             }
             return CSVDocument(text: csv)
         }

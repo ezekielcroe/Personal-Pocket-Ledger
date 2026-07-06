@@ -4,6 +4,7 @@ import UIKit // Needed for Haptics
 struct ReconcileInputView: View {
     @EnvironmentObject var accountStore: AccountStore
     @EnvironmentObject var transactionStore: TransactionStore
+    // NOTE: Removed @Environment(\.dismiss) because we delegate dismissal to the parent
     @AppStorage("currencySymbol") private var currencySymbol: String = "$"
     
     let selectedIDs: Set<UUID>
@@ -57,15 +58,6 @@ struct ReconcileInputView: View {
             }
         }
         
-        /// Whether this target is a credit-type account (debt or limit).
-        /// Groups return false since they contain mixed account types.
-        var isCredit: Bool {
-            switch self {
-            case .account(let a): return a.isCredit
-            case .group: return false
-            }
-        }
-        
         func systemBalance(accountStore: AccountStore, transactions: [Transaction]) -> Decimal {
             switch self {
             case .account(let a):
@@ -96,7 +88,7 @@ struct ReconcileInputView: View {
     var body: some View {
         List {
             Section {
-                Text("Enter the actual balance for each item. If the amounts match, it will be marked as verified.")
+                Text("Enter the actual total balance for each selected item.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -106,6 +98,7 @@ struct ReconcileInputView: View {
             }
         }
         .navigationTitle("Reconcile")
+        // IMPROVEMENT 1: Button moved from Toolbar to Bottom Safe Area
         .safeAreaInset(edge: .bottom) {
             VStack {
                 Button(action: handleDone) {
@@ -136,15 +129,9 @@ struct ReconcileInputView: View {
         .sheet(isPresented: $showingAdjustmentSheet) {
             if let target = targetToAdjust {
                 let name = selectedAccountForGroupAdjustment?.name ?? target.name
-                let isCredit = selectedAccountForGroupAdjustment?.isCredit ?? target.isCredit
-                let resolvedType: TransactionType = isCredit
-                    ? (differenceToAdjust > 0 ? .outflow : .inflow)
-                    : (differenceToAdjust > 0 ? .inflow : .outflow)
-                
                 AdjustmentDetailSheet(
                     targetName: name,
                     difference: differenceToAdjust,
-                    transactionType: resolvedType,
                     currencySymbol: currencySymbol,
                     onConfirm: { categoryID in
                         finalizeAdjustment(categoryID: categoryID)
@@ -177,128 +164,64 @@ struct ReconcileInputView: View {
             set: { balanceInputs[target.id] = $0 }
         )
         
-        // Determine the reconciliation status for this row
-        let status = reconcileStatus(for: target, systemBalance: systemBal)
-        
-        return VStack(alignment: .leading, spacing: 12) {
-            // Row 1: Name and system balance
+        return VStack(spacing: 8) {
             HStack {
                 if case .group = target {
-                    Image(systemName: "folder.fill")
-                        .foregroundColor(.purple)
-                        .font(.subheadline)
+                    Image(systemName: "folder.fill").foregroundColor(.purple)
                 }
-                Text(target.name)
-                    .fontWeight(.medium)
+                Text(target.name).fontWeight(.medium)
                 Spacer()
-            }
-            
-            // Row 2: System balance display
-            HStack {
-                Text("Balance in Pocket Ledger")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                Spacer()
-                Text(systemBal.formattedCurrency(symbol: currencySymbol))
-                    .font(.subheadline)
+                Text("System: \(systemBal.formattedCurrency(symbol: currencySymbol))")
+                    .font(.caption)
                     .foregroundColor(.secondary)
             }
             
-            // Row 3: Actual balance input
             HStack {
-                Text("Actual Balance")
-                    .font(.subheadline)
+                Text("Actual:").foregroundColor(.secondary)
                 
-                Spacer()
-                
-                TextField("Enter amount", text: binding)
+                TextField("0.00", text: binding)
                     .keyboardType(.numbersAndPunctuation)
                     .multilineTextAlignment(.trailing)
-                    .font(.title3.weight(.medium))
                     .focused($focusedFieldID, equals: target.id)
+                    // IMPROVEMENT 2: Next Button Logic
                     .submitLabel(.next)
                     .onSubmit {
                         moveToNextField(from: target.id)
                     }
-            }
-            
-            // Row 4: Status feedback
-            switch status {
-            case .empty:
-                EmptyView()
                 
-            case .matched:
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                    Text("Balances match")
-                        .font(.caption)
-                        .foregroundColor(.green)
-                }
-                
-            case .mismatched(let diff):
-                VStack(spacing: 8) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.orange)
-                        Text("Difference: \(diff.formattedCurrency(symbol: currencySymbol))")
-                            .font(.caption)
-                            .foregroundColor(.orange)
-                        Spacer()
-                    }
+                if let input = balanceInputs[target.id], !input.isEmpty {
+                    let actual = MathParser.calculate(input)
+                    let diff = actual - systemBal
                     
-                    Button {
-                        prepareForAdjustment(target: target, diff: diff)
-                    } label: {
-                        HStack {
-                            Image(systemName: "plus.forwardslash.minus")
-                            Text("Create Adjustment Transaction")
+                    if abs(diff) < 0.01 {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                    } else {
+                        Button {
+                            prepareForAdjustment(target: target, diff: diff)
+                        } label: {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
                         }
-                        .font(.subheadline.weight(.medium))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(Color.orange.opacity(0.12))
-                        .foregroundColor(.orange)
-                        .cornerRadius(8)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
-        .padding(.vertical, 6)
-    }
-    
-    // MARK: - Status Helper
-    
-    private enum RowStatus {
-        case empty
-        case matched
-        case mismatched(Decimal)
-    }
-    
-    private func reconcileStatus(for target: ReconcileTarget, systemBalance: Decimal) -> RowStatus {
-        guard let input = balanceInputs[target.id], !input.isEmpty else {
-            return .empty
-        }
-        let actual = MathParser.calculate(input)
-        let diff = actual - systemBalance
-        
-        if abs(diff) < 0.01 {
-            return .matched
-        } else {
-            return .mismatched(diff)
-        }
+        .padding(.vertical, 4)
     }
     
     // MARK: - Logic Helpers
     
+    // NEW HELPER: Handles jumping to the next field
     private func moveToNextField(from currentID: UUID) {
         let currentTargets = targets
         if let idx = currentTargets.firstIndex(where: { $0.id == currentID }) {
             let nextIdx = idx + 1
             if nextIdx < currentTargets.count {
+                // Jump to next
                 focusedFieldID = currentTargets[nextIdx].id
             } else {
+                // End of list, dismiss keyboard
                 focusedFieldID = nil
             }
         }
@@ -366,35 +289,14 @@ struct ReconcileInputView: View {
     private func finalizeAdjustment(categoryID: UUID?) {
         guard let target = targetToAdjust else { return }
         
-        let targetAccount: Account?
+        let accountID: UUID
         if let groupAcc = selectedAccountForGroupAdjustment {
-            targetAccount = groupAcc
+            accountID = groupAcc.id
         } else if case .account(let acc) = target {
-            targetAccount = acc
-        } else {
-            return
-        }
+            accountID = acc.id
+        } else { return }
         
-        guard let account = targetAccount else { return }
-        
-        // FIX: Determine correct transaction type based on account type.
-        // For debit/goal accounts (isCredit = false):
-        //   balance = initial + inflows - outflows
-        //   positive diff (actual > system) → need inflow to increase balance
-        //   negative diff (actual < system) → need outflow to decrease balance
-        //
-        // For limit/debt accounts (isCredit = true):
-        //   balance = initial + outflows - inflows
-        //   positive diff (actual > system) → need outflow to increase balance
-        //   negative diff (actual < system) → need inflow to decrease balance
-        let type: TransactionType
-        if account.isCredit {
-            // Credit accounts: reverse the logic
-            type = differenceToAdjust > 0 ? .outflow : .inflow
-        } else {
-            // Debit accounts: standard logic
-            type = differenceToAdjust > 0 ? .inflow : .outflow
-        }
+        let type: TransactionType = differenceToAdjust > 0 ? .inflow : .outflow
         let amount = abs(differenceToAdjust)
         
         let finalCategoryID: UUID
@@ -406,24 +308,14 @@ struct ReconcileInputView: View {
         
         transactionStore.addTransaction(
             type: type,
-            accountID: account.id,
+            accountID: accountID,
             categoryID: finalCategoryID,
-            tagIDs: [],
             amount: amount,
             date: Date(),
             isOutlier: false
         )
         
-        accountStore.markAccountAsReconciled(account.id)
-        
-        // Update the input field to reflect the new (now-matching) balance
-        if let targetID = targetToAdjust?.id {
-            let newSystem = targetToAdjust?.systemBalance(
-                accountStore: accountStore,
-                transactions: transactionStore.transactions
-            ) ?? 0
-            balanceInputs[targetID] = "\(newSystem)"
-        }
+        accountStore.markAccountAsReconciled(accountID)
         
         let generator = UINotificationFeedbackGenerator()
         generator.notificationOccurred(.success)
@@ -453,11 +345,15 @@ struct AdjustmentDetailSheet: View {
     
     let targetName: String
     let difference: Decimal
-    let transactionType: TransactionType
     let currencySymbol: String
     let onConfirm: (UUID?) -> Void
     
     @State private var selectedCategoryID: UUID?
+    @State private var markAsOutlier: Bool = true
+    
+    private var transactionType: TransactionType {
+        difference > 0 ? .inflow : .outflow
+    }
     
     var body: some View {
         NavigationStack {
@@ -469,7 +365,7 @@ struct AdjustmentDetailSheet: View {
                         Text(targetName).foregroundColor(.secondary)
                     }
                     HStack {
-                        Text("Difference")
+                        Text("Amount")
                         Spacer()
                         Text(abs(difference).formattedCurrency(symbol: currencySymbol))
                             .fontWeight(.bold)

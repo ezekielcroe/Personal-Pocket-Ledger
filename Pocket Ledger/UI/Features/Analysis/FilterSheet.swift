@@ -7,7 +7,6 @@ struct FilterSheet: View {
 
     @Binding var excludedAccountIDs: Set<UUID>
     @Binding var excludedCategoryIDs: Set<UUID>
-    @Binding var excludedTagIDs: Set<UUID>
     @Binding var excludeOutliers: Bool
     @Binding var minimumAmount: Decimal?
     @Binding var maximumAmount: Decimal?
@@ -22,13 +21,12 @@ struct FilterSheet: View {
     // Simple mode: inclusion-based selections
     @State private var selectedAccountIDs: Set<UUID> = []
     @State private var selectedCategoryIDs: Set<UUID> = []
-    @State private var selectedTagIDs: Set<UUID> = []
 
     // MARK: - Computed
 
     private var hasActiveFilters: Bool {
         !excludedAccountIDs.isEmpty || !excludedCategoryIDs.isEmpty ||
-        !excludedTagIDs.isEmpty || excludeOutliers ||
+        excludeOutliers ||
         minimumAmount != nil || maximumAmount != nil
     }
 
@@ -41,9 +39,6 @@ struct FilterSheet: View {
         if !excludedCategoryIDs.isEmpty {
             let included = transactionStore.categories.count - excludedCategoryIDs.count
             parts.append("\(included) of \(transactionStore.categories.count) categories")
-        }
-        if !excludedTagIDs.isEmpty {
-            parts.append("Excluding \(excludedTagIDs.count) tags")
         }
         if excludeOutliers { parts.append("Excluding outliers") }
         if let min = minimumAmount { parts.append("Min: \(min.formattedCurrency(symbol: "$"))") }
@@ -97,14 +92,12 @@ struct FilterSheet: View {
                 SavePresetSheet(
                     excludedAccountIDs: excludedAccountIDs,
                     excludedCategoryIDs: excludedCategoryIDs,
-                    excludedTagIDs: excludedTagIDs,
                     excludeOutliers: excludeOutliers,
                     onSave: { name in
                         let preset = InsightPreset(
                             name: name,
                             excludedAccountIDs: excludedAccountIDs,
                             excludedCategoryIDs: excludedCategoryIDs,
-                            excludedTagIDs: excludedTagIDs,
                             excludeOutliers: excludeOutliers
                         )
                         transactionStore.savePreset(preset)
@@ -320,25 +313,6 @@ struct FilterSheet: View {
                 }
             }
         }
-
-        if !transactionStore.tags.isEmpty {
-            Section(header: Text("Exclude Tags")) {
-                if excludedTagIDs.isEmpty {
-                    Text("All tags included").foregroundColor(.secondary).font(.caption)
-                }
-                ForEach(transactionStore.tags) { tag in
-                    Button { toggleSelection(tag.id, in: &excludedTagIDs) } label: {
-                        HStack {
-                            Text(tag.name).foregroundColor(.primary)
-                            Spacer()
-                            if excludedTagIDs.contains(tag.id) {
-                                Image(systemName: "xmark.circle.fill").foregroundColor(.red)
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 
     // MARK: - Helpers
@@ -368,19 +342,16 @@ struct FilterSheet: View {
     private func initializeSimpleSelections() {
         selectedAccountIDs  = Set(accountStore.accounts.map { $0.id }).subtracting(excludedAccountIDs)
         selectedCategoryIDs = Set(transactionStore.categories.map { $0.id }).subtracting(excludedCategoryIDs)
-        selectedTagIDs      = Set(transactionStore.tags.map { $0.id }).subtracting(excludedTagIDs)
     }
 
     private func convertSimpleToExclusion() {
         excludedAccountIDs  = Set(accountStore.accounts.map { $0.id }).subtracting(selectedAccountIDs)
         excludedCategoryIDs = Set(transactionStore.categories.map { $0.id }).subtracting(selectedCategoryIDs)
-        excludedTagIDs      = Set(transactionStore.tags.map { $0.id }).subtracting(selectedTagIDs)
     }
 
     private func resetFilters() {
         excludedAccountIDs.removeAll()
         excludedCategoryIDs.removeAll()
-        excludedTagIDs.removeAll()
         excludeOutliers = false
         minimumAmount = nil
         maximumAmount = nil
@@ -445,7 +416,6 @@ struct SavePresetSheet: View {
 
     let excludedAccountIDs: Set<UUID>
     let excludedCategoryIDs: Set<UUID>
-    let excludedTagIDs: Set<UUID>
     let excludeOutliers: Bool
     let onSave: (String) -> Void
 
@@ -464,7 +434,7 @@ struct SavePresetSheet: View {
 
                 Section(header: Text("This View Includes")) {
                     if excludedAccountIDs.isEmpty && excludedCategoryIDs.isEmpty &&
-                       excludedTagIDs.isEmpty && !excludeOutliers {
+                       !excludeOutliers {
                         Text("All transactions").foregroundColor(.secondary)
                     } else {
                         if !excludedAccountIDs.isEmpty {
@@ -472,9 +442,6 @@ struct SavePresetSheet: View {
                         }
                         if !excludedCategoryIDs.isEmpty {
                             Text("Excludes \(excludedCategoryIDs.count) category(ies)").font(.caption)
-                        }
-                        if !excludedTagIDs.isEmpty {
-                            Text("Excludes \(excludedTagIDs.count) tag(s)").font(.caption)
                         }
                         if excludeOutliers {
                             Text("Excludes outlier transactions").font(.caption)

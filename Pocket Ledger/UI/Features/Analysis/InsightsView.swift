@@ -12,6 +12,7 @@ struct InsightsView: View {
 
     @State private var showingFilterSheet = false
     @State private var showingPresetPicker = false
+    @State private var remarkSearchTerm = ""
     @AppStorage("currencySymbol") private var currencySymbol: String = "$"
 
     var body: some View {
@@ -49,6 +50,8 @@ struct InsightsView: View {
                         }
                         .padding(.vertical)
 
+                        remarkLookupSection
+
                         Color.clear.frame(height: 80)
                     }
                 }
@@ -69,7 +72,6 @@ struct InsightsView: View {
                 FilterSheet(
                     excludedAccountIDs: $viewModel.excludedAccountIDs,
                     excludedCategoryIDs: $viewModel.excludedCategoryIDs,
-                    excludedTagIDs: $viewModel.excludedTagIDs,
                     excludeOutliers: $viewModel.excludeOutliers,
                     minimumAmount: $viewModel.minimumAmount,
                     maximumAmount: $viewModel.maximumAmount
@@ -92,14 +94,15 @@ struct InsightsView: View {
     // MARK: - Navigation Destination Builder
 
     /// Wraps each breakdown row in the correct NavigationLink.
-    /// Pseudo-items like "Ungrouped" and "No Tag" have no real model
+    /// Pseudo-items like "Ungrouped" have no real model
     /// to navigate to, so they render as plain non-tappable rows.
     @ViewBuilder
     private func rowWithNavigation(for item: AnalyticsItem) -> some View {
         let row = CategoryBarRow(
             item: item,
             total: viewModel.stats.totalForBreakdown,
-            currencySymbol: currencySymbol
+            currencySymbol: currencySymbol,
+            showsPercentage: viewModel.breakdownMode != .bucket
         )
         let dateInterval = viewModel.currentDateInterval
 
@@ -110,17 +113,17 @@ struct InsightsView: View {
             } else {
                 row
             }
-        case .tag:
-            if let tag = transactionStore.tags.first(where: { $0.id == item.id }) {
-                NavigationLink(destination: TagDetailView(tag: tag, dateFilter: dateInterval)) { row }
-            } else {
-                row
-            }
         case .account:
             if let account = accountStore.accounts.first(where: { $0.id == item.id }) {
                 NavigationLink(destination: AccountDetailView(account: account)) { row }
             } else {
                 row
+            }
+        case .bucket:
+            if let bucket = transactionStore.remarkBuckets.first(where: { $0.id == item.id }) {
+                NavigationLink(destination: BucketDetailView(bucket: bucket, dateFilter: dateInterval)) { row }
+            } else {
+                row // "Unmatched" pseudo-item
             }
         case .group:
             if let group = accountStore.accountGroups.first(where: { $0.id == item.id }) {
@@ -274,11 +277,124 @@ struct InsightsView: View {
             Image(systemName: "tray")
                 .font(.largeTitle)
                 .foregroundColor(.secondary)
-            Text("No data found for this period")
-                .foregroundColor(.secondary)
+            if viewModel.breakdownMode == .bucket && transactionStore.remarkBuckets.isEmpty {
+                Text("No buckets yet")
+                    .foregroundColor(.secondary)
+                Text("Search a remark term below and save it as a bucket, or create one directly.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                NavigationLink(destination: ManageBucketsView()) {
+                    Text("Manage Buckets")
+                        .font(.subheadline)
+                }
+            } else {
+                Text("No data found for this period")
+                    .foregroundColor(.secondary)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
+    }
+    
+    // MARK: - Remark Lookup
+    
+    /// Ad-hoc stats for any remark term: total, count, average, and a trend
+    /// over recent periods — all respecting the current filters and toggle.
+    private var remarkLookupSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Remark Lookup")
+                    .font(.headline)
+                Spacer()
+                NavigationLink(destination: ManageBucketsView()) {
+                    Text("Buckets")
+                        .font(.subheadline)
+                }
+            }
+            
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.secondary)
+                TextField("e.g. starbucks", text: $remarkSearchTerm)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                if !remarkSearchTerm.isEmpty {
+                    Button {
+                        remarkSearchTerm = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            .padding(10)
+            .background(Color(.secondarySystemBackground))
+            .cornerRadius(10)
+            
+            let term = remarkSearchTerm.trimmingCharacters(in: .whitespaces)
+            if !term.isEmpty {
+                let stats = viewModel.remarkStats(
+                    terms: [term],
+                    transactionStore: transactionStore,
+                    accountStore: accountStore
+                )
+                
+                if stats.count == 0 && stats.trend.allSatisfy({ $0.amount == 0 }) {
+                    Text("No matching \(viewModel.breakdownType == .outflow ? "spending" : "income") found.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } else {
+                    HStack(spacing: 0) {
+                        lookupStat(label: "Total", value: stats.total.formattedCurrency(symbol: currencySymbol))
+                        lookupStat(label: "Count", value: "\(stats.count)")
+                        lookupStat(label: "Average", value: stats.average.formattedCurrency(symbol: currencySymbol))
+                    }
+                    
+                    RemarkTrendChart(points: stats.trend, currencySymbol: currencySymbol)
+                        .frame(height: 120)
+                }
+                
+                bucketSaveRow(for: term)
+            }
+        }
+        .padding(.horizontal)
+    }
+    
+    private func lookupStat(label: String, value: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(label)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+    
+    @ViewBuilder
+    private func bucketSaveRow(for term: String) -> some View {
+        let owning = transactionStore.remarkBuckets.first { bucket in
+            bucket.terms.contains { $0.caseInsensitiveCompare(term) == .orderedSame }
+        }
+        
+        if let owning {
+            Text("In bucket: \(owning.name)")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        } else {
+            Button {
+                let bucket = RemarkBucket(name: term.capitalized, terms: [term.lowercased()])
+                transactionStore.saveBucket(bucket)
+            } label: {
+                Label("Save as Bucket", systemImage: "plus.circle")
+                    .font(.subheadline)
+            }
+        }
     }
 
     // MARK: - Logic Helpers
@@ -286,7 +402,6 @@ struct InsightsView: View {
     private var isCustomFilterActive: Bool {
         !viewModel.excludedAccountIDs.isEmpty ||
         !viewModel.excludedCategoryIDs.isEmpty ||
-        !viewModel.excludedTagIDs.isEmpty ||
         viewModel.excludeOutliers ||
         viewModel.minimumAmount != nil
     }
@@ -298,7 +413,6 @@ struct InsightsView: View {
     private func applyReset() {
         viewModel.excludedAccountIDs = []
         viewModel.excludedCategoryIDs = []
-        viewModel.excludedTagIDs = []
         viewModel.excludeOutliers = false
         viewModel.minimumAmount = nil
         viewModel.maximumAmount = nil
@@ -309,7 +423,6 @@ struct InsightsView: View {
     private func applyPreset(_ preset: InsightPreset) {
         viewModel.excludedAccountIDs = preset.excludedAccountIDs
         viewModel.excludedCategoryIDs = preset.excludedCategoryIDs
-        viewModel.excludedTagIDs = preset.excludedTagIDs
         viewModel.excludeOutliers = preset.excludeOutliers
         viewModel.selectedPresetID = preset.id
         recalculate()
@@ -420,6 +533,7 @@ struct CategoryBarRow: View {
     let item: AnalyticsItem
     let total: Decimal
     let currencySymbol: String
+    var showsPercentage: Bool = true
 
     var body: some View {
         VStack(spacing: 6) {
@@ -444,7 +558,7 @@ struct CategoryBarRow: View {
                         .monospacedDigit()
                         .foregroundColor(.primary)
 
-                    if total > 0 {
+                    if showsPercentage && total > 0 {
                         let percentage = (item.amount / total) * 100
                         Text("\(NSDecimalNumber(decimal: percentage).intValue)%")
                             .font(.caption2)
@@ -607,19 +721,11 @@ struct EditPresetSheet: View {
                             Text("\(preset.excludedCategoryIDs.count)").foregroundColor(.secondary)
                         }
                     }
-                    if !preset.excludedTagIDs.isEmpty {
-                        HStack {
-                            Text("Excluded Tags")
-                            Spacer()
-                            Text("\(preset.excludedTagIDs.count)").foregroundColor(.secondary)
-                        }
-                    }
                     if preset.excludeOutliers {
                         Text("Excludes outlier transactions").foregroundColor(.secondary)
                     }
                     if preset.excludedAccountIDs.isEmpty &&
                        preset.excludedCategoryIDs.isEmpty &&
-                       preset.excludedTagIDs.isEmpty &&
                        !preset.excludeOutliers {
                         Text("No filters applied").foregroundColor(.secondary)
                     }

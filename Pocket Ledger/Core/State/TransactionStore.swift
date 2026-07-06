@@ -13,9 +13,9 @@ import Combine
 class TransactionStore: ObservableObject {
     @Published var transactions: [Transaction] = []
     @Published var categories: [Category] = []
-    @Published var tags: [Tag] = []
     @Published var templates: [TransactionTemplate] = []
     @Published var insightPresets: [InsightPreset] = []
+    @Published var remarkBuckets: [RemarkBucket] = []
     
     /// Set by AccountStore during book switches. Used to derive the correct save filename.
     @Published var activeBook: BookMetadata?
@@ -48,23 +48,27 @@ class TransactionStore: ObservableObject {
             )
             self.transactions   = data.transactions
             self.categories     = data.categories
-            self.tags           = data.tags
             self.templates      = data.templates
             self.insightPresets = data.insightPresets
+            self.remarkBuckets  = data.remarkBuckets
+            
+            // One-time migration: fold tag names from pre-remark data
+            // into transaction and template remarks.
+            migrateLegacyTags(data.legacyTags)
         } catch {
             // No data file for this book yet — start fresh with empty state.
             self.transactions   = []
             self.categories     = []
-            self.tags           = []
             self.templates      = []
             self.insightPresets = []
+            self.remarkBuckets  = []
         }
         
         // Recompute balances once after all data is loaded for this book.
         accountStore?.recomputeBalances(using: self.transactions)
         
         if let book = activeBook {
-            NotificationManager.shared.purgeAndReschedule(for: templates, bookID: book.id)
+            NotificationManager.shared.updateReminders(for: templates, bookID: book.id)
         }
     }
     
@@ -80,9 +84,9 @@ class TransactionStore: ObservableObject {
             let data = SavedTransactionData(
                 transactions: transactions,
                 categories: categories,
-                tags: tags,
                 templates: templates,
-                insightPresets: insightPresets
+                insightPresets: insightPresets,
+                remarkBuckets: remarkBuckets
             )
             try? await StorageService.shared.save(data, to: transactionsFilename(for: bookID))
         }
@@ -96,16 +100,16 @@ class TransactionStore: ObservableObject {
         let data = SavedTransactionData(
             transactions: transactions,
             categories: categories,
-            tags: tags,
             templates: templates,
-            insightPresets: insightPresets
+            insightPresets: insightPresets,
+            remarkBuckets: remarkBuckets
         )
         Task {
             try? await StorageService.shared.save(data, to: transactionsFilename(for: bookID))
         }
     }
     
-    /// Initializes default categories and tags on first launch.
+    /// Initializes default categories on first launch.
     @MainActor
     func initializeDefaultsIfNeeded() {
         if categories.isEmpty {
@@ -113,11 +117,6 @@ class TransactionStore: ObservableObject {
             addCategory(name: "Housing",     type: .outflow, emoji: "🏠")
             addCategory(name: "Lifestyle",   type: .outflow, emoji: "🎨")
             addCategory(name: "Income",      type: .inflow,  emoji: "💰")
-        }
-        
-        if tags.isEmpty {
-            addTag(name: "Caffeine",   keywords: ["starbucks", "dunkin", "espresso"])
-            addTag(name: "Subscriptions",  keywords: ["netflix", "spotify"])
         }
     }
 
@@ -131,19 +130,19 @@ class TransactionStore: ObservableObject {
                         type: TransactionType,
                         accountID: UUID,
                         categoryID: UUID,
-                        tagIDs: [UUID],
                         amount: Decimal,
                         date: Date,
-                        isOutlier: Bool = false) {
+                        isOutlier: Bool = false,
+                        remark: String = "") {
         let transaction = Transaction(id: id,
                                       linkedTransactionID: linkedTransactionID,
                                       type: type,
                                       accountID: accountID,
                                       categoryID: categoryID,
-                                      tagIDs: tagIDs,
                                       amount: amount,
                                       date: date,
-                                      isOutlier: isOutlier)
+                                      isOutlier: isOutlier,
+                                      remark: remark)
         transactions.append(transaction)
         accountStore?.recomputeBalances(using: transactions)
         save()
@@ -160,8 +159,8 @@ class TransactionStore: ObservableObject {
                 var partner = transactions[linkedIndex]
                 partner.amount    = transaction.amount
                 partner.date      = transaction.date
-                partner.tagIDs    = transaction.tagIDs
                 partner.isOutlier = transaction.isOutlier
+                partner.remark    = transaction.remark
                 transactions[linkedIndex] = partner
             }
             
@@ -184,12 +183,117 @@ class TransactionStore: ObservableObject {
         save()
     }
 
-    func removeTagFromTransactions(tagID: UUID) {
-        for i in 0..<transactions.count {
-            if transactions[i].tagIDs.contains(tagID) {
-                transactions[i].tagIDs.removeAll { $0 == tagID }
+    
+    // =========================================================
+    // MARK: - Legacy Tag Migration
+    // =========================================================
+    
+    /// Folds tag names from pre-remark data into remarks, then clears the
+    /// legacy IDs. Runs once per book: after migration nothing re-encodes
+    /// tags or tag IDs, so subsequent loads find nothing to migrate.
+    func migrateLegacyTags(_ legacyTags: [LegacyTag]) {
+        let hasWork = transactions.contains { !$0.legacyTagIDs.isEmpty }
+                   || templates.contains { !$0.legacyTagIDs.isEmpty }
+        guard hasWork else { return }
+        
+        let names = Dictionary(legacyTags.map { ($0.id, $0.name) },
+                               uniquingKeysWith: { first, _ in first })
+        
+        func merged(_ remark: String, ids: [UUID]) -> String {
+            let tagNames = ids.compactMap { names[$0] }
+            guard !tagNames.isEmpty else { return remark }
+            let joined = tagNames.joined(separator: ", ")
+            return remark.isEmpty ? joined : "\(remark) (\(joined))"
+        }
+        
+        for i in transactions.indices where !transactions[i].legacyTagIDs.isEmpty {
+            transactions[i].remark = merged(transactions[i].remark,
+                                            ids: transactions[i].legacyTagIDs)
+            transactions[i].legacyTagIDs = []
+        }
+        
+        for i in templates.indices where !templates[i].legacyTagIDs.isEmpty {
+            templates[i].remark = merged(templates[i].remark,
+                                         ids: templates[i].legacyTagIDs)
+            templates[i].legacyTagIDs = []
+        }
+        
+        save()
+    }
+    
+    
+    // =========================================================
+    // MARK: - Remark Autocomplete
+    // =========================================================
+    
+    /// Returns past remark WORDS that complete `fragment` (the word currently
+    /// being typed), ranked by how often each word appears across all remarks
+    /// and then by how recently. An empty fragment returns the overall
+    /// most-used words. Counting is case-insensitive — "starbucks" and
+    /// "Starbucks" are one word — and the most recently used casing wins.
+    /// Surrounding punctuation is stripped, so "(Caffeine)" counts as
+    /// "Caffeine"; words shorter than 2 characters are ignored.
+    func remarkWordSuggestions(completing fragment: String, limit: Int = 3) -> [String] {
+        var usage: [String: (text: String, count: Int, lastUsed: Date)] = [:]
+        
+        for tx in transactions {
+            for word in Self.remarkWords(in: tx.remark) {
+                let key = word.lowercased()
+                if var entry = usage[key] {
+                    entry.count += 1
+                    if tx.date > entry.lastUsed {
+                        entry.lastUsed = tx.date
+                        entry.text = word
+                    }
+                    usage[key] = entry
+                } else {
+                    usage[key] = (word, 1, tx.date)
+                }
             }
         }
+        
+        let q = fragment.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let candidates = usage.values
+            .filter { q.isEmpty || $0.text.lowercased().contains(q) }
+            .filter { $0.text.lowercased() != q } // don't suggest what's already typed
+        
+        return candidates
+            .sorted {
+                if $0.count != $1.count { return $0.count > $1.count }
+                return $0.lastUsed > $1.lastUsed
+            }
+            .prefix(limit)
+            .map { $0.text }
+    }
+    
+    /// Splits a remark into countable words: whitespace-separated tokens with
+    /// leading/trailing punctuation and symbols removed. Internal punctuation
+    /// survives, so "joe's" stays intact.
+    private static func remarkWords(in remark: String) -> [String] {
+        let trimSet = CharacterSet.punctuationCharacters.union(.symbols)
+        return remark
+            .split(whereSeparator: { $0.isWhitespace })
+            .map { $0.trimmingCharacters(in: trimSet) }
+            .filter { $0.count >= 2 }
+    }
+    
+    
+    // =========================================================
+    // MARK: - Remark Buckets
+    // =========================================================
+    
+    /// Adds a new bucket or updates an existing one (matched by id).
+    func saveBucket(_ bucket: RemarkBucket) {
+        if let index = remarkBuckets.firstIndex(where: { $0.id == bucket.id }) {
+            remarkBuckets[index] = bucket
+        } else {
+            remarkBuckets.append(bucket)
+        }
+        save()
+    }
+    
+    func deleteBucket(_ bucket: RemarkBucket) {
+        remarkBuckets.removeAll { $0.id == bucket.id }
         save()
     }
     
@@ -221,16 +325,16 @@ class TransactionStore: ObservableObject {
                          type: TransactionType,
                          accountID: UUID? = nil,
                          categoryID: UUID? = nil,
-                         tagIDs: [UUID] = [],
                          isOutlier: Bool = false,
-                         transferTargetAccountID: UUID? = nil) {
+                         transferTargetAccountID: UUID? = nil,
+                         remark: String = "") {
             let template = TransactionTemplate(name: name,
                                                type: type,
                                                accountID: accountID,
                                                categoryID: categoryID,
-                                               tagIDs: tagIDs,
                                                isOutlier: isOutlier,
-                                               transferTargetAccountID: transferTargetAccountID)
+                                               transferTargetAccountID: transferTargetAccountID,
+                                               remark: remark)
             templates.append(template)
             save()
             updateReminders()
@@ -272,7 +376,7 @@ class TransactionStore: ObservableObject {
     
     
     // =========================================================
-    // MARK: - Categories & Tags
+    // MARK: - Categories
     // =========================================================
     
     func addCategory(name: String, type: CategoryType, emoji: String) {
@@ -281,12 +385,6 @@ class TransactionStore: ObservableObject {
         save()
     }
 
-    func addTag(name: String, keywords: [String] = []) {
-        let tag = Tag(name: name, keywords: keywords)
-        tags.append(tag)
-        save()
-    }
-    
     func updateCategory(id: UUID, name: String, type: CategoryType, emoji: String) {
         if let index = categories.firstIndex(where: { $0.id == id }) {
             categories[index].name  = name
@@ -296,30 +394,6 @@ class TransactionStore: ObservableObject {
         }
     }
     
-    func updateTag(id: UUID, name: String, keywords: [String]) {
-        if let index = tags.firstIndex(where: { $0.id == id }) {
-            tags[index].name     = name
-            tags[index].keywords = keywords
-            save()
-        }
-    }
-    
-    func setTagArchived(_ id: UUID, archived: Bool) {
-        if let index = tags.firstIndex(where: { $0.id == id }) {
-            tags[index].isArchived = archived
-            save()
-        }
-    }
-
-    func deleteTag(_ tag: Tag) {
-        tags.removeAll { $0.id == tag.id }
-        save()
-    }
-
-    func transactions(for tag: Tag) -> [Transaction] {
-        transactions.filter { $0.tagIDs.contains(tag.id) }
-    }
-
     func deleteTransactions(withIDs ids: Set<UUID>) {
         var allIDs = ids
         for id in ids {
@@ -329,16 +403,6 @@ class TransactionStore: ObservableObject {
         }
         transactions.removeAll { allIDs.contains($0.id) }
         accountStore?.recomputeBalances(using: transactions)
-        save()
-    }
-
-    func applyTags(_ tagIDs: Set<UUID>, toTransactionIDs transactionIDs: Set<UUID>) {
-        for id in transactionIDs {
-            if let index = transactions.firstIndex(where: { $0.id == id }) {
-                let merged = Set(transactions[index].tagIDs).union(tagIDs)
-                transactions[index].tagIDs = Array(merged)
-            }
-        }
         save()
     }
 

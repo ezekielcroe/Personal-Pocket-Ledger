@@ -38,8 +38,8 @@ struct SettingsView: View {
                     NavigationLink(destination: ManageCategoriesView()) {
                         Label("Categories", systemImage: "folder")
                     }
-                    NavigationLink(destination: ManageTagsView()) {
-                        Label("Tags", systemImage: "tag")
+                    NavigationLink(destination: ManageBucketsView()) {
+                        Label("Remark Buckets", systemImage: "text.magnifyingglass")
                     }
                 }
 
@@ -179,10 +179,13 @@ struct SettingsView: View {
                     accountStore.accountGroups = backup.accountGroups
                     transactionStore.transactions = backup.transactions
                     transactionStore.categories   = backup.categories
-                    transactionStore.tags         = backup.tags
                     transactionStore.templates    = backup.templates
+                    transactionStore.remarkBuckets = backup.remarkBuckets
                     
-                    accountStore.recomputeBalances(using: backup.transactions)
+                    // Fold tags from pre-remark backups into remarks
+                    transactionStore.migrateLegacyTags(backup.legacyTags)
+                    
+                    accountStore.recomputeBalances(using: transactionStore.transactions)
                     accountStore.save()
                     transactionStore.save()
                     triggerHaptic(.success)

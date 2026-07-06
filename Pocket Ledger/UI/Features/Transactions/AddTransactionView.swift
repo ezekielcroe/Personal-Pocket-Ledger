@@ -11,6 +11,8 @@ struct AddTransactionView: View {
     let initialType: TransactionType?
     let template: TransactionTemplate?
     let editingTransaction: Transaction?
+    /// When set, the form opens pre-filled as a NEW transaction (date = today).
+    let duplicatingTransaction: Transaction?
 
     @State private var linkedTransaction: Transaction?
 
@@ -21,10 +23,13 @@ struct AddTransactionView: View {
     @State private var accountID: UUID?
     @State private var transferTargetAccountID: UUID?
     @State private var categoryID: UUID?
-    @State private var selectedTagIDs: Set<UUID> = []
     @State private var amountString: String = ""
     @State private var date: Date = Date()
     @State private var isOutlier: Bool = false
+    @State private var remark: String = ""
+    
+    // Autocomplete suggestions for the remark field
+    @State private var remarkSuggestionList: [String] = []
     
     // Template State
     @State private var isShowingTemplateSheet: Bool = false
@@ -34,11 +39,11 @@ struct AddTransactionView: View {
     @State private var showAccountPicker = false
     @State private var showTransferTargetPicker = false
     @State private var showCategoryPicker = false
-    @State private var showTagPicker = false
 
     // MARK: - Focus State
     enum Field: Hashable {
         case amount
+        case remark
     }
     
     @FocusState private var focusedField: Field?
@@ -46,16 +51,20 @@ struct AddTransactionView: View {
     // MARK: - Initialiser
     init(initialType: TransactionType? = nil,
          template: TransactionTemplate? = nil,
-         editingTransaction: Transaction? = nil) {
+         editingTransaction: Transaction? = nil,
+         duplicatingTransaction: Transaction? = nil) {
         
         self.initialType = initialType
         self.template = template
         self.editingTransaction = editingTransaction
+        self.duplicatingTransaction = duplicatingTransaction
         
         // 1. Determine Initial Type
         var startType: TransactionType = .outflow
         if let edit = editingTransaction {
             startType = edit.type
+        } else if let dup = duplicatingTransaction {
+            startType = dup.type
         } else if let tpl = template {
             startType = tpl.type
         } else if let t = initialType {
@@ -67,17 +76,27 @@ struct AddTransactionView: View {
         if let edit = editingTransaction {
             _accountID = State(initialValue: edit.accountID)
             _categoryID = State(initialValue: edit.categoryID)
-            _selectedTagIDs = State(initialValue: Set(edit.tagIDs))
             let doubleAmount = NSDecimalNumber(decimal: edit.amount).doubleValue
             _amountString = State(initialValue: String(format: "%.2f", doubleAmount))
             _date = State(initialValue: edit.date)
             _isOutlier = State(initialValue: edit.isOutlier)
+            _remark = State(initialValue: edit.remark)
             // Note: Transfer target is loaded in onAppear via findLinkedTransaction
+        } else if let dup = duplicatingTransaction {
+            // Copy everything except the date, which defaults to today.
+            _accountID = State(initialValue: dup.accountID)
+            _categoryID = State(initialValue: dup.categoryID)
+            let doubleAmount = NSDecimalNumber(decimal: dup.amount).doubleValue
+            _amountString = State(initialValue: String(format: "%.2f", doubleAmount))
+            _isOutlier = State(initialValue: dup.isOutlier)
+            _remark = State(initialValue: dup.remark)
+            // Note: If this is one leg of a transfer, onAppear resolves the
+            // partner leg and switches the form into Transfer mode.
         } else if let tpl = template {
             _accountID = State(initialValue: tpl.accountID)
             _categoryID = State(initialValue: tpl.categoryID)
-            _selectedTagIDs = State(initialValue: Set(tpl.tagIDs))
             _isOutlier = State(initialValue: tpl.isOutlier)
+            _remark = State(initialValue: tpl.remark)
             _transferTargetAccountID = State(initialValue: tpl.transferTargetAccountID)
         }
     }
@@ -180,23 +199,50 @@ struct AddTransactionView: View {
                     }
                 }
 
-                // SECTION 4: TAGS
-                Section {
-                    Button {
-                        showTagPicker = true
-                    } label: {
-                        HStack {
-                            Text("Tags")
-                            Spacer()
-                            if selectedTagIDs.isEmpty {
-                                Text("None").foregroundColor(.secondary)
+                // SECTION 4: REMARK
+                Section(header: Text("Remark")) {
+                    TextField("Optional — payee or note", text: $remark)
+                        .focused($focusedField, equals: .remark)
+                        .submitLabel(.done)
+                        .autocorrectionDisabled()
+                        .onSubmit {
+                            // Return completes the top suggestion while a word
+                            // is in progress; on an empty fragment it dismisses.
+                            if !currentRemarkFragment.isEmpty,
+                               let top = remarkSuggestionList.first {
+                                applyRemarkSuggestion(top)
                             } else {
-                                Text("\(selectedTagIDs.count) selected")
-                                    .foregroundColor(.secondary)
+                                remark = remark.trimmingCharacters(in: .whitespaces)
+                                focusedField = nil
+                            }
+                        }
+                        .onKeyPress(.tab) {
+                            // Hardware keyboards (iPad / Mac): Tab completes
+                            // the top suggestion.
+                            if let top = remarkSuggestionList.first {
+                                applyRemarkSuggestion(top)
+                                return .handled
+                            }
+                            return .ignored
+                        }
+                    
+                    // Autocomplete: past remarks ranked by frequency, then recency
+                    if focusedField == .remark {
+                        ForEach(remarkSuggestionList, id: \.self) { suggestion in
+                            Button {
+                                applyRemarkSuggestion(suggestion)
+                            } label: {
+                                HStack {
+                                    Image(systemName: "clock.arrow.circlepath")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Text(suggestion)
+                                        .foregroundColor(.primary)
+                                    Spacer()
+                                }
                             }
                         }
                     }
-                    .foregroundColor(.primary)
                 }
 
                 // SECTION 5: DATE
@@ -296,12 +342,6 @@ struct AddTransactionView: View {
                 }
                 .presentationDetents([.medium, .large])
             }
-            .sheet(isPresented: $showTagPicker) {
-                NavigationStack {
-                    MultiSelectionView(title: "Tags", items: transactionStore.tags, selectedIDs: $selectedTagIDs)
-                }
-                .presentationDetents([.medium, .large])
-            }
             .onAppear {
                 if amountString.isEmpty && editingTransaction == nil {
                     focusedField = .amount
@@ -314,8 +354,77 @@ struct AddTransactionView: View {
                     self.transferTargetAccountID = partner.accountID
                     self.type = .transfer // Ensure UI shows as transfer
                 }
+                // NEW: If duplicating one leg of a transfer, reconstruct the
+                // whole transfer. The outflow leg is always the "From" side,
+                // so orientation is correct no matter which leg was swiped.
+                if let dup = duplicatingTransaction,
+                   let linkedID = dup.linkedTransactionID,
+                   let partner = transactionStore.transactions.first(where: { $0.id == linkedID }) {
+                    self.type = .transfer
+                    if dup.type == .outflow {
+                        self.accountID = dup.accountID
+                        self.transferTargetAccountID = partner.accountID
+                    } else {
+                        self.accountID = partner.accountID
+                        self.transferTargetAccountID = dup.accountID
+                    }
+                }
             }
-            .mathPadToolbar(for: $amountString)
+            .mathPadToolbar(for: keyboardToolbarBinding)
+            .onChange(of: remark) { _, _ in
+                refreshRemarkSuggestions()
+            }
+            .onChange(of: focusedField) { _, newValue in
+                if newValue == .remark {
+                    refreshRemarkSuggestions()
+                }
+            }
+        }
+    }
+    
+    // MARK: - Keyboard Toolbar Routing
+    
+    /// The math toolbar (+ - * /) appends to whichever field owns the keyboard.
+    /// Without this, tapping an operator while typing a remark would silently
+    /// append it to the hidden amount field.
+    private var keyboardToolbarBinding: Binding<String> {
+        Binding {
+            focusedField == .remark ? remark : amountString
+        } set: { newValue in
+            if focusedField == .remark {
+                remark = newValue
+            } else {
+                amountString = newValue
+            }
+        }
+    }
+    
+    // MARK: - Remark Autocomplete
+    
+    /// The word currently being typed: everything after the last whitespace.
+    private var currentRemarkFragment: String {
+        if let lastSpace = remark.lastIndex(where: { $0.isWhitespace }) {
+            return String(remark[remark.index(after: lastSpace)...])
+        }
+        return remark
+    }
+    
+    private func refreshRemarkSuggestions() {
+        remarkSuggestionList = transactionStore.remarkWordSuggestions(completing: currentRemarkFragment)
+    }
+    
+    /// Completes the word being typed, keeping everything before it, and
+    /// appends a space so the next word starts clean. Focus is re-asserted
+    /// because pressing Return resigns it before this runs; the trailing
+    /// space is trimmed on save.
+    private func applyRemarkSuggestion(_ word: String) {
+        if let lastSpace = remark.lastIndex(where: { $0.isWhitespace }) {
+            remark = String(remark[...lastSpace]) + word + " "
+        } else {
+            remark = word + " "
+        }
+        DispatchQueue.main.async {
+            focusedField = .remark
         }
     }
     
@@ -373,9 +482,9 @@ struct AddTransactionView: View {
             type: type,
             accountID: accountID,
             categoryID: categoryID,
-            tagIDs: Array(selectedTagIDs),
             isOutlier: isOutlier,
-            transferTargetAccountID: type == .transfer ? transferTargetAccountID : nil
+            transferTargetAccountID: type == .transfer ? transferTargetAccountID : nil,
+            remark: remark.trimmingCharacters(in: .whitespacesAndNewlines)
         )
     }
     
@@ -410,7 +519,6 @@ struct AddTransactionView: View {
     private enum NavigationStep {
         case account
         case secondary
-        case tags
     }
     
     private func checkAndPresentNextField(startingFrom step: NavigationStep) {
@@ -434,13 +542,6 @@ struct AddTransactionView: View {
                     return
                 }
             }
-            fallthrough
-            
-        case .tags:
-            if selectedTagIDs.isEmpty {
-                showTagPicker = true
-                return
-            }
         }
     }
     
@@ -458,31 +559,36 @@ struct AddTransactionView: View {
         }
     }
     
+    /// After the transfer target is chosen, hand focus to the remark field
+    /// so typing can start immediately. The delay lets the sheet finish
+    /// dismissing before the keyboard comes up.
     private func advanceAfterTransferTargetSelection() {
         guard transferTargetAccountID != nil else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            checkAndPresentNextField(startingFrom: .tags)
+            focusedField = .remark
         }
     }
     
+    /// After a category is chosen, hand focus to the remark field so typing
+    /// can start immediately.
     private func advanceAfterCategorySelection() {
         guard categoryID != nil else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            checkAndPresentNextField(startingFrom: .tags)
+            focusedField = .remark
         }
     }
     
     private func saveAndAddAnother() {
         saveTransaction(shouldDismiss: false)
         amountString = ""
-        selectedTagIDs = []
         isOutlier = false
+        remark = ""
         focusedField = .amount
     }
 
     private func saveTransaction(shouldDismiss: Bool = true) {
         let amount = MathParser.calculate(amountString)
-        let tags = Array(selectedTagIDs)
+        let trimmedRemark = remark.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if type == .transfer {
             guard let fromAcc = accountID, let toAcc = transferTargetAccountID else { return }
@@ -495,16 +601,16 @@ struct AddTransactionView: View {
                 existing.accountID = fromAcc
                 existing.amount = amount
                 existing.date = date
-                existing.tagIDs = tags
                 existing.isOutlier = isOutlier
+                existing.remark = trimmedRemark
                 transactionStore.updateTransaction(existing)
                 
                 if var partner = transactionStore.transactions.first(where: { $0.id == linkedID }) {
                     partner.accountID = toAcc
                     partner.amount = amount
                     partner.date = date
-                    partner.tagIDs = tags
                     partner.isOutlier = isOutlier
+                    partner.remark = trimmedRemark
                     transactionStore.updateTransaction(partner)
                 }
                 
@@ -522,10 +628,10 @@ struct AddTransactionView: View {
                     type: .outflow,
                     accountID: fromAcc,
                     categoryID: outCatID,
-                    tagIDs: tags,
                     amount: amount,
                     date: date,
-                    isOutlier: isOutlier
+                    isOutlier: isOutlier,
+                    remark: trimmedRemark
                 )
                 transactionStore.addTransaction(
                     id: id2,
@@ -533,10 +639,10 @@ struct AddTransactionView: View {
                     type: .inflow,
                     accountID: toAcc,
                     categoryID: inCatID,
-                    tagIDs: tags,
                     amount: amount,
                     date: date,
-                    isOutlier: isOutlier
+                    isOutlier: isOutlier,
+                    remark: trimmedRemark
                 )
             }
             
@@ -549,20 +655,20 @@ struct AddTransactionView: View {
                 updated.type = type
                 updated.accountID = accountID
                 updated.categoryID = categoryID
-                updated.tagIDs = tags
                 updated.amount = amount
                 updated.date = date
                 updated.isOutlier = isOutlier
+                updated.remark = trimmedRemark
                 transactionStore.updateTransaction(updated)
             } else {
                 transactionStore.addTransaction(
                     type: type,
                     accountID: accountID,
                     categoryID: categoryID,
-                    tagIDs: tags,
                     amount: amount,
                     date: date,
-                    isOutlier: isOutlier
+                    isOutlier: isOutlier,
+                    remark: trimmedRemark
                 )
             }
         }

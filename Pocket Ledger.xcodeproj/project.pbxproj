@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		7DC43BF22FFB398500322409 /* BucketsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DC43BF12FFB398500322409 /* BucketsView.swift */; };
 		FEC702942F3AF99500B6BC19 /* PocketLedgerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC7025D2F3AF99500B6BC19 /* PocketLedgerApp.swift */; };
 		FEC702952F3AF99500B6BC19 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC7025E2F3AF99500B6BC19 /* ContentView.swift */; };
 		FEC702962F3AF99500B6BC19 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FEC7025C2F3AF99500B6BC19 /* Assets.xcassets */; };
@@ -35,10 +36,6 @@
 		FEC703152F3B07EC00B6BC19 /* LockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702F32F3B07EC00B6BC19 /* LockView.swift */; };
 		FEC703162F3B07EC00B6BC19 /* ManageBooksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702F42F3B07EC00B6BC19 /* ManageBooksView.swift */; };
 		FEC703172F3B07EC00B6BC19 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702F52F3B07EC00B6BC19 /* SettingsView.swift */; };
-		FEC703182F3B07EC00B6BC19 /* AddTagView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702F72F3B07EC00B6BC19 /* AddTagView.swift */; };
-		FEC703192F3B07EC00B6BC19 /* EditTagView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702F82F3B07EC00B6BC19 /* EditTagView.swift */; };
-		FEC7031A2F3B07EC00B6BC19 /* ManageTagsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702F92F3B07EC00B6BC19 /* ManageTagsView.swift */; };
-		FEC7031B2F3B07EC00B6BC19 /* TagDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702FA2F3B07EC00B6BC19 /* TagDetailView.swift */; };
 		FEC7031C2F3B07EC00B6BC19 /* EditTemplateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702FC2F3B07EC00B6BC19 /* EditTemplateView.swift */; };
 		FEC7031D2F3B07EC00B6BC19 /* TemplatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702FD2F3B07EC00B6BC19 /* TemplatesView.swift */; };
 		FEC7031E2F3B07EC00B6BC19 /* AddTransactionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702FF2F3B07EC00B6BC19 /* AddTransactionView.swift */; };
@@ -50,7 +47,6 @@
 		FEC7032E2F3B07F100B6BC19 /* BookMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703252F3B07F100B6BC19 /* BookMetadata.swift */; };
 		FEC7032F2F3B07F100B6BC19 /* Category.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703262F3B07F100B6BC19 /* Category.swift */; };
 		FEC703302F3B07F100B6BC19 /* SavedData.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703272F3B07F100B6BC19 /* SavedData.swift */; };
-		FEC703312F3B07F100B6BC19 /* Tag.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703282F3B07F100B6BC19 /* Tag.swift */; };
 		FEC703322F3B07F100B6BC19 /* Transaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703292F3B07F100B6BC19 /* Transaction.swift */; };
 		FEC703332F3B07F100B6BC19 /* TransactionTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC7032A2F3B07F100B6BC19 /* TransactionTemplate.swift */; };
 		FEC7033A2F3B07F500B6BC19 /* CurrencyFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703342F3B07F500B6BC19 /* CurrencyFormatter.swift */; };
@@ -67,6 +63,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		7DC43BF12FFB398500322409 /* BucketsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BucketsView.swift; sourceTree = "<group>"; };
 		FE3DBFD32F1B151100D7B598 /* Pocket Ledger.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Pocket Ledger.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		FEC7025C2F3AF99500B6BC19 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		FEC7025D2F3AF99500B6BC19 /* PocketLedgerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketLedgerApp.swift; sourceTree = "<group>"; };
@@ -96,10 +93,6 @@
 		FEC702F32F3B07EC00B6BC19 /* LockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockView.swift; sourceTree = "<group>"; };
 		FEC702F42F3B07EC00B6BC19 /* ManageBooksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManageBooksView.swift; sourceTree = "<group>"; };
 		FEC702F52F3B07EC00B6BC19 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		FEC702F72F3B07EC00B6BC19 /* AddTagView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddTagView.swift; sourceTree = "<group>"; };
-		FEC702F82F3B07EC00B6BC19 /* EditTagView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditTagView.swift; sourceTree = "<group>"; };
-		FEC702F92F3B07EC00B6BC19 /* ManageTagsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManageTagsView.swift; sourceTree = "<group>"; };
-		FEC702FA2F3B07EC00B6BC19 /* TagDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagDetailView.swift; sourceTree = "<group>"; };
 		FEC702FC2F3B07EC00B6BC19 /* EditTemplateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditTemplateView.swift; sourceTree = "<group>"; };
 		FEC702FD2F3B07EC00B6BC19 /* TemplatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplatesView.swift; sourceTree = "<group>"; };
 		FEC702FF2F3B07EC00B6BC19 /* AddTransactionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddTransactionView.swift; sourceTree = "<group>"; };
@@ -111,7 +104,6 @@
 		FEC703252F3B07F100B6BC19 /* BookMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookMetadata.swift; sourceTree = "<group>"; };
 		FEC703262F3B07F100B6BC19 /* Category.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Category.swift; sourceTree = "<group>"; };
 		FEC703272F3B07F100B6BC19 /* SavedData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedData.swift; sourceTree = "<group>"; };
-		FEC703282F3B07F100B6BC19 /* Tag.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tag.swift; sourceTree = "<group>"; };
 		FEC703292F3B07F100B6BC19 /* Transaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transaction.swift; sourceTree = "<group>"; };
 		FEC7032A2F3B07F100B6BC19 /* TransactionTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionTemplate.swift; sourceTree = "<group>"; };
 		FEC703342F3B07F500B6BC19 /* CurrencyFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrencyFormatter.swift; sourceTree = "<group>"; };
@@ -230,6 +222,7 @@
 		FEC702EB2F3B07EC00B6BC19 /* Analysis */ = {
 			isa = PBXGroup;
 			children = (
+				7DC43BF12FFB398500322409 /* BucketsView.swift */,
 				FEC703512F3B12C800B6BC19 /* InsightsViewModel.swift */,
 				FEC702E92F3B07EC00B6BC19 /* FilterSheet.swift */,
 				FEC702EA2F3B07EC00B6BC19 /* InsightsView.swift */,
@@ -260,17 +253,6 @@
 			path = Settings;
 			sourceTree = "<group>";
 		};
-		FEC702FB2F3B07EC00B6BC19 /* Tags */ = {
-			isa = PBXGroup;
-			children = (
-				FEC702F72F3B07EC00B6BC19 /* AddTagView.swift */,
-				FEC702F82F3B07EC00B6BC19 /* EditTagView.swift */,
-				FEC702F92F3B07EC00B6BC19 /* ManageTagsView.swift */,
-				FEC702FA2F3B07EC00B6BC19 /* TagDetailView.swift */,
-			);
-			path = Tags;
-			sourceTree = "<group>";
-		};
 		FEC702FE2F3B07EC00B6BC19 /* Templates */ = {
 			isa = PBXGroup;
 			children = (
@@ -298,7 +280,6 @@
 				FEC702EB2F3B07EC00B6BC19 /* Analysis */,
 				FEC702F02F3B07EC00B6BC19 /* Categories */,
 				FEC702F62F3B07EC00B6BC19 /* Settings */,
-				FEC702FB2F3B07EC00B6BC19 /* Tags */,
 				FEC702FE2F3B07EC00B6BC19 /* Templates */,
 				FEC703032F3B07EC00B6BC19 /* Transactions */,
 			);
@@ -320,7 +301,6 @@
 				FEC703242F3B07F100B6BC19 /* AccountGroup.swift */,
 				FEC703252F3B07F100B6BC19 /* BookMetadata.swift */,
 				FEC703262F3B07F100B6BC19 /* Category.swift */,
-				FEC703282F3B07F100B6BC19 /* Tag.swift */,
 				FEC703292F3B07F100B6BC19 /* Transaction.swift */,
 				FEC7032A2F3B07F100B6BC19 /* TransactionTemplate.swift */,
 			);
@@ -471,19 +451,16 @@
 				FEC7035A2F3B634E00B6BC19 /* AnalyticsTypes.swift in Sources */,
 				FEC703162F3B07EC00B6BC19 /* ManageBooksView.swift in Sources */,
 				FEC703172F3B07EC00B6BC19 /* SettingsView.swift in Sources */,
-				FEC703182F3B07EC00B6BC19 /* AddTagView.swift in Sources */,
-				FEC703192F3B07EC00B6BC19 /* EditTagView.swift in Sources */,
 				FEC7033A2F3B07F500B6BC19 /* CurrencyFormatter.swift in Sources */,
 				FEC7033B2F3B07F500B6BC19 /* Formatters.swift in Sources */,
 				FEC7033C2F3B07F500B6BC19 /* MathParser.swift in Sources */,
 				FEC7033D2F3B07F500B6BC19 /* StorageService.swift in Sources */,
 				FEC7033E2F3B07F500B6BC19 /* UUIDv7.swift in Sources */,
-				FEC7031A2F3B07EC00B6BC19 /* ManageTagsView.swift in Sources */,
 				FEC7034E2F3B093900B6BC19 /* NotificationManager.swift in Sources */,
-				FEC7031B2F3B07EC00B6BC19 /* TagDetailView.swift in Sources */,
 				FEC7031C2F3B07EC00B6BC19 /* EditTemplateView.swift in Sources */,
 				FEC7031D2F3B07EC00B6BC19 /* TemplatesView.swift in Sources */,
 				FEC7031E2F3B07EC00B6BC19 /* AddTransactionView.swift in Sources */,
+				7DC43BF22FFB398500322409 /* BucketsView.swift in Sources */,
 				FEC7031F2F3B07EC00B6BC19 /* TransactionDetailView.swift in Sources */,
 				FEC703202F3B07EC00B6BC19 /* TransactionListView.swift in Sources */,
 				FEC703212F3B07EC00B6BC19 /* TransactionRow.swift in Sources */,
@@ -493,7 +470,6 @@
 				FEC7032E2F3B07F100B6BC19 /* BookMetadata.swift in Sources */,
 				FEC7032F2F3B07F100B6BC19 /* Category.swift in Sources */,
 				FEC703302F3B07F100B6BC19 /* SavedData.swift in Sources */,
-				FEC703312F3B07F100B6BC19 /* Tag.swift in Sources */,
 				FEC703322F3B07F100B6BC19 /* Transaction.swift in Sources */,
 				FEC703332F3B07F100B6BC19 /* TransactionTemplate.swift in Sources */,
 				FEC702942F3AF99500B6BC19 /* PocketLedgerApp.swift in Sources */,
@@ -651,7 +627,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "GeekyZeke.Pocket-Ledger";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -690,7 +666,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "GeekyZeke.Pocket-Ledger";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;

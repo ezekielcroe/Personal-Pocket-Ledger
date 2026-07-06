@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Transaction row displaying: emoji | category + tags | amount
+/// Transaction row displaying: emoji | remark or account | amount
 struct TransactionRow: View {
     @EnvironmentObject var transactionStore: TransactionStore
     @EnvironmentObject var accountStore: AccountStore
@@ -17,9 +17,9 @@ struct TransactionRow: View {
                 .clipShape(Circle())
             
             VStack(alignment: .leading, spacing: 4) {
-                // Primary: Tags (or account name if no tags)
-                if !transaction.tagIDs.isEmpty {
-                    Text(tagsDisplayString)
+                // Primary: Remark (or account name, or category if neither)
+                if !transaction.remark.isEmpty {
+                    Text(transaction.remark)
                         .font(.body)
                         .foregroundColor(.primary)
                         .lineLimit(1)
@@ -85,14 +85,6 @@ struct TransactionRow: View {
     
     private var accountName: String? {
         account?.name
-    }
-    
-    /// Builds a comma-separated string of tag names
-    private var tagsDisplayString: String {
-        let tagNames = transaction.tagIDs.compactMap { tagID in
-            transactionStore.tags.first(where: { $0.id == tagID })?.name
-        }
-        return tagNames.joined(separator: ", ")
     }
     
     // Logic to distinguish Transfers visually

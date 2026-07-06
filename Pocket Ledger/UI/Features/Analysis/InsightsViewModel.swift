@@ -27,7 +27,6 @@ class InsightsViewModel: ObservableObject {
     // MARK: - Filters
     @Published var excludedAccountIDs: Set<UUID> = []
     @Published var excludedCategoryIDs: Set<UUID> = []
-    @Published var excludedTagIDs: Set<UUID> = []
     @Published var excludeOutliers: Bool = false
     @Published var minimumAmount: Decimal? = nil
     @Published var maximumAmount: Decimal? = nil
@@ -36,7 +35,7 @@ class InsightsViewModel: ObservableObject {
     // MARK: - Current Date Interval (used by InsightsView for detail navigation)
 
     /// The date interval currently displayed. Exposed so InsightsView can pass
-    /// it to detail views (CategoryDetailView, TagDetailView) as a filter.
+    /// it to detail views (CategoryDetailView) as a filter.
     var currentDateInterval: DateInterval {
         let fiscalStart = UserDefaults.standard.integer(forKey: "fiscalStartDay")
         return timeRange.dateInterval(
@@ -83,7 +82,7 @@ class InsightsViewModel: ObservableObject {
         let categories    = transactionStore.categories
         let accounts      = accountStore.accounts
         let groups        = accountStore.accountGroups
-        let tags          = transactionStore.tags
+        let buckets       = transactionStore.remarkBuckets
         
         // 2. Capture configuration
         let currentRange  = self.timeRange
@@ -96,7 +95,6 @@ class InsightsViewModel: ObservableObject {
         let filterSettings = FilterSettings(
             excludedAccounts:   excludedAccountIDs,
             excludedCategories: excludedCategoryIDs,
-            excludedTags:       excludedTagIDs,
             excludeOutliers:    excludeOutliers,
             min:                minimumAmount,
             max:                maximumAmount
@@ -115,7 +113,7 @@ class InsightsViewModel: ObservableObject {
                 categories: categories,
                 accounts: accounts,
                 groups: groups,
-                tags: tags,
+                buckets: buckets,
                 filters: filterSettings,
                 breakdownMode: mode,
                 breakdownType: type
@@ -131,7 +129,7 @@ class InsightsViewModel: ObservableObject {
                 categories: categories,
                 accounts: accounts,
                 groups: groups,
-                tags: tags,
+                buckets: buckets,
                 filters: filterSettings,
                 breakdownMode: mode,
                 breakdownType: type
@@ -151,7 +149,6 @@ class InsightsViewModel: ObservableObject {
     private struct FilterSettings {
         let excludedAccounts: Set<UUID>
         let excludedCategories: Set<UUID>
-        let excludedTags: Set<UUID>
         let excludeOutliers: Bool
         let min: Decimal?
         let max: Decimal?
@@ -166,7 +163,7 @@ class InsightsViewModel: ObservableObject {
         categories: [Category],
         accounts: [Account],
         groups: [AccountGroup],
-        tags: [Tag],
+        buckets: [RemarkBucket],
         filters: FilterSettings,
         breakdownMode: BreakdownMode,
         breakdownType: TransactionType
@@ -179,19 +176,7 @@ class InsightsViewModel: ObservableObject {
         let pureDebtAccountIDs  = Set(accounts.filter { $0.accountType == .debt }.map { $0.id })
         
         // 1. Filter transactions
-        let filtered = transactions.filter { tx in
-            let date = tx.date
-            
-            if !dateInterval.contains(date)                                                  { return false }
-            if filters.excludeOutliers && tx.isOutlier                                      { return false }
-            if filters.excludedAccounts.contains(tx.accountID)                              { return false }
-            if filters.excludedCategories.contains(tx.categoryID)                           { return false }
-            if !tx.tagIDs.isEmpty && !Set(tx.tagIDs).isDisjoint(with: filters.excludedTags) { return false }
-            if let min = filters.min, tx.amount < min                                       { return false }
-            if let max = filters.max, tx.amount > max                                       { return false }
-            
-            return true
-        }
+        let filtered = Self.applyFilters(transactions, interval: dateInterval, filters: filters)
         
         // 2. Calculate global totals (smart transfer logic)
         var income: Decimal = 0
@@ -217,30 +202,13 @@ class InsightsViewModel: ObservableObject {
         }
         
         // 3. Generate breakdown
-        var breakdownTransactions: [Transaction] = []
-        
-        for tx in filtered {
-            let isTransferCategory = transferCategoryIDs.contains(tx.categoryID)
-            
-            if breakdownType == .outflow {
-                // Include: regular outflows + transfers TO pure debt accounts
-                if tx.type == .outflow && !isTransferCategory {
-                    breakdownTransactions.append(tx)
-                } else if isTransferCategory && tx.type == .inflow && pureDebtAccountIDs.contains(tx.accountID) {
-                    if let linkedID = tx.linkedTransactionID,
-                       let linkedTx = transactions.first(where: { $0.id == linkedID }) {
-                        if !pureDebtAccountIDs.contains(linkedTx.accountID) {
-                            breakdownTransactions.append(tx)
-                        }
-                    }
-                }
-            } else {
-                // Income: regular inflows only
-                if tx.type == .inflow && !isTransferCategory {
-                    breakdownTransactions.append(tx)
-                }
-            }
-        }
+        let breakdownTransactions = Self.breakdownEligible(
+            filtered,
+            allTransactions: transactions,
+            transferCategoryIDs: transferCategoryIDs,
+            pureDebtAccountIDs: pureDebtAccountIDs,
+            breakdownType: breakdownType
+        )
         
         let breakdownTotal = breakdownTransactions.reduce(0) { $0 + $1.amount }
         var breakdownItems: [AnalyticsItem] = []
@@ -294,36 +262,195 @@ class InsightsViewModel: ObservableObject {
                 breakdownItems.append(AnalyticsItem(id: UUID(), name: "Ungrouped", icon: "building.columns", amount: ungroupedAmount, color: .secondary))
             }
             
-        case .tag:
-            var untaggedAmount: Decimal = 0
+        case .bucket:
+            // Buckets overlap: one transaction can feed several buckets, so
+            // amounts are absolute totals, not shares of a whole.
+            var unmatchedAmount: Decimal = 0
             var dict: [UUID: Decimal] = [:]
             
             for tx in breakdownTransactions {
-                if tx.tagIDs.isEmpty {
-                    untaggedAmount += tx.amount
-                } else {
-                    for tagID in tx.tagIDs {
-                        dict[tagID, default: 0] += tx.amount
-                    }
+                var matchedAny = false
+                for bucket in buckets where bucket.matches(tx.remark) {
+                    dict[bucket.id, default: 0] += tx.amount
+                    matchedAny = true
                 }
+                if !matchedAny { unmatchedAmount += tx.amount }
             }
             
             breakdownItems = dict.compactMap { (id, amount) in
-                guard let tag = tags.first(where: { $0.id == id }) else { return nil }
-                return AnalyticsItem(id: id, name: tag.name, icon: "tag.fill", amount: amount, color: .blue)
+                guard let bucket = buckets.first(where: { $0.id == id }) else { return nil }
+                return AnalyticsItem(id: id, name: bucket.name, icon: "text.magnifyingglass", amount: amount, color: .teal)
             }
             
-            if untaggedAmount > 0 {
-                breakdownItems.append(AnalyticsItem(id: UUID(), name: "No Tag", icon: "tag.slash", amount: untaggedAmount, color: .secondary))
+            if unmatchedAmount > 0 {
+                breakdownItems.append(AnalyticsItem(id: UUID(), name: "Unmatched", icon: "questionmark.circle", amount: unmatchedAmount, color: .secondary))
             }
         }
+        
+        // Bucket amounts overlap, so a shared denominator would lie; the
+        // largest bucket sets the bar scale instead.
+        let totalForBars: Decimal = (breakdownMode == .bucket)
+            ? (breakdownItems.map { $0.amount }.max() ?? 0)
+            : breakdownTotal
         
         return AnalyticsStats(
             income: income,
             expense: expense,
             breakdownItems: breakdownItems.sorted { $0.amount > $1.amount },
-            totalForBreakdown: breakdownTotal
+            totalForBreakdown: totalForBars
         )
+    }
+
+    
+    // =========================================================
+    // MARK: - Shared Pipeline Helpers
+    // =========================================================
+    
+    /// Step 1 of the pipeline: date window + user filters.
+    nonisolated private static func applyFilters(
+        _ transactions: [Transaction],
+        interval: DateInterval,
+        filters: FilterSettings
+    ) -> [Transaction] {
+        transactions.filter { tx in
+            if !interval.contains(tx.date)                          { return false }
+            if filters.excludeOutliers && tx.isOutlier              { return false }
+            if filters.excludedAccounts.contains(tx.accountID)      { return false }
+            if filters.excludedCategories.contains(tx.categoryID)   { return false }
+            if let min = filters.min, tx.amount < min               { return false }
+            if let max = filters.max, tx.amount > max               { return false }
+            return true
+        }
+    }
+    
+    /// Step 3 of the pipeline: which transactions count toward the breakdown,
+    /// honoring the inflow/outflow toggle and the debt-payment transfer rule.
+    nonisolated private static func breakdownEligible(
+        _ filtered: [Transaction],
+        allTransactions: [Transaction],
+        transferCategoryIDs: Set<UUID>,
+        pureDebtAccountIDs: Set<UUID>,
+        breakdownType: TransactionType
+    ) -> [Transaction] {
+        var result: [Transaction] = []
+        for tx in filtered {
+            let isTransferCategory = transferCategoryIDs.contains(tx.categoryID)
+            
+            if breakdownType == .outflow {
+                // Include: regular outflows + transfers TO pure debt accounts
+                if tx.type == .outflow && !isTransferCategory {
+                    result.append(tx)
+                } else if isTransferCategory && tx.type == .inflow && pureDebtAccountIDs.contains(tx.accountID) {
+                    if let linkedID = tx.linkedTransactionID,
+                       let linkedTx = allTransactions.first(where: { $0.id == linkedID }) {
+                        if !pureDebtAccountIDs.contains(linkedTx.accountID) {
+                            result.append(tx)
+                        }
+                    }
+                }
+            } else {
+                // Income: regular inflows only
+                if tx.type == .inflow && !isTransferCategory {
+                    result.append(tx)
+                }
+            }
+        }
+        return result
+    }
+    
+    
+    // =========================================================
+    // MARK: - Ad-hoc Remark Stats
+    // =========================================================
+    
+    /// Totals, count, average, and a per-period trend for transactions whose
+    /// remark contains ANY of `terms` (case-insensitive). Uses the currently
+    /// selected period, filters, and inflow/outflow toggle, so the numbers
+    /// line up with everything else on the Insights page.
+    func remarkStats(
+        terms: [String],
+        transactionStore: TransactionStore,
+        accountStore: AccountStore,
+        trendPeriods: Int = 6
+    ) -> RemarkTermStats {
+        let cleaned = terms
+            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+            .filter { !$0.isEmpty }
+        guard !cleaned.isEmpty else {
+            return RemarkTermStats(total: 0, count: 0, average: 0, trend: [])
+        }
+        
+        func matches(_ tx: Transaction) -> Bool {
+            guard !tx.remark.isEmpty else { return false }
+            let lower = tx.remark.lowercased()
+            return cleaned.contains { lower.contains($0) }
+        }
+        
+        let transactions = transactionStore.transactions
+        let categories   = transactionStore.categories
+        let accounts     = accountStore.accounts
+        
+        let transferCategoryIDs = Set(categories.filter { $0.name == "Transfer" }.map { $0.id })
+        let pureDebtAccountIDs  = Set(accounts.filter { $0.accountType == .debt }.map { $0.id })
+        
+        let filters = FilterSettings(
+            excludedAccounts:   excludedAccountIDs,
+            excludedCategories: excludedCategoryIDs,
+            excludeOutliers:    excludeOutliers,
+            min:                minimumAmount,
+            max:                maximumAmount
+        )
+        
+        func amountAndCount(in interval: DateInterval) -> (Decimal, Int) {
+            let filtered = Self.applyFilters(transactions, interval: interval, filters: filters)
+            let eligible = Self.breakdownEligible(
+                filtered,
+                allTransactions: transactions,
+                transferCategoryIDs: transferCategoryIDs,
+                pureDebtAccountIDs: pureDebtAccountIDs,
+                breakdownType: breakdownType
+            )
+            let matching = eligible.filter(matches)
+            return (matching.reduce(0) { $0 + $1.amount }, matching.count)
+        }
+        
+        // Current period
+        let (total, count) = amountAndCount(in: currentDateInterval)
+        let average: Decimal = count > 0 ? total / Decimal(count) : 0
+        
+        // Trend: the last `trendPeriods` periods ending at the one on screen.
+        // "All Time" has no period size, so it falls back to calendar months.
+        let fiscalStart = UserDefaults.standard.integer(forKey: "fiscalStartDay")
+        let calendar = Calendar.current
+        var trend: [TrendPoint] = []
+        
+        let labelFormatter = DateFormatter()
+        switch timeRange {
+        case .thisWeek:            labelFormatter.dateFormat = "d MMM"
+        case .thisMonth, .allTime: labelFormatter.dateFormat = "MMM"
+        case .thisYear:            labelFormatter.dateFormat = "yyyy"
+        }
+        
+        if timeRange == .allTime {
+            for back in stride(from: trendPeriods - 1, through: 0, by: -1) {
+                guard let monthAnchor = calendar.date(byAdding: .month, value: -back, to: Date()),
+                      let interval = calendar.dateInterval(of: .month, for: monthAnchor) else { continue }
+                let (amount, _) = amountAndCount(in: interval)
+                trend.append(TrendPoint(label: labelFormatter.string(from: interval.start), amount: amount))
+            }
+        } else {
+            for back in stride(from: trendPeriods - 1, through: 0, by: -1) {
+                let interval = timeRange.dateInterval(
+                    relativeTo: selectedAnchorDate,
+                    fiscalStartDay: fiscalStart,
+                    offset: periodOffset - back
+                )
+                let (amount, _) = amountAndCount(in: interval)
+                trend.append(TrendPoint(label: labelFormatter.string(from: interval.start), amount: amount))
+            }
+        }
+        
+        return RemarkTermStats(total: total, count: count, average: average, trend: trend)
     }
 }
 
@@ -345,4 +472,21 @@ struct AnalyticsItem: Identifiable {
     let icon: String
     let amount: Decimal
     let color: Color?
+}
+
+
+
+// MARK: - Remark Stats Types
+
+struct RemarkTermStats {
+    let total: Decimal
+    let count: Int
+    let average: Decimal
+    let trend: [TrendPoint]
+}
+
+struct TrendPoint: Identifiable {
+    let id = UUID()
+    let label: String
+    let amount: Decimal
 }
