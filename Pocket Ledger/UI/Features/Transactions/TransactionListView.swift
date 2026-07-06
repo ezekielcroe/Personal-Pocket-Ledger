@@ -342,13 +342,6 @@ struct TransactionListView: View {
             .tag(transaction.id)
             .swipeActions(edge: .leading) {
                 Button {
-                    transactionToEdit = transaction
-                } label: {
-                    Label("Edit", systemImage: "pencil")
-                }
-                .tint(.blue)
-                
-                Button {
                     transactionToDuplicate = transaction
                 } label: {
                     Label("Duplicate", systemImage: "plus.square.on.square")
@@ -366,18 +359,18 @@ struct TransactionListView: View {
     
     @ViewBuilder
     private func normalModeRow(for transaction: Transaction) -> some View {
-        NavigationLink(destination: TransactionDetailView(transaction: transaction).environmentObject(transactionStore)) {
-            TransactionRow(transaction: transaction)
-                .environmentObject(transactionStore)
-        }
-        .swipeActions(edge: .leading) {
-            Button {
-                transactionToEdit = transaction
-            } label: {
-                Label("Edit", systemImage: "pencil")
+        Button {
+            transactionToEdit = transaction
+        } label: {
+            HStack {
+                TransactionRow(transaction: transaction)
+                    .environmentObject(transactionStore)
+                Spacer(minLength: 0)
             }
-            .tint(.blue)
-            
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .swipeActions(edge: .leading) {
             Button {
                 transactionToDuplicate = transaction
             } label: {

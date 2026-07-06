@@ -82,6 +82,7 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
             
             List {
                 if isAccountView {
+
                     // 1. Active Accounts (Grouped by Type)
                     ForEach(activeAccountsByType, id: \.type) { section in
                         Section(header: sectionHeader(for: section.type)) {
@@ -99,13 +100,9 @@ struct SelectionView<T: Identifiable>: View where T: Hashable {
                     }
                 }
             }
+            .scrollDismissesKeyboard(.immediately)
         }
         .navigationTitle(title)
-        .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                isSearchFocused = true
-            }
-        }
     }
     
     // MARK: - Section Header

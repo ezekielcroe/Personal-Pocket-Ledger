@@ -35,6 +35,8 @@ struct InsightsView: View {
                             currencySymbol: currencySymbol
                         )
 
+                        pageTrendSection
+
                         VStack(alignment: .leading, spacing: 12) {
                             breakdownControls
 
@@ -59,7 +61,12 @@ struct InsightsView: View {
                 fabMenu
             }
             .navigationTitle("Insights")
-            .onAppear                                    { recalculate() }
+            .onAppear                                    {
+                if !availableBreakdownModes.contains(viewModel.breakdownMode) {
+                    viewModel.breakdownMode = .category
+                }
+                recalculate()
+            }
             .onChange(of: viewModel.timeRange)           { _, _ in
                 viewModel.periodOffset = 0   // Reset to current period on range change
                 recalculate()
@@ -121,7 +128,7 @@ struct InsightsView: View {
             }
         case .bucket:
             if let bucket = transactionStore.remarkBuckets.first(where: { $0.id == item.id }) {
-                NavigationLink(destination: BucketDetailView(bucket: bucket, dateFilter: dateInterval)) { row }
+                NavigationLink(destination: BucketDetailView(bucket: bucket, dateFilter: dateInterval, insights: viewModel)) { row }
             } else {
                 row // "Unmatched" pseudo-item
             }
@@ -200,6 +207,33 @@ struct InsightsView: View {
         }
     }
 
+    /// Overall trend for the page: all transactions through the same
+    /// pipeline as the breakdown (period, filters, Spending/Income toggle),
+    /// across the last six periods. Tap a bar for the exact amount.
+    private var pageTrendSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(viewModel.breakdownType == .outflow ? "Spending Trend" : "Income Trend")
+                .font(.headline)
+            
+            let stats = viewModel.remarkStats(
+                terms: [],
+                transactionStore: transactionStore,
+                accountStore: accountStore
+            )
+            RemarkTrendChart(points: stats.trend, currencySymbol: currencySymbol)
+                .frame(height: 140)
+        }
+        .padding(.horizontal)
+    }
+    
+    /// Group mode is pointless with no groups defined — everything would
+    /// land in one "Ungrouped" row — so it's hidden until a group exists.
+    private var availableBreakdownModes: [BreakdownMode] {
+        BreakdownMode.allCases.filter { mode in
+            mode != .group || !accountStore.accountGroups.isEmpty
+        }
+    }
+
     var breakdownControls: some View {
         VStack(spacing: 12) {
             HStack {
@@ -219,7 +253,7 @@ struct InsightsView: View {
                 Spacer()
 
                 Picker("Breakdown", selection: $viewModel.breakdownMode) {
-                    ForEach(BreakdownMode.allCases, id: \.self) { mode in
+                    ForEach(availableBreakdownModes, id: \.self) { mode in
                         Text(mode.rawValue).tag(mode)
                     }
                 }
@@ -559,8 +593,12 @@ struct CategoryBarRow: View {
                         .foregroundColor(.primary)
 
                     if showsPercentage && total > 0 {
-                        let percentage = (item.amount / total) * 100
-                        Text("\(NSDecimalNumber(decimal: percentage).intValue)%")
+                        // Decimal division yields 38-digit mantissas that
+                        // overflow NSDecimalNumber.intValue (it returns 0),
+                        // so convert through Double instead.
+                        let pct = NSDecimalNumber(decimal: item.amount).doubleValue
+                                / NSDecimalNumber(decimal: total).doubleValue * 100
+                        Text("\(Int(pct.rounded()))%")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }

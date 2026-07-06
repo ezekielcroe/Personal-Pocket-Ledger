@@ -606,7 +606,7 @@ struct ReconciliationGuideView: View {
                                description: "Find the current balance for the account you want to verify.")
                 GuideDetailRow(icon: "2.circle.fill", color: .blue,
                                title: "Open Reconcile in Pocket Ledger",
-                               description: "Tap the ··· menu on the Accounts tab and choose Reconcile Accounts. Select the account.")
+                               description: "Tap the green seal button beside + on the Accounts tab. Every account is listed, most overdue first — fill in the ones you're checking.")
                 GuideDetailRow(icon: "3.circle.fill", color: .blue,
                                title: "Enter the real balance",
                                description: "Type in what your bank shows. The app compares it to its own records.")

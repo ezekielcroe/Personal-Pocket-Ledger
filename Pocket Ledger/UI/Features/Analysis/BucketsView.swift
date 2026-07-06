@@ -1,12 +1,4 @@
 //
-//  RemarkTrendChart.swift
-//  Pocket Ledger
-//
-//  Created by Yeo Zhi Zheng on 6/7/26.
-//
-
-
-//
 //  BucketsView.swift
 //  Pocket Ledger
 //
@@ -20,11 +12,12 @@ import Charts
 
 // MARK: - Trend Chart
 
-/// A small bar chart of per-period amounts. Bars are absolute values;
-/// the y-axis is hidden to keep it glanceable.
+/// A small bar chart of per-period amounts. Tap a bar to see its exact
+/// amount in a callout; tap elsewhere to dismiss it.
 struct RemarkTrendChart: View {
     let points: [TrendPoint]
     let currencySymbol: String
+    @State private var selectedLabel: String?
 
     var body: some View {
         Chart(points) { point in
@@ -32,9 +25,37 @@ struct RemarkTrendChart: View {
                 x: .value("Period", point.label),
                 y: .value("Amount", NSDecimalNumber(decimal: point.amount).doubleValue)
             )
-            .foregroundStyle(Color.teal.gradient)
+            .foregroundStyle(barColor(for: point.label))
             .cornerRadius(3)
+
+            if let selectedLabel,
+               selectedLabel == point.label {
+                RuleMark(x: .value("Period", selectedLabel))
+                    .foregroundStyle(.clear)
+                    .annotation(
+                        position: .top,
+                        overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
+                    ) {
+                        VStack(spacing: 2) {
+                            Text(point.label)
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            Text(point.amount.formattedCurrency(symbol: currencySymbol))
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .monospacedDigit()
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color(.secondarySystemBackground))
+                                .shadow(color: .black.opacity(0.1), radius: 2, y: 1)
+                        )
+                    }
+            }
         }
+        .chartXSelection(value: $selectedLabel)
         .chartYAxis {
             AxisMarks(position: .trailing) { _ in
                 AxisGridLine()
@@ -48,6 +69,13 @@ struct RemarkTrendChart: View {
                     .font(.caption2)
             }
         }
+    }
+
+    private func barColor(for label: String) -> some ShapeStyle {
+        if let selectedLabel, selectedLabel != label {
+            return Color.teal.opacity(0.4).gradient
+        }
+        return Color.teal.gradient
     }
 }
 
@@ -232,7 +260,9 @@ struct EditBucketView: View {
 // MARK: - Bucket Detail
 
 /// All transactions matching a bucket within the period selected on the
-/// Insights page, plus a six-month spending trend for the bucket.
+/// Insights page, plus the bucket's trend over recent periods — computed
+/// through the same pipeline as the rest of the Insights page, so the
+/// numbers here agree with the breakdown row that led here.
 struct BucketDetailView: View {
     @EnvironmentObject var transactionStore: TransactionStore
     @EnvironmentObject var accountStore: AccountStore
@@ -240,6 +270,9 @@ struct BucketDetailView: View {
 
     let bucket: RemarkBucket
     let dateFilter: DateInterval
+    let insights: InsightsViewModel
+
+    @State private var trend: [TrendPoint] = []
 
     var body: some View {
         List {
@@ -251,16 +284,17 @@ struct BucketDetailView: View {
                 }
                 .padding(.vertical, 4)
 
-                RemarkTrendChart(points: monthlyTrend, currencySymbol: currencySymbol)
+                RemarkTrendChart(points: trend, currencySymbol: currencySymbol)
                     .frame(height: 120)
                     .padding(.vertical, 4)
             } header: {
-                Text("Last 6 Months")
+                Text("Trend — Last 6 Periods")
             } footer: {
-                Text("Terms: \(bucket.terms.joined(separator: ", "))")
+                Text("Terms: \(bucket.terms.joined(separator: ", ")). Trend respects the filters and Spending/Income toggle set on the Insights page.")
             }
 
-            Section(header: Text("Matching Transactions")) {
+            Section(header: Text("Matching Transactions"),
+                    footer: Text("Every match in the selected period, before Insights filters.")) {
                 if matchingTransactions.isEmpty {
                     Text("No matches in this period")
                         .foregroundColor(.secondary)
@@ -275,6 +309,13 @@ struct BucketDetailView: View {
         }
         .navigationTitle(bucket.name)
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            trend = insights.remarkStats(
+                terms: bucket.terms,
+                transactionStore: transactionStore,
+                accountStore: accountStore
+            ).trend
+        }
     }
 
     // MARK: - Data
@@ -292,25 +333,6 @@ struct BucketDetailView: View {
 
     private var inflowTotal: Decimal {
         matchingTransactions.filter { $0.type == .inflow }.reduce(0) { $0 + $1.amount }
-    }
-
-    /// Outflow totals per calendar month for the trailing six months,
-    /// independent of the period filter above.
-    private var monthlyTrend: [TrendPoint] {
-        let calendar = Calendar.current
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM"
-
-        var points: [TrendPoint] = []
-        for back in stride(from: 5, through: 0, by: -1) {
-            guard let anchor = calendar.date(byAdding: .month, value: -back, to: Date()),
-                  let interval = calendar.dateInterval(of: .month, for: anchor) else { continue }
-            let amount = transactionStore.transactions
-                .filter { $0.type == .outflow && interval.contains($0.date) && bucket.matches($0.remark) }
-                .reduce(Decimal(0)) { $0 + $1.amount }
-            points.append(TrendPoint(label: formatter.string(from: interval.start), amount: amount))
-        }
-        return points
     }
 
     private func summaryStat(label: String, value: String) -> some View {

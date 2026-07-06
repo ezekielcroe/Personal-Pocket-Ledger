@@ -174,24 +174,28 @@ struct AccountsListView: View {
                     Color.clear.frame(height: 80).listRowBackground(Color.clear)
                 }
                 
-                // FAB Menu
-                Menu {
-                    Button { globalAddAccountTrigger = true } label: { Label("New Account", systemImage: "plus") }
-                    Button { globalAddGroupTrigger = true } label: { Label("New Account Group", systemImage: "folder.badge.plus") }
-                    
-                    Divider()
-                    
-                    // Reconcile Action
+                // FABs: Reconcile beside the add menu
+                HStack(spacing: 14) {
                     Button { showingReconcileSheet = true } label: {
-                        Label("Reconcile Accounts", systemImage: "checkmark.seal")
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 48, height: 48)
+                            .background(Circle().fill(Color.green))
+                            .shadow(radius: 4)
                     }
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 56))
-                        .foregroundColor(.blue)
-                        .shadow(radius: 4)
-                        .padding()
+                    
+                    Menu {
+                        Button { globalAddAccountTrigger = true } label: { Label("New Account", systemImage: "plus") }
+                        Button { globalAddGroupTrigger = true } label: { Label("New Account Group", systemImage: "folder.badge.plus") }
+                    } label: {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 56))
+                            .foregroundColor(.blue)
+                            .shadow(radius: 4)
+                    }
                 }
+                .padding()
             }
             .navigationTitle("Accounts")
             .toolbar {
@@ -212,8 +216,16 @@ struct AccountsListView: View {
                     .environmentObject(transactionStore)
             }
             .sheet(isPresented: $showingReconcileSheet) {
-                ReconcileSelectionView()
-                    .environmentObject(store)
+                NavigationStack {
+                    ReconcileSessionView()
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Close") { showingReconcileSheet = false }
+                            }
+                        }
+                }
+                .environmentObject(store)
+                .environmentObject(transactionStore)
             }
         }
     }

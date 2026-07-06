@@ -364,9 +364,10 @@ class InsightsViewModel: ObservableObject {
     // =========================================================
     
     /// Totals, count, average, and a per-period trend for transactions whose
-    /// remark contains ANY of `terms` (case-insensitive). Uses the currently
-    /// selected period, filters, and inflow/outflow toggle, so the numbers
-    /// line up with everything else on the Insights page.
+    /// remark contains ANY of `terms` (case-insensitive). An EMPTY term list
+    /// matches every transaction — used for the page-level trend. Uses the
+    /// currently selected period, filters, and inflow/outflow toggle, so the
+    /// numbers line up with everything else on the Insights page.
     func remarkStats(
         terms: [String],
         transactionStore: TransactionStore,
@@ -376,11 +377,9 @@ class InsightsViewModel: ObservableObject {
         let cleaned = terms
             .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
             .filter { !$0.isEmpty }
-        guard !cleaned.isEmpty else {
-            return RemarkTermStats(total: 0, count: 0, average: 0, trend: [])
-        }
         
         func matches(_ tx: Transaction) -> Bool {
+            if cleaned.isEmpty { return true } // no terms = whole-page stats
             guard !tx.remark.isEmpty else { return false }
             let lower = tx.remark.lowercased()
             return cleaned.contains { lower.contains($0) }
