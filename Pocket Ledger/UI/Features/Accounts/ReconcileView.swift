@@ -255,6 +255,7 @@ struct ReconcileSessionView: View {
                 AdjustmentDetailSheet(
                     targetName: name,
                     difference: differenceToAdjust,
+                    transactionType: resolvedAdjustmentType(),
                     currencySymbol: currencySymbol,
                     onConfirm: { categoryID in
                         finalizeAdjustment(categoryID: categoryID)
@@ -468,6 +469,20 @@ struct ReconcileSessionView: View {
 
     // MARK: - Adjustment Flow
 
+    /// The transaction type that moves the DISPLAYED balance toward the
+    /// bank's figure. Credit accounts (Limit/Debt) use inverted arithmetic
+    /// (balance = initial + outflows − inflows), so lowering their displayed
+    /// balance takes an inflow, not an outflow. Group totals already negate
+    /// credit members, which cancels the inversion — groups use the normal
+    /// direction regardless of which member holds the discrepancy.
+    private func resolvedAdjustmentType() -> TransactionType {
+        let needsIncrease = differenceToAdjust > 0
+        if case .account(let acc)? = targetToAdjust, acc.isCredit {
+            return needsIncrease ? .outflow : .inflow
+        }
+        return needsIncrease ? .inflow : .outflow
+    }
+
     private func prepareForAdjustment(target: ReconcileTarget, diff: Decimal) {
         targetToAdjust = target
         differenceToAdjust = diff
@@ -489,7 +504,7 @@ struct ReconcileSessionView: View {
             accountID = acc.id
         } else { return }
 
-        let type: TransactionType = differenceToAdjust > 0 ? .inflow : .outflow
+        let type = resolvedAdjustmentType()
         let amount = abs(differenceToAdjust)
 
         let finalCategoryID: UUID
@@ -567,14 +582,12 @@ struct AdjustmentDetailSheet: View {
 
     let targetName: String
     let difference: Decimal
+    /// Resolved by the caller: credit accounts invert direction.
+    let transactionType: TransactionType
     let currencySymbol: String
     let onConfirm: (UUID?) -> Void
 
     @State private var selectedCategoryID: UUID?
-
-    private var transactionType: TransactionType {
-        difference > 0 ? .inflow : .outflow
-    }
 
     var body: some View {
         NavigationStack {
