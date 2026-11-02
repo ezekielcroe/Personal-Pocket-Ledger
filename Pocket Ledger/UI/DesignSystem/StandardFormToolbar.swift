@@ -15,6 +15,12 @@ struct ThumbFriendlyFormToolbar: ViewModifier {
     let onSave: () -> Void
     let onCancel: () -> Void
     let onSaveAndNew: (() -> Void)? // NEW: Optional "Save & Add Another"
+    /// Shown above the buttons while Save is disabled, so the user knows
+    /// what's missing ("Choose a category") instead of facing a grey button.
+    let disabledReason: String?
+    /// Allow swipe-to-dismiss. Forms pass true only while nothing has been
+    /// entered, so a stray swipe can never throw away typed input.
+    let allowsInteractiveDismiss: Bool
 
     func body(content: Content) -> some View {
         content
@@ -30,6 +36,16 @@ struct ThumbFriendlyFormToolbar: ViewModifier {
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 0) {
                     Divider()
+                    
+                    if !canSave, let disabledReason {
+                        Text(disabledReason)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 8)
+                            .background(Color(UIColor.systemBackground))
+                            .accessibilityLabel("Save unavailable: \(disabledReason)")
+                    }
                     
                     if let onSaveAndNew = onSaveAndNew {
                         // DUAL BUTTON LAYOUT (for Add Transaction)
@@ -78,7 +94,7 @@ struct ThumbFriendlyFormToolbar: ViewModifier {
                     }
                 }
             }
-            .interactiveDismissDisabled()
+            .interactiveDismissDisabled(!allowsInteractiveDismiss)
     }
 }
 
@@ -116,14 +132,18 @@ extension View {
         canSave: Bool = true,
         onSave: @escaping () -> Void,
         onCancel: @escaping () -> Void,
-        onSaveAndNew: (() -> Void)? = nil
+        onSaveAndNew: (() -> Void)? = nil,
+        disabledReason: String? = nil,
+        allowsInteractiveDismiss: Bool = false
     ) -> some View {
         modifier(ThumbFriendlyFormToolbar(
             title: title,
             canSave: canSave,
             onSave: onSave,
             onCancel: onCancel,
-            onSaveAndNew: onSaveAndNew
+            onSaveAndNew: onSaveAndNew,
+            disabledReason: disabledReason,
+            allowsInteractiveDismiss: allowsInteractiveDismiss
         ))
     }
     

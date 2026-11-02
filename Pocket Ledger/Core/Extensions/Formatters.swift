@@ -47,7 +47,10 @@ struct Formatters {
             }
             
             let startStr = formatter.string(from: interval.start)
-            let endStr = formatter.string(from: interval.end)
+            // DateInterval.end is exclusive (the next period's first instant),
+            // so show the last moment inside the period: "Nov 1 – Nov 30".
+            let lastMoment = interval.end > interval.start ? interval.end.addingTimeInterval(-1) : interval.end
+            let endStr = formatter.string(from: lastMoment)
             
             return "\(startStr) – \(endStr)"
         }

@@ -7,7 +7,19 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		7DC43BF22FFB398500322409 /* BucketsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DC43BF12FFB398500322409 /* BucketsView.swift */; };
+		FE225B743098D61100348874 /* InsightsEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE225B733098D61100348874 /* InsightsEngine.swift */; };
+		FE225B793098D61E00348874 /* TransactionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE225B783098D61E00348874 /* TransactionStore.swift */; };
+		FE225B7A3098D61E00348874 /* AccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE225B753098D61E00348874 /* AccountStore.swift */; };
+		FE225B7B3098D61E00348874 /* SavedData.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE225B773098D61E00348874 /* SavedData.swift */; };
+		FE225B7C3098D61E00348874 /* EntrySuggestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE225B763098D61E00348874 /* EntrySuggestions.swift */; };
+		FE225B843098D66500348874 /* FilterSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE225B7E3098D66500348874 /* FilterSheet.swift */; };
+		FE225B8D3098DAC600348874 /* InsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE225B8B3098DAC600348874 /* InsightsView.swift */; };
+		FE225B8E3098DAC600348874 /* BucketsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE225B893098DAC600348874 /* BucketsView.swift */; };
+		FE225B8F3098DAC600348874 /* InsightDrillDownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE225B8A3098DAC600348874 /* InsightDrillDownView.swift */; };
+		FE225B903098DAC600348874 /* InsightsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE225B8C3098DAC600348874 /* InsightsViewModel.swift */; };
+		FE225B923098DB1100348874 /* RemarkMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE225B913098DB1100348874 /* RemarkMatcher.swift */; };
+		FE9D1FC33098D06D00ABBAE2 /* StandardFormToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE9D1FC23098D06D00ABBAE2 /* StandardFormToolbar.swift */; };
+		FE9D1FC73098D09000ABBAE2 /* AddTransactionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE9D1FC63098D09000ABBAE2 /* AddTransactionView.swift */; };
 		FEC702942F3AF99500B6BC19 /* PocketLedgerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC7025D2F3AF99500B6BC19 /* PocketLedgerApp.swift */; };
 		FEC702952F3AF99500B6BC19 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC7025E2F3AF99500B6BC19 /* ContentView.swift */; };
 		FEC702962F3AF99500B6BC19 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FEC7025C2F3AF99500B6BC19 /* Assets.xcassets */; };
@@ -16,7 +28,6 @@
 		FEC702DC2F3B07EC00B6BC19 /* Account+UI.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702D72F3B07EC00B6BC19 /* Account+UI.swift */; };
 		FEC702DD2F3B07EC00B6BC19 /* AccountStatusBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702D82F3B07EC00B6BC19 /* AccountStatusBadge.swift */; };
 		FEC702DE2F3B07EC00B6BC19 /* SelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702D92F3B07EC00B6BC19 /* SelectionView.swift */; };
-		FEC702DF2F3B07EC00B6BC19 /* StandardFormToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702DA2F3B07EC00B6BC19 /* StandardFormToolbar.swift */; };
 		FEC703052F3B07EC00B6BC19 /* AccountDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702E02F3B07EC00B6BC19 /* AccountDetailView.swift */; };
 		FEC703062F3B07EC00B6BC19 /* AccountGroupDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702E12F3B07EC00B6BC19 /* AccountGroupDetailView.swift */; };
 		FEC703072F3B07EC00B6BC19 /* AccountsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702E22F3B07EC00B6BC19 /* AccountsListView.swift */; };
@@ -24,8 +35,6 @@
 		FEC703092F3B07EC00B6BC19 /* AddAccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702E42F3B07EC00B6BC19 /* AddAccountView.swift */; };
 		FEC7030A2F3B07EC00B6BC19 /* EditAccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702E52F3B07EC00B6BC19 /* EditAccountView.swift */; };
 		FEC7030C2F3B07EC00B6BC19 /* ReconcileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702E72F3B07EC00B6BC19 /* ReconcileView.swift */; };
-		FEC7030D2F3B07EC00B6BC19 /* FilterSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702E92F3B07EC00B6BC19 /* FilterSheet.swift */; };
-		FEC7030E2F3B07EC00B6BC19 /* InsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702EA2F3B07EC00B6BC19 /* InsightsView.swift */; };
 		FEC7030F2F3B07EC00B6BC19 /* AddCategoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702EC2F3B07EC00B6BC19 /* AddCategoryView.swift */; };
 		FEC703102F3B07EC00B6BC19 /* CategoryDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702ED2F3B07EC00B6BC19 /* CategoryDetailView.swift */; };
 		FEC703112F3B07EC00B6BC19 /* EditCategoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702EE2F3B07EC00B6BC19 /* EditCategoryView.swift */; };
@@ -37,7 +46,6 @@
 		FEC703172F3B07EC00B6BC19 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702F52F3B07EC00B6BC19 /* SettingsView.swift */; };
 		FEC7031C2F3B07EC00B6BC19 /* EditTemplateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702FC2F3B07EC00B6BC19 /* EditTemplateView.swift */; };
 		FEC7031D2F3B07EC00B6BC19 /* TemplatesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702FD2F3B07EC00B6BC19 /* TemplatesView.swift */; };
-		FEC7031E2F3B07EC00B6BC19 /* AddTransactionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC702FF2F3B07EC00B6BC19 /* AddTransactionView.swift */; };
 		FEC7031F2F3B07EC00B6BC19 /* TransactionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703002F3B07EC00B6BC19 /* TransactionDetailView.swift */; };
 		FEC703202F3B07EC00B6BC19 /* TransactionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703012F3B07EC00B6BC19 /* TransactionListView.swift */; };
 		FEC703212F3B07EC00B6BC19 /* TransactionRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703022F3B07EC00B6BC19 /* TransactionRow.swift */; };
@@ -45,7 +53,6 @@
 		FEC7032D2F3B07F100B6BC19 /* AccountGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703242F3B07F100B6BC19 /* AccountGroup.swift */; };
 		FEC7032E2F3B07F100B6BC19 /* BookMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703252F3B07F100B6BC19 /* BookMetadata.swift */; };
 		FEC7032F2F3B07F100B6BC19 /* Category.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703262F3B07F100B6BC19 /* Category.swift */; };
-		FEC703302F3B07F100B6BC19 /* SavedData.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703272F3B07F100B6BC19 /* SavedData.swift */; };
 		FEC703322F3B07F100B6BC19 /* Transaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703292F3B07F100B6BC19 /* Transaction.swift */; };
 		FEC703332F3B07F100B6BC19 /* TransactionTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC7032A2F3B07F100B6BC19 /* TransactionTemplate.swift */; };
 		FEC7033A2F3B07F500B6BC19 /* CurrencyFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703342F3B07F500B6BC19 /* CurrencyFormatter.swift */; };
@@ -55,15 +62,35 @@
 		FEC7033E2F3B07F500B6BC19 /* UUIDv7.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703382F3B07F500B6BC19 /* UUIDv7.swift */; };
 		FEC7034C2F3B07F500B6BC19 /* FinancialCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC7034A2F3B07F500B6BC19 /* FinancialCalculator.swift */; };
 		FEC7034E2F3B093900B6BC19 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC7034D2F3B093900B6BC19 /* NotificationManager.swift */; };
-		FEC703522F3B12C800B6BC19 /* InsightsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703512F3B12C800B6BC19 /* InsightsViewModel.swift */; };
-		FEC703542F3B180D00B6BC19 /* AccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703532F3B180D00B6BC19 /* AccountStore.swift */; };
-		FEC703562F3B181500B6BC19 /* TransactionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703552F3B181500B6BC19 /* TransactionStore.swift */; };
 		FEC7035A2F3B634E00B6BC19 /* AnalyticsTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC703592F3B634E00B6BC19 /* AnalyticsTypes.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		FE9D1FB53098CC7C00ABBAE2 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FE3DBFCB2F1B151100D7B598 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = FE3DBFD22F1B151100D7B598;
+			remoteInfo = "Pocket Ledger";
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
-		7DC43BF12FFB398500322409 /* BucketsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BucketsView.swift; sourceTree = "<group>"; };
+		FE225B733098D61100348874 /* InsightsEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightsEngine.swift; sourceTree = "<group>"; };
+		FE225B753098D61E00348874 /* AccountStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStore.swift; sourceTree = "<group>"; };
+		FE225B763098D61E00348874 /* EntrySuggestions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntrySuggestions.swift; sourceTree = "<group>"; };
+		FE225B773098D61E00348874 /* SavedData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedData.swift; sourceTree = "<group>"; };
+		FE225B783098D61E00348874 /* TransactionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionStore.swift; sourceTree = "<group>"; };
+		FE225B7E3098D66500348874 /* FilterSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterSheet.swift; sourceTree = "<group>"; };
+		FE225B893098DAC600348874 /* BucketsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BucketsView.swift; sourceTree = "<group>"; };
+		FE225B8A3098DAC600348874 /* InsightDrillDownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightDrillDownView.swift; sourceTree = "<group>"; };
+		FE225B8B3098DAC600348874 /* InsightsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightsView.swift; sourceTree = "<group>"; };
+		FE225B8C3098DAC600348874 /* InsightsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightsViewModel.swift; sourceTree = "<group>"; };
+		FE225B913098DB1100348874 /* RemarkMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemarkMatcher.swift; sourceTree = "<group>"; };
 		FE3DBFD32F1B151100D7B598 /* Pocket Ledger.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Pocket Ledger.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		FE9D1FB13098CC7C00ABBAE2 /* Pocket LedgerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Pocket LedgerTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		FE9D1FC23098D06D00ABBAE2 /* StandardFormToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandardFormToolbar.swift; sourceTree = "<group>"; };
+		FE9D1FC63098D09000ABBAE2 /* AddTransactionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddTransactionView.swift; sourceTree = "<group>"; };
 		FEC7025C2F3AF99500B6BC19 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		FEC7025D2F3AF99500B6BC19 /* PocketLedgerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketLedgerApp.swift; sourceTree = "<group>"; };
 		FEC7025E2F3AF99500B6BC19 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -72,7 +99,6 @@
 		FEC702D72F3B07EC00B6BC19 /* Account+UI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Account+UI.swift"; sourceTree = "<group>"; };
 		FEC702D82F3B07EC00B6BC19 /* AccountStatusBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStatusBadge.swift; sourceTree = "<group>"; };
 		FEC702D92F3B07EC00B6BC19 /* SelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionView.swift; sourceTree = "<group>"; };
-		FEC702DA2F3B07EC00B6BC19 /* StandardFormToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandardFormToolbar.swift; sourceTree = "<group>"; };
 		FEC702E02F3B07EC00B6BC19 /* AccountDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDetailView.swift; sourceTree = "<group>"; };
 		FEC702E12F3B07EC00B6BC19 /* AccountGroupDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountGroupDetailView.swift; sourceTree = "<group>"; };
 		FEC702E22F3B07EC00B6BC19 /* AccountsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountsListView.swift; sourceTree = "<group>"; };
@@ -80,8 +106,6 @@
 		FEC702E42F3B07EC00B6BC19 /* AddAccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddAccountView.swift; sourceTree = "<group>"; };
 		FEC702E52F3B07EC00B6BC19 /* EditAccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditAccountView.swift; sourceTree = "<group>"; };
 		FEC702E72F3B07EC00B6BC19 /* ReconcileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReconcileView.swift; sourceTree = "<group>"; };
-		FEC702E92F3B07EC00B6BC19 /* FilterSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterSheet.swift; sourceTree = "<group>"; };
-		FEC702EA2F3B07EC00B6BC19 /* InsightsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightsView.swift; sourceTree = "<group>"; };
 		FEC702EC2F3B07EC00B6BC19 /* AddCategoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddCategoryView.swift; sourceTree = "<group>"; };
 		FEC702ED2F3B07EC00B6BC19 /* CategoryDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryDetailView.swift; sourceTree = "<group>"; };
 		FEC702EE2F3B07EC00B6BC19 /* EditCategoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditCategoryView.swift; sourceTree = "<group>"; };
@@ -93,7 +117,6 @@
 		FEC702F52F3B07EC00B6BC19 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		FEC702FC2F3B07EC00B6BC19 /* EditTemplateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditTemplateView.swift; sourceTree = "<group>"; };
 		FEC702FD2F3B07EC00B6BC19 /* TemplatesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplatesView.swift; sourceTree = "<group>"; };
-		FEC702FF2F3B07EC00B6BC19 /* AddTransactionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddTransactionView.swift; sourceTree = "<group>"; };
 		FEC703002F3B07EC00B6BC19 /* TransactionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionDetailView.swift; sourceTree = "<group>"; };
 		FEC703012F3B07EC00B6BC19 /* TransactionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionListView.swift; sourceTree = "<group>"; };
 		FEC703022F3B07EC00B6BC19 /* TransactionRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionRow.swift; sourceTree = "<group>"; };
@@ -101,7 +124,6 @@
 		FEC703242F3B07F100B6BC19 /* AccountGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountGroup.swift; sourceTree = "<group>"; };
 		FEC703252F3B07F100B6BC19 /* BookMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookMetadata.swift; sourceTree = "<group>"; };
 		FEC703262F3B07F100B6BC19 /* Category.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Category.swift; sourceTree = "<group>"; };
-		FEC703272F3B07F100B6BC19 /* SavedData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedData.swift; sourceTree = "<group>"; };
 		FEC703292F3B07F100B6BC19 /* Transaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transaction.swift; sourceTree = "<group>"; };
 		FEC7032A2F3B07F100B6BC19 /* TransactionTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionTemplate.swift; sourceTree = "<group>"; };
 		FEC703342F3B07F500B6BC19 /* CurrencyFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrencyFormatter.swift; sourceTree = "<group>"; };
@@ -111,14 +133,26 @@
 		FEC703382F3B07F500B6BC19 /* UUIDv7.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UUIDv7.swift; sourceTree = "<group>"; };
 		FEC7034A2F3B07F500B6BC19 /* FinancialCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinancialCalculator.swift; sourceTree = "<group>"; };
 		FEC7034D2F3B093900B6BC19 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
-		FEC703512F3B12C800B6BC19 /* InsightsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightsViewModel.swift; sourceTree = "<group>"; };
-		FEC703532F3B180D00B6BC19 /* AccountStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStore.swift; sourceTree = "<group>"; };
-		FEC703552F3B181500B6BC19 /* TransactionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionStore.swift; sourceTree = "<group>"; };
 		FEC703592F3B634E00B6BC19 /* AnalyticsTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsTypes.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		FE9D1FB23098CC7C00ABBAE2 /* Pocket LedgerTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Pocket LedgerTests";
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
 /* Begin PBXFrameworksBuildPhase section */
 		FE3DBFD02F1B151100D7B598 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FE9D1FAE3098CC7C00ABBAE2 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -132,6 +166,7 @@
 			isa = PBXGroup;
 			children = (
 				FEC7035B2F3C0AA200B6BC19 /* Pocket Ledger */,
+				FE9D1FB23098CC7C00ABBAE2 /* Pocket LedgerTests */,
 				FE3DBFD42F1B151100D7B598 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -140,6 +175,7 @@
 			isa = PBXGroup;
 			children = (
 				FE3DBFD32F1B151100D7B598 /* Pocket Ledger.app */,
+				FE9D1FB13098CC7C00ABBAE2 /* Pocket LedgerTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -197,7 +233,7 @@
 				FEC702D72F3B07EC00B6BC19 /* Account+UI.swift */,
 				FEC702D82F3B07EC00B6BC19 /* AccountStatusBadge.swift */,
 				FEC702D92F3B07EC00B6BC19 /* SelectionView.swift */,
-				FEC702DA2F3B07EC00B6BC19 /* StandardFormToolbar.swift */,
+				FE9D1FC23098D06D00ABBAE2 /* StandardFormToolbar.swift */,
 			);
 			path = DesignSystem;
 			sourceTree = "<group>";
@@ -219,10 +255,11 @@
 		FEC702EB2F3B07EC00B6BC19 /* Analysis */ = {
 			isa = PBXGroup;
 			children = (
-				7DC43BF12FFB398500322409 /* BucketsView.swift */,
-				FEC703512F3B12C800B6BC19 /* InsightsViewModel.swift */,
-				FEC702E92F3B07EC00B6BC19 /* FilterSheet.swift */,
-				FEC702EA2F3B07EC00B6BC19 /* InsightsView.swift */,
+				FE225B7E3098D66500348874 /* FilterSheet.swift */,
+				FE225B893098DAC600348874 /* BucketsView.swift */,
+				FE225B8A3098DAC600348874 /* InsightDrillDownView.swift */,
+				FE225B8B3098DAC600348874 /* InsightsView.swift */,
+				FE225B8C3098DAC600348874 /* InsightsViewModel.swift */,
 			);
 			path = Analysis;
 			sourceTree = "<group>";
@@ -262,10 +299,10 @@
 		FEC703032F3B07EC00B6BC19 /* Transactions */ = {
 			isa = PBXGroup;
 			children = (
-				FEC702FF2F3B07EC00B6BC19 /* AddTransactionView.swift */,
 				FEC703002F3B07EC00B6BC19 /* TransactionDetailView.swift */,
 				FEC703012F3B07EC00B6BC19 /* TransactionListView.swift */,
 				FEC703022F3B07EC00B6BC19 /* TransactionRow.swift */,
+				FE9D1FC63098D09000ABBAE2 /* AddTransactionView.swift */,
 			);
 			path = Transactions;
 			sourceTree = "<group>";
@@ -318,9 +355,10 @@
 		FEC703442F3B07F500B6BC19 /* State */ = {
 			isa = PBXGroup;
 			children = (
-				FEC703552F3B181500B6BC19 /* TransactionStore.swift */,
-				FEC703532F3B180D00B6BC19 /* AccountStore.swift */,
-				FEC703272F3B07F100B6BC19 /* SavedData.swift */,
+				FE225B753098D61E00348874 /* AccountStore.swift */,
+				FE225B763098D61E00348874 /* EntrySuggestions.swift */,
+				FE225B773098D61E00348874 /* SavedData.swift */,
+				FE225B783098D61E00348874 /* TransactionStore.swift */,
 			);
 			path = State;
 			sourceTree = "<group>";
@@ -331,6 +369,8 @@
 				FEC7034D2F3B093900B6BC19 /* NotificationManager.swift */,
 				FEC7034A2F3B07F500B6BC19 /* FinancialCalculator.swift */,
 				FEC703372F3B07F500B6BC19 /* StorageService.swift */,
+				FE225B733098D61100348874 /* InsightsEngine.swift */,
+				FE225B913098DB1100348874 /* RemarkMatcher.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -369,6 +409,29 @@
 			productReference = FE3DBFD32F1B151100D7B598 /* Pocket Ledger.app */;
 			productType = "com.apple.product-type.application";
 		};
+		FE9D1FB03098CC7C00ABBAE2 /* Pocket LedgerTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FE9D1FB73098CC7C00ABBAE2 /* Build configuration list for PBXNativeTarget "Pocket LedgerTests" */;
+			buildPhases = (
+				FE9D1FAD3098CC7C00ABBAE2 /* Sources */,
+				FE9D1FAE3098CC7C00ABBAE2 /* Frameworks */,
+				FE9D1FAF3098CC7C00ABBAE2 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				FE9D1FB63098CC7C00ABBAE2 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				FE9D1FB23098CC7C00ABBAE2 /* Pocket LedgerTests */,
+			);
+			name = "Pocket LedgerTests";
+			packageProductDependencies = (
+			);
+			productName = "Pocket LedgerTests";
+			productReference = FE9D1FB13098CC7C00ABBAE2 /* Pocket LedgerTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -376,11 +439,16 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2620;
+				LastSwiftUpdateCheck = 2720;
 				LastUpgradeCheck = 2660;
 				TargetAttributes = {
 					FE3DBFD22F1B151100D7B598 = {
 						CreatedOnToolsVersion = 26.2;
+					};
+					FE9D1FB03098CC7C00ABBAE2 = {
+						CreatedOnToolsVersion = 27.2;
+						LastSwiftMigration = 2720;
+						TestTargetID = FE3DBFD22F1B151100D7B598;
 					};
 				};
 			};
@@ -399,6 +467,7 @@
 			projectRoot = "";
 			targets = (
 				FE3DBFD22F1B151100D7B598 /* Pocket Ledger */,
+				FE9D1FB03098CC7C00ABBAE2 /* Pocket LedgerTests */,
 			);
 		};
 /* End PBXProject section */
@@ -414,6 +483,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FE9D1FAF3098CC7C00ABBAE2 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -421,22 +497,19 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FE225B743098D61100348874 /* InsightsEngine.swift in Sources */,
 				FEC702DC2F3B07EC00B6BC19 /* Account+UI.swift in Sources */,
 				FEC702DD2F3B07EC00B6BC19 /* AccountStatusBadge.swift in Sources */,
 				FEC702DE2F3B07EC00B6BC19 /* SelectionView.swift in Sources */,
-				FEC702DF2F3B07EC00B6BC19 /* StandardFormToolbar.swift in Sources */,
-				FEC703562F3B181500B6BC19 /* TransactionStore.swift in Sources */,
+				FE225B843098D66500348874 /* FilterSheet.swift in Sources */,
 				FEC703052F3B07EC00B6BC19 /* AccountDetailView.swift in Sources */,
 				FEC703062F3B07EC00B6BC19 /* AccountGroupDetailView.swift in Sources */,
-				FEC703542F3B180D00B6BC19 /* AccountStore.swift in Sources */,
 				FEC703072F3B07EC00B6BC19 /* AccountsListView.swift in Sources */,
 				FEC703082F3B07EC00B6BC19 /* AddAccountGroupView.swift in Sources */,
 				FEC7034C2F3B07F500B6BC19 /* FinancialCalculator.swift in Sources */,
 				FEC703092F3B07EC00B6BC19 /* AddAccountView.swift in Sources */,
 				FEC7030A2F3B07EC00B6BC19 /* EditAccountView.swift in Sources */,
 				FEC7030C2F3B07EC00B6BC19 /* ReconcileView.swift in Sources */,
-				FEC7030D2F3B07EC00B6BC19 /* FilterSheet.swift in Sources */,
-				FEC7030E2F3B07EC00B6BC19 /* InsightsView.swift in Sources */,
 				FEC7030F2F3B07EC00B6BC19 /* AddCategoryView.swift in Sources */,
 				FEC703102F3B07EC00B6BC19 /* CategoryDetailView.swift in Sources */,
 				FEC703112F3B07EC00B6BC19 /* EditCategoryView.swift in Sources */,
@@ -445,27 +518,34 @@
 				FEC703142F3B07EC00B6BC19 /* HelpView.swift in Sources */,
 				FEC703152F3B07EC00B6BC19 /* LockView.swift in Sources */,
 				FEC7035A2F3B634E00B6BC19 /* AnalyticsTypes.swift in Sources */,
+				FE225B793098D61E00348874 /* TransactionStore.swift in Sources */,
+				FE225B7A3098D61E00348874 /* AccountStore.swift in Sources */,
+				FE225B8D3098DAC600348874 /* InsightsView.swift in Sources */,
+				FE225B8E3098DAC600348874 /* BucketsView.swift in Sources */,
+				FE225B8F3098DAC600348874 /* InsightDrillDownView.swift in Sources */,
+				FE225B903098DAC600348874 /* InsightsViewModel.swift in Sources */,
+				FE225B7B3098D61E00348874 /* SavedData.swift in Sources */,
+				FE225B7C3098D61E00348874 /* EntrySuggestions.swift in Sources */,
 				FEC703162F3B07EC00B6BC19 /* ManageBooksView.swift in Sources */,
+				FE9D1FC73098D09000ABBAE2 /* AddTransactionView.swift in Sources */,
 				FEC703172F3B07EC00B6BC19 /* SettingsView.swift in Sources */,
+				FE225B923098DB1100348874 /* RemarkMatcher.swift in Sources */,
 				FEC7033A2F3B07F500B6BC19 /* CurrencyFormatter.swift in Sources */,
 				FEC7033B2F3B07F500B6BC19 /* Formatters.swift in Sources */,
 				FEC7033C2F3B07F500B6BC19 /* MathParser.swift in Sources */,
+				FE9D1FC33098D06D00ABBAE2 /* StandardFormToolbar.swift in Sources */,
 				FEC7033D2F3B07F500B6BC19 /* StorageService.swift in Sources */,
 				FEC7033E2F3B07F500B6BC19 /* UUIDv7.swift in Sources */,
 				FEC7034E2F3B093900B6BC19 /* NotificationManager.swift in Sources */,
 				FEC7031C2F3B07EC00B6BC19 /* EditTemplateView.swift in Sources */,
 				FEC7031D2F3B07EC00B6BC19 /* TemplatesView.swift in Sources */,
-				FEC7031E2F3B07EC00B6BC19 /* AddTransactionView.swift in Sources */,
-				7DC43BF22FFB398500322409 /* BucketsView.swift in Sources */,
 				FEC7031F2F3B07EC00B6BC19 /* TransactionDetailView.swift in Sources */,
 				FEC703202F3B07EC00B6BC19 /* TransactionListView.swift in Sources */,
 				FEC703212F3B07EC00B6BC19 /* TransactionRow.swift in Sources */,
-				FEC703522F3B12C800B6BC19 /* InsightsViewModel.swift in Sources */,
 				FEC7032C2F3B07F100B6BC19 /* Account.swift in Sources */,
 				FEC7032D2F3B07F100B6BC19 /* AccountGroup.swift in Sources */,
 				FEC7032E2F3B07F100B6BC19 /* BookMetadata.swift in Sources */,
 				FEC7032F2F3B07F100B6BC19 /* Category.swift in Sources */,
-				FEC703302F3B07F100B6BC19 /* SavedData.swift in Sources */,
 				FEC703322F3B07F100B6BC19 /* Transaction.swift in Sources */,
 				FEC703332F3B07F100B6BC19 /* TransactionTemplate.swift in Sources */,
 				FEC702942F3AF99500B6BC19 /* PocketLedgerApp.swift in Sources */,
@@ -473,7 +553,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FE9D1FAD3098CC7C00ABBAE2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		FE9D1FB63098CC7C00ABBAE2 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = FE3DBFD22F1B151100D7B598 /* Pocket Ledger */;
+			targetProxy = FE9D1FB53098CC7C00ABBAE2 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		FE3DBFE12F1B151200D7B598 /* Debug */ = {
@@ -625,7 +720,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0;
+				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "GeekyZeke.Pocket-Ledger";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -664,7 +759,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0;
+				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "GeekyZeke.Pocket-Ledger";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -674,6 +769,53 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		FE9D1FB83098CC7C00ABBAE2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9Y77PNP57U;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "GeekyZeke.Pocket-LedgerTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Pocket Ledger.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Pocket Ledger";
+			};
+			name = Debug;
+		};
+		FE9D1FB93098CC7C00ABBAE2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9Y77PNP57U;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "GeekyZeke.Pocket-LedgerTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Pocket Ledger.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Pocket Ledger";
 			};
 			name = Release;
 		};
@@ -694,6 +836,15 @@
 			buildConfigurations = (
 				FE3DBFE42F1B151200D7B598 /* Debug */,
 				FE3DBFE52F1B151200D7B598 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FE9D1FB73098CC7C00ABBAE2 /* Build configuration list for PBXNativeTarget "Pocket LedgerTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FE9D1FB83098CC7C00ABBAE2 /* Debug */,
+				FE9D1FB93098CC7C00ABBAE2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

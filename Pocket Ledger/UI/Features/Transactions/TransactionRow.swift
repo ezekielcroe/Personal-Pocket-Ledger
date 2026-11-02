@@ -19,7 +19,7 @@ struct TransactionRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 // Primary: Remark (or account name, or category if neither)
                 if !transaction.remark.isEmpty {
-                    Text(transaction.remark)
+                    RemarkText.styled(transaction.remark)
                         .font(.body)
                         .foregroundColor(.primary)
                         .lineLimit(1)
@@ -89,7 +89,23 @@ struct TransactionRow: View {
     
     // Logic to distinguish Transfers visually
     private var amountColor: Color {
-        if categoryName == "Transfer" { return .blue }
+        // A transfer is identified by its link to a partner leg, not by name.
+        if transaction.linkedTransactionID != nil { return .blue }
         return transaction.type == .inflow ? .green : .red
+    }
+}
+
+// MARK: - Remark Text
+
+/// A remark with its #tags shown in the accent colour, so the "why" stands
+/// out from the "who" ("Dinner at Lolla #datenight").
+enum RemarkText {
+    static func styled(_ remark: String) -> Text {
+        RemarkMatcher.segments(of: remark).reduce(Text(verbatim: "")) { text, segment in
+            let part = segment.isTag
+                ? Text(verbatim: segment.text).foregroundColor(.accentColor).fontWeight(.medium)
+                : Text(verbatim: segment.text)
+            return Text("\(text)\(part)")
+        }
     }
 }

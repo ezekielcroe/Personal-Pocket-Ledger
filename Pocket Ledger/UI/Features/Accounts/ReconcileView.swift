@@ -544,15 +544,8 @@ struct ReconcileSessionView: View {
     }
 
     private func ensureAdjustmentCategory(type: TransactionType) -> UUID {
-        let name = "Reconciliation Adjustment"
-        if let existing = transactionStore.categories.first(where: { $0.name == name && $0.type.rawValue == type.rawValue }) {
-            return existing.id
-        }
-        let catType = CategoryType(rawValue: type.rawValue) ?? .outflow
-        let newCat = Category(name: name, type: catType, emoji: "⚖️")
-        transactionStore.categories.append(newCat)
-        transactionStore.save()
-        return newCat.id
+        let categoryType = CategoryType(rawValue: type.rawValue) ?? .outflow
+        return transactionStore.systemCategoryID(for: .reconciliationAdjustment, type: categoryType)
     }
 
     // MARK: - Finish
@@ -609,7 +602,11 @@ struct AdjustmentDetailSheet: View {
                 Section(header: Text("Category")) {
                     Picker("Category", selection: $selectedCategoryID) {
                         Text("Auto-select").tag(nil as UUID?)
-                        ForEach(transactionStore.categories.filter { $0.type.rawValue == transactionType.rawValue }) { cat in
+                        // Your own categories only; the app's Transfer category
+                        // would make the plug look like a transfer.
+                        ForEach(transactionStore.categories.filter {
+                            $0.type.rawValue == transactionType.rawValue && !$0.isSystemCategory && !$0.isArchived
+                        }) { cat in
                             Text(cat.emoji + " " + cat.name).tag(cat.id as UUID?)
                         }
                     }

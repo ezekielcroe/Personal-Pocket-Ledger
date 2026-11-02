@@ -4,99 +4,201 @@ import Foundation
 //  MathParser.swift
 //  Pocket Ledger
 //
-//  Robust version: Prevents crashes during live typing by rejecting invalid syntax.
-//  Updated: Supports "naked" decimals (e.g. ".5" -> "0.5").
+//  Evaluates amount-field arithmetic ("45/2", "12.50+3*2", "(30+15)/3")
+//  entirely in Decimal. Earlier versions handed the string to NSExpression,
+//  which did integer division on whole numbers ("45/2" gave 22), routed
+//  results through Double ("0.1+0.2" was not exactly 0.30), and raised an
+//  uncatchable Objective-C exception on some malformed input ("1.2.3").
+//
+//  Grammar (standard precedence, left-associative):
+//      expression := term (("+" | "-") term)*
+//      term       := factor (("*" | "/") factor)*
+//      factor     := ("+" | "-") factor | number | "(" expression ")"
 //
 
 struct MathParser {
-    /// Parses a string input (e.g. "10+2.50" or ".5") and returns a computed Decimal.
-    /// Handles live-typing stability by stripping dangerous characters and invalid sequences.
-    static func calculate(_ input: String) -> Decimal {
-        // 1. Sanitize: Allow only numbers, dot, and BASIC math operators.
-        // We remove spaces entirely to make parsing easier (e.g. "10 + .5" becomes "10+.5")
-        let allowed = CharacterSet(charactersIn: "0123456789.+-*/")
-        var sanitized = input.components(separatedBy: allowed.inverted).joined()
-        
-        // NEW: Normalize "naked" decimals before validation
-        // This handles cases like ".5" -> "0.5" or "10+.5" -> "10+0.5"
-        
-        // Case A: Expression starts with a dot (e.g. ".5")
-        if sanitized.hasPrefix(".") {
-            sanitized = "0" + sanitized
+
+    /// Number of fraction digits results are rounded to. Matches the
+    /// two-decimal display used throughout the app.
+    static let fractionDigits = 2
+
+    /// Parses an amount expression and returns the result rounded to cents.
+    /// Returns 0 for empty, invalid, or incomplete input, and for division by
+    /// zero, so callers can treat "not a positive number" uniformly.
+    static func calculate(_ input: String, locale: Locale = .current) -> Decimal {
+        evaluate(input, locale: locale) ?? 0
+    }
+
+    /// Like `calculate`, but returns nil when the input can't be evaluated,
+    /// so a UI can tell "invalid" apart from a genuine zero.
+    static func evaluate(_ input: String, locale: Locale = .current) -> Decimal? {
+        let tokens = tokenize(prepare(input, locale: locale))
+        guard let tokens, tokens.contains(where: { if case .number = $0 { return true } else { return false } }) else {
+            return nil
         }
-        
-        // Case B: Operator followed immediately by a dot (e.g. "+." or "*.")
-        // We iterate through operators and replace "op." with "op0."
-        let operators = ["+", "-", "*", "/"]
-        for op in operators {
-            sanitized = sanitized.replacingOccurrences(of: "\(op).", with: "\(op)0.")
+        var parser = Parser(tokens: tokens)
+        guard let value = parser.parseExpression(), parser.isAtEnd else { return nil }
+        return roundedToCents(value)
+    }
+
+    // MARK: - Input preparation
+
+    /// Normalises symbols, the locale's decimal separator, and live-typing
+    /// leftovers, so "45 ÷ 2", "4,50" (comma locales) and "50+" all parse.
+    static func prepare(_ input: String, locale: Locale = .current) -> String {
+        var s = input
+            .replacingOccurrences(of: "×", with: "*")
+            .replacingOccurrences(of: "÷", with: "/")
+            .replacingOccurrences(of: "−", with: "-")   // Unicode minus
+        // Note: the letter "x" is deliberately NOT treated as multiply, so
+        // stray text ("approx 50") is dropped rather than becoming "*50".
+
+        // Comma: decimal point in comma locales ("4,50"), otherwise a
+        // grouping separator ("1,000") that can safely be dropped.
+        let usesDecimalComma = (locale.decimalSeparator ?? ".") == ","
+        s = s.replacingOccurrences(of: ",", with: usesDecimalComma ? "." : "")
+
+        // Keep only characters the grammar understands; currency symbols,
+        // spaces and letters are dropped.
+        let allowed = Set("0123456789.+-*/()")
+        s = String(s.filter { allowed.contains($0) })
+
+        // Live typing: ignore a dangling operator or decimal point at the end
+        // ("50+", "12.") and any unclosed parentheses ("(10+5").
+        while let last = s.last, "+-*/(.".contains(last) {
+            s.removeLast()
         }
-        
-        // 2. Early exit for empty input
-        // Note: trimmingCharacters(in: .whitespaces) is redundant if we stripped spaces above,
-        // but kept for safety if logic changes.
-        let trimmed = sanitized.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return 0 }
-        
-        // 3. Validate: Must contain at least one digit
-        guard trimmed.contains(where: { $0.isNumber }) else { return 0 }
-        
-        // 4. CRITICAL FIX: Detect invalid consecutive operators (e.g., "++", "**", "..")
-        // These cause NSExpression to crash. We return 0 immediately if found.
-        // We allow "*-" or "/-" for negative numbers, but block double symbols otherwise.
-        if hasInvalidSequences(trimmed) {
-            return 0
+        let open = s.filter { $0 == "(" }.count
+        let close = s.filter { $0 == ")" }.count
+        if open > close {
+            s += String(repeating: ")", count: open - close)
         }
-        
-        // 5. Strip trailing non-digit characters (operators and dots)
-        // This handles live-typing cases like "50+" (user hasn't typed the next number yet)
-        let trailingJunk = CharacterSet(charactersIn: "+-*/.")
-        let cleaned = trimmed.trimmingCharacters(in: trailingJunk)
-        
-        // After cleaning, check we still have content
-        guard !cleaned.isEmpty, cleaned.contains(where: { $0.isNumber }) else { return 0 }
-        
-        // 6. Strip leading operators (except minus)
-        let leadingJunk = CharacterSet(charactersIn: "+*/.")
-        var expression = cleaned.trimmingCharacters(in: leadingJunk)
-        
-        // Handle edge case: expression starts with multiple minuses like "--5"
-        while expression.hasPrefix("--") {
-            expression = String(expression.dropFirst(2))
-        }
-        
-        guard !expression.isEmpty, expression.contains(where: { $0.isNumber }) else { return 0 }
-        
-        // 7. Evaluate using NSExpression safely
-        let nsExpression = NSExpression(format: expression)
-            
-            if let result = nsExpression.expressionValue(with: nil, context: nil) as? NSNumber {
-                // Convert the NSNumber result directly to Decimal
-                return result.decimalValue
+        return s
+    }
+
+    // MARK: - Tokenizer
+
+    enum Token: Equatable {
+        case number(Decimal)
+        case plus, minus, times, divide
+        case openParen, closeParen
+    }
+
+    /// Splits prepared input into tokens. Returns nil for malformed numbers
+    /// such as "1.2.3" or a lone ".".
+    static func tokenize(_ s: String) -> [Token]? {
+        var tokens: [Token] = []
+        var index = s.startIndex
+
+        while index < s.endIndex {
+            let ch = s[index]
+            switch ch {
+            case "+": tokens.append(.plus);       index = s.index(after: index)
+            case "-": tokens.append(.minus);      index = s.index(after: index)
+            case "*": tokens.append(.times);      index = s.index(after: index)
+            case "/": tokens.append(.divide);     index = s.index(after: index)
+            case "(": tokens.append(.openParen);  index = s.index(after: index)
+            case ")": tokens.append(.closeParen); index = s.index(after: index)
+            default:
+                // Number: digits with at most one decimal point.
+                var literal = ""
+                var seenDot = false
+                while index < s.endIndex, s[index].isASCII, s[index].isNumber || s[index] == "." {
+                    if s[index] == "." {
+                        if seenDot { return nil }   // "1.2.3"
+                        seenDot = true
+                    }
+                    literal.append(s[index])
+                    index = s.index(after: index)
+                }
+                guard literal.contains(where: { $0.isNumber }) else { return nil } // lone "."
+                if literal.hasPrefix(".") { literal = "0" + literal }   // ".5"
+                if literal.hasSuffix(".") { literal.removeLast() }      // "5."
+                // Decimal(string:) is locale-sensitive; the POSIX locale
+                // guarantees "." is read as the decimal point.
+                guard let value = Decimal(string: literal, locale: Locale(identifier: "en_US_POSIX")) else {
+                    return nil
+                }
+                tokens.append(.number(value))
             }
-            
-            return Decimal(string: expression) ?? 0
         }
-    
-    private static func hasInvalidSequences(_ input: String) -> Bool {
-        // Blocks: ++, --, **, //, .., +*, +/, -*, -/, etc.
-        // But we want to allow: *- (times negative) or /- (divided by negative) or +- (plus negative)
-        // The safest live-typing check is to look for specific dangerous duplications.
-        
-        let dangerousPatterns = [
-            "++", "**", "//", "..",   // Double operators
-            "+*", "+/",               // Operator mixing
-            "-*", "-/"                // Minus followed by others (rarely valid in this syntax)
-        ]
-        
-        for pattern in dangerousPatterns {
-            if input.contains(pattern) { return true }
+        return tokens
+    }
+
+    // MARK: - Parser
+
+    private struct Parser {
+        let tokens: [Token]
+        var position = 0
+        /// Guards against pathological nesting like "((((((…" or "------…".
+        private var depth = 0
+        private static let maxDepth = 64
+
+        init(tokens: [Token]) { self.tokens = tokens }
+
+        var isAtEnd: Bool { position >= tokens.count }
+
+        private var current: Token? { isAtEnd ? nil : tokens[position] }
+
+        private mutating func advance() { position += 1 }
+
+        mutating func parseExpression() -> Decimal? {
+            guard var value = parseTerm() else { return nil }
+            while let token = current, token == .plus || token == .minus {
+                advance()
+                guard let rhs = parseTerm() else { return nil }
+                value = (token == .plus) ? value + rhs : value - rhs
+            }
+            return value
         }
-        
-        // Also check for multiple decimals in a single number segment
-        // Simple heuristic: if we see two dots without an operator in between
-        // This is complex to regex perfectly, but preventing ".." covers most accidents.
-        
-        return false
+
+        private mutating func parseTerm() -> Decimal? {
+            guard var value = parseFactor() else { return nil }
+            while let token = current, token == .times || token == .divide {
+                advance()
+                guard let rhs = parseFactor() else { return nil }
+                if token == .times {
+                    value *= rhs
+                } else {
+                    guard rhs != 0 else { return nil }   // division by zero
+                    value /= rhs
+                }
+            }
+            return value
+        }
+
+        private mutating func parseFactor() -> Decimal? {
+            depth += 1
+            defer { depth -= 1 }
+            guard depth <= Self.maxDepth, let token = current else { return nil }
+
+            switch token {
+            case .plus:
+                advance()
+                return parseFactor()
+            case .minus:
+                advance()
+                return parseFactor().map { -$0 }
+            case .number(let value):
+                advance()
+                return value
+            case .openParen:
+                advance()
+                guard let value = parseExpression(), current == .closeParen else { return nil }
+                advance()
+                return value
+            default:
+                return nil   // e.g. "5*/2" or ")"
+            }
+        }
+    }
+
+    // MARK: - Rounding
+
+    private static func roundedToCents(_ value: Decimal) -> Decimal {
+        var input = value
+        var result = Decimal()
+        NSDecimalRound(&result, &input, fractionDigits, .plain)
+        return result
     }
 }

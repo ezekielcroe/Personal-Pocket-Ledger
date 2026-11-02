@@ -11,8 +11,17 @@ import Combine
 
 @MainActor
 class TransactionStore: ObservableObject {
-    @Published var transactions: [Transaction] = []
-    @Published var categories: [Category] = []
+    @Published var transactions: [Transaction] = [] {
+        // Any change to history invalidates the remark index used for
+        // autocomplete and "Last time"; it's rebuilt lazily on next use.
+        didSet { remarkIndexCache = nil }
+    }
+    
+    /// Cache for `remarkIndex` (see EntrySuggestions.swift).
+    var remarkIndexCache: RemarkIndex?
+    @Published var categories: [Category] = [] {
+        didSet { remarkIndexCache = nil } // system-category IDs may change
+    }
     @Published var templates: [TransactionTemplate] = []
     @Published var insightPresets: [InsightPreset] = []
     @Published var remarkBuckets: [RemarkBucket] = []
@@ -55,6 +64,7 @@ class TransactionStore: ObservableObject {
             // One-time migration: fold tag names from pre-remark data
             // into transaction and template remarks.
             migrateLegacyTags(data.legacyTags)
+            assignSystemRoles()
         } catch {
             // No data file for this book yet — start fresh with empty state.
             self.transactions   = []
@@ -223,59 +233,61 @@ class TransactionStore: ObservableObject {
     
     
     // =========================================================
+    // MARK: - System Categories
+    // =========================================================
+    
+    /// One-time migration: tags the app's own categories with a role, so
+    /// they're recognised by role rather than by name from now on.
+    /// - A category used by any transfer leg is the transfer category.
+    /// - An unused "Transfer" with the app's ⇆ emoji is too.
+    /// - "Reconciliation Adjustment" is the plug category.
+    /// Safe to call repeatedly; it only touches categories without a role.
+    func assignSystemRoles() {
+        let usedByTransfers = Set(transactions.filter { $0.linkedTransactionID != nil }.map { $0.categoryID })
+        var changed = false
+        for i in categories.indices where categories[i].systemRole == nil {
+            let category = categories[i]
+            if usedByTransfers.contains(category.id) ||
+                (category.name == Category.transferName && category.emoji == "⇆") {
+                categories[i].systemRole = .transfer
+                changed = true
+            } else if category.name == Category.reconciliationAdjustmentName {
+                categories[i].systemRole = .reconciliationAdjustment
+                changed = true
+            }
+        }
+        if changed { save() }
+    }
+    
+    /// The system category for `role` and `type`, created if missing.
+    func systemCategoryID(for role: CategorySystemRole, type: CategoryType) -> UUID {
+        if let existing = categories.first(where: { $0.systemRole == role && $0.type == type }) {
+            return existing.id
+        }
+        let category: Category
+        switch role {
+        case .transfer:
+            category = Category(name: Category.transferName, type: type, emoji: "⇆", systemRole: role)
+        case .reconciliationAdjustment:
+            category = Category(name: Category.reconciliationAdjustmentName, type: type, emoji: "⚖️", systemRole: role)
+        }
+        categories.append(category)
+        save()
+        return category.id
+    }
+    
+    /// IDs of every category with this role (both inflow and outflow).
+    func systemCategoryIDs(for role: CategorySystemRole) -> Set<UUID> {
+        Set(categories.filter { $0.systemRole == role }.map { $0.id })
+    }
+    
+    
+    // =========================================================
     // MARK: - Remark Autocomplete
     // =========================================================
     
-    /// Returns past remark WORDS that complete `fragment` (the word currently
-    /// being typed), ranked by how often each word appears across all remarks
-    /// and then by how recently. An empty fragment returns the overall
-    /// most-used words. Counting is case-insensitive — "starbucks" and
-    /// "Starbucks" are one word — and the most recently used casing wins.
-    /// Surrounding punctuation is stripped, so "(Caffeine)" counts as
-    /// "Caffeine"; words shorter than 2 characters are ignored.
-    func remarkWordSuggestions(completing fragment: String, limit: Int = 3) -> [String] {
-        var usage: [String: (text: String, count: Int, lastUsed: Date)] = [:]
-        
-        for tx in transactions {
-            for word in Self.remarkWords(in: tx.remark) {
-                let key = word.lowercased()
-                if var entry = usage[key] {
-                    entry.count += 1
-                    if tx.date > entry.lastUsed {
-                        entry.lastUsed = tx.date
-                        entry.text = word
-                    }
-                    usage[key] = entry
-                } else {
-                    usage[key] = (word, 1, tx.date)
-                }
-            }
-        }
-        
-        let q = fragment.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let candidates = usage.values
-            .filter { q.isEmpty || $0.text.lowercased().contains(q) }
-            .filter { $0.text.lowercased() != q } // don't suggest what's already typed
-        
-        return candidates
-            .sorted {
-                if $0.count != $1.count { return $0.count > $1.count }
-                return $0.lastUsed > $1.lastUsed
-            }
-            .prefix(limit)
-            .map { $0.text }
-    }
-    
-    /// Splits a remark into countable words: whitespace-separated tokens with
-    /// leading/trailing punctuation and symbols removed. Internal punctuation
-    /// survives, so "joe's" stays intact.
-    private static func remarkWords(in remark: String) -> [String] {
-        let trimSet = CharacterSet.punctuationCharacters.union(.symbols)
-        return remark
-            .split(whereSeparator: { $0.isWhitespace })
-            .map { $0.trimmingCharacters(in: trimSet) }
-            .filter { $0.count >= 2 }
-    }
+    // Suggestions, "Last time" recall, suggested categories and the
+    // last-used account live in EntrySuggestions.swift.
     
     
     // =========================================================

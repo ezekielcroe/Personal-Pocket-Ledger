@@ -184,6 +184,7 @@ struct SettingsView: View {
                     
                     // Fold tags from pre-remark backups into remarks
                     transactionStore.migrateLegacyTags(backup.legacyTags)
+                    transactionStore.assignSystemRoles()
                     
                     accountStore.recomputeBalances(using: transactionStore.transactions)
                     accountStore.save()

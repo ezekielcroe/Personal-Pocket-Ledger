@@ -1,49 +1,83 @@
 import SwiftUI
 
+/// One inclusion-based filter screen ("what's in the view"). Edits a draft;
+/// only Apply or a save commits it, so Cancel always discards.
 struct FilterSheet: View {
     @EnvironmentObject var accountStore: AccountStore
     @EnvironmentObject var transactionStore: TransactionStore
     @Environment(\.dismiss) var dismiss
+    @AppStorage("currencySymbol") private var currencySymbol: String = "$"
 
-    @Binding var excludedAccountIDs: Set<UUID>
-    @Binding var excludedCategoryIDs: Set<UUID>
-    @Binding var excludeOutliers: Bool
-    @Binding var minimumAmount: Decimal?
-    @Binding var maximumAmount: Decimal?
+    /// Committed filters on the Insights page.
+    @Binding var filters: InsightFilters
+    /// The applied saved view, if any. Cleared when the applied filters no
+    /// longer match it.
+    @Binding var selectedPresetID: UUID?
+    /// Saved with a view, so re-applying it restores the whole page.
+    let breakdownMode: BreakdownMode
+    let showsSpending: Bool
 
     @State private var showingSaveSheet = false
+
+    // MARK: - Draft State
+
+    @State private var selectedAccountIDs: Set<UUID> = []
+    @State private var selectedCategoryIDs: Set<UUID> = []
+    @State private var draftExcludeOutliers = false
     @State private var minAmountString = ""
     @State private var maxAmountString = ""
 
-    enum FilterMode { case simple, advanced }
-    @State private var filterMode: FilterMode = .simple
+    // MARK: - Lists
 
-    // Simple mode: inclusion-based selections
-    @State private var selectedAccountIDs: Set<UUID> = []
-    @State private var selectedCategoryIDs: Set<UUID> = []
-
-    // MARK: - Computed
-
-    private var hasActiveFilters: Bool {
-        !excludedAccountIDs.isEmpty || !excludedCategoryIDs.isEmpty ||
-        excludeOutliers ||
-        minimumAmount != nil || maximumAmount != nil
+    /// Archived accounts aren't listed; any exclusion they already have is kept.
+    private var activeAccounts: [Account] {
+        accountStore.accounts.filter { !$0.isArchived }
     }
 
-    private var filterSummary: String {
-        var parts: [String] = []
-        if !excludedAccountIDs.isEmpty {
-            let included = accountStore.accounts.count - excludedAccountIDs.count
-            parts.append("\(included) of \(accountStore.accounts.count) accounts")
-        }
-        if !excludedCategoryIDs.isEmpty {
-            let included = transactionStore.categories.count - excludedCategoryIDs.count
-            parts.append("\(included) of \(transactionStore.categories.count) categories")
-        }
-        if excludeOutliers { parts.append("Excluding outliers") }
-        if let min = minimumAmount { parts.append("Min: \(min.formattedCurrency(symbol: "$"))") }
-        if let max = maximumAmount { parts.append("Max: \(max.formattedCurrency(symbol: "$"))") }
-        return parts.isEmpty ? "All data included" : parts.joined(separator: " • ")
+    /// The app's own categories (Transfer, Reconciliation Adjustment) aren't
+    /// listed: excluding Transfer would silently zero Saved and Debt paid,
+    /// and plugs are always left out anyway.
+    private var listedCategories: [Category] {
+        transactionStore.categories
+            .filter { !$0.isSystemCategory && !$0.isArchived }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private var activeAccountIDs: Set<UUID> { Set(activeAccounts.map { $0.id }) }
+    private var listedCategoryIDs: Set<UUID> { Set(listedCategories.map { $0.id }) }
+
+    // MARK: - Resolved Draft
+
+    /// The draft as exclusions — the form Insights and saved views use, so
+    /// accounts and categories created later are included automatically.
+    private var draft: InsightFilters {
+        let keptAccountExclusions = filters.excludedAccountIDs.subtracting(activeAccountIDs)
+        let keptCategoryExclusions = filters.excludedCategoryIDs.subtracting(listedCategoryIDs)
+        return InsightFilters(
+            excludedAccountIDs: activeAccountIDs.subtracting(selectedAccountIDs).union(keptAccountExclusions),
+            excludedCategoryIDs: listedCategoryIDs.subtracting(selectedCategoryIDs).union(keptCategoryExclusions),
+            excludeOutliers: draftExcludeOutliers,
+            minimumAmount: parsedAmount(minAmountString),
+            maximumAmount: parsedAmount(maxAmountString)
+        )
+    }
+
+    private var selectedPreset: InsightPreset? {
+        selectedPresetID.flatMap { id in transactionStore.insightPresets.first { $0.id == id } }
+    }
+
+    /// The applied saved view differs from the draft, so it can be updated.
+    private var canUpdateSelectedPreset: Bool {
+        guard let preset = selectedPreset else { return false }
+        return preset.filters != draft ||
+            preset.breakdownMode != breakdownMode ||
+            preset.showsIncome != !showsSpending
+    }
+
+    private var draftAsPreset: InsightPreset {
+        var preset = InsightPreset(name: "")
+        preset.filters = draft
+        return preset
     }
 
     // MARK: - Body
@@ -51,29 +85,16 @@ struct FilterSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                Section(footer: Text(filterMode == .simple ?
-                    "Choose what to include in your view" :
-                    "Fine-tune by excluding specific items")) {
-                    Picker("Filter Mode", selection: $filterMode) {
-                        Text("Simple").tag(FilterMode.simple)
-                        Text("Advanced").tag(FilterMode.advanced)
-                    }
-                    .pickerStyle(.segmented)
-                }
+                quickFilters
+                amountRangeSection
+                accountsSection
+                categoriesSection
 
-                if filterMode == .simple {
-                    simpleFilterUI
-                } else {
-                    advancedFilterUI
-                }
-
-                if hasActiveFilters {
+                if !draft.isEmpty {
                     Section(header: Text("Active Filters")) {
-                        Text(filterSummary)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        PresetFilterSummary(preset: draftAsPreset, currencySymbol: currencySymbol)
                         Button("Clear All Filters", role: .destructive) {
-                            resetFilters()
+                            resetDraft()
                         }
                     }
                 }
@@ -90,41 +111,53 @@ struct FilterSheet: View {
             .safeAreaInset(edge: .bottom) { applyBar }
             .sheet(isPresented: $showingSaveSheet) {
                 SavePresetSheet(
-                    excludedAccountIDs: excludedAccountIDs,
-                    excludedCategoryIDs: excludedCategoryIDs,
-                    excludeOutliers: excludeOutliers,
+                    draft: draftAsPreset,
+                    currencySymbol: currencySymbol,
                     onSave: { name in
-                        let preset = InsightPreset(
-                            name: name,
-                            excludedAccountIDs: excludedAccountIDs,
-                            excludedCategoryIDs: excludedCategoryIDs,
-                            excludeOutliers: excludeOutliers
-                        )
+                        var preset = draftAsPreset
+                        preset.name = name
+                        preset.breakdownMode = breakdownMode
+                        preset.showsIncome = !showsSpending
                         transactionStore.savePreset(preset)
+                        filters = draft
+                        selectedPresetID = preset.id
                         dismiss()
                     }
                 )
             }
-            .onAppear {
-                initializeSimpleSelections()
-                initializeAmountStrings()
-            }
+            .onAppear(perform: loadDraft)
         }
     }
 
     // MARK: - Bottom Bar
 
     private var applyBar: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 8) {
             Divider()
+
+            if let preset = selectedPreset, canUpdateSelectedPreset {
+                Button {
+                    var updated = preset
+                    updated.filters = draft
+                    updated.breakdownMode = breakdownMode
+                    updated.showsIncome = !showsSpending
+                    transactionStore.savePreset(updated)
+                    filters = draft
+                    dismiss()
+                } label: {
+                    Label("Update “\(preset.name)”", systemImage: "bookmark.fill")
+                        .font(.subheadline.weight(.medium))
+                }
+            }
+
             HStack(spacing: 12) {
-                if hasActiveFilters {
+                if !draft.isEmpty {
                     Button {
                         showingSaveSheet = true
                     } label: {
                         HStack {
                             Image(systemName: "bookmark")
-                            Text("Save View")
+                            Text(selectedPreset == nil ? "Save View" : "Save as New")
                         }
                         .frame(maxWidth: .infinity)
                         .padding()
@@ -134,7 +167,7 @@ struct FilterSheet: View {
                     }
                 }
                 Button {
-                    if filterMode == .simple { convertSimpleToExclusion() }
+                    commit()
                     dismiss()
                 } label: {
                     Text("Apply Filters")
@@ -147,31 +180,36 @@ struct FilterSheet: View {
                 }
             }
             .padding(.horizontal)
-            .padding(.vertical, 12)
-            .background(Color(.systemBackground))
+            .padding(.bottom, 12)
+        }
+        .background(Color(.systemBackground))
+    }
+
+    // MARK: - Sections
+
+    private var quickFilters: some View {
+        Section(header: Text("Quick Filters")) {
+            QuickFilterButton(icon: "checkmark.circle.fill", title: "All Data",
+                              isActive: draft.isEmpty) { resetDraft() }
+            QuickFilterButton(icon: "creditcard", title: "Only Debit Accounts",
+                              isActive: isDebitOnlyActive) { toggleDebitOnly() }
+            QuickFilterButton(icon: "chart.bar", title: "Exclude Outliers",
+                              isActive: draftExcludeOutliers) { draftExcludeOutliers.toggle() }
+            QuickFilterButton(icon: "dollarsign.circle",
+                              title: "Large Only (over \(Self.largeThreshold.formattedCurrency(symbol: currencySymbol)))",
+                              isActive: parsedAmount(minAmountString) == Self.largeThreshold) { toggleLarge() }
         }
     }
 
-    // MARK: - Amount Range Section (shared)
-
-    @ViewBuilder
-    private func amountRangeSection() -> some View {
-        Section(
-            header: Text("Amount Range"),
-            footer: filterMode == .simple
-                ? Text("Filter transactions by amount.")
-                : nil
-        ) {
+    private var amountRangeSection: some View {
+        Section(header: Text("Amount Range")) {
             HStack {
                 Text("Minimum")
                 Spacer()
                 TextField("No limit", text: $minAmountString)
                     .keyboardType(.decimalPad)
                     .multilineTextAlignment(.trailing)
-                    .frame(width: 100)
-                    .onChange(of: minAmountString) { _, new in
-                        minimumAmount = Decimal(string: new)
-                    }
+                    .frame(width: 110)
             }
             HStack {
                 Text("Maximum")
@@ -179,52 +217,26 @@ struct FilterSheet: View {
                 TextField("No limit", text: $maxAmountString)
                     .keyboardType(.decimalPad)
                     .multilineTextAlignment(.trailing)
-                    .frame(width: 100)
-                    .onChange(of: maxAmountString) { _, new in
-                        maximumAmount = Decimal(string: new)
-                    }
+                    .frame(width: 110)
             }
         }
     }
 
-    // MARK: - Simple Filter UI
-
     @ViewBuilder
-    private var simpleFilterUI: some View {
-        Section(header: Text("Quick Filters")) {
-            QuickFilterButton(icon: "checkmark.circle.fill", title: "All Data",
-                              isActive: !hasActiveFilters) { resetFilters() }
-            QuickFilterButton(icon: "creditcard", title: "Only Debit Accounts",
-                              isActive: false) { applyDebitOnlyFilter() }
-            QuickFilterButton(icon: "chart.bar", title: "Exclude Outliers",
-                              isActive: excludeOutliers) { excludeOutliers.toggle() }
-            QuickFilterButton(icon: "dollarsign.circle", title: "Large Expenses Only (>$100)",
-                              isActive: minimumAmount == 100) { applyLargeExpensesFilter() }
-        }
-
-        amountRangeSection()
-
-        if !accountStore.accounts.isEmpty {
-            Section(
-                header: Text("Include Accounts"),
-                footer: Text("Unselected accounts will be excluded.")
-            ) {
+    private var accountsSection: some View {
+        if !activeAccounts.isEmpty {
+            Section(header: Text("Accounts"),
+                    footer: Text("Unticked accounts are left out. Transfers count if neither side is left out.")) {
                 ForEach(accountsByType, id: \.type) { section in
                     DisclosureGroup {
+                        selectAllRow(ids: Set(section.accounts.map { $0.id }), in: $selectedAccountIDs)
                         ForEach(section.accounts) { account in
-                            Button {
-                                toggleSelection(account.id, in: &selectedAccountIDs)
+                            checkRow(isOn: selectedAccountIDs.contains(account.id)) {
+                                toggle(account.id, in: &selectedAccountIDs)
                             } label: {
-                                HStack {
-                                    Image(systemName: account.accountType.icon)
-                                        .foregroundColor(accountTypeColor(account.accountType))
-                                    Text(account.name).foregroundColor(.primary)
-                                    Spacer()
-                                    Image(systemName: selectedAccountIDs.contains(account.id)
-                                          ? "checkmark.circle.fill" : "circle")
-                                        .foregroundColor(selectedAccountIDs.contains(account.id)
-                                                         ? .blue : .secondary.opacity(0.3))
-                                }
+                                Image(systemName: account.accountType.icon)
+                                    .foregroundColor(account.accountType.color)
+                                Text(account.name).foregroundColor(.primary)
                             }
                         }
                     } label: {
@@ -239,148 +251,147 @@ struct FilterSheet: View {
                 }
             }
         }
+    }
 
-        Section(header: Text("Categories (Optional)")) {
-            DisclosureGroup("Filter by Categories") {
-                Button("Include All") {
-                    // FIX: categories live on transactionStore, not accountStore
-                    selectedCategoryIDs = Set(transactionStore.categories.map { $0.id })
-                }
-                .font(.caption)
+    @ViewBuilder
+    private var categoriesSection: some View {
+        let spending = listedCategories.filter { $0.type == .outflow }
+        let income = listedCategories.filter { $0.type == .inflow }
+        if !listedCategories.isEmpty {
+            Section(header: Text("Categories")) {
+                categoryGroup(title: "Spending", categories: spending)
+                categoryGroup(title: "Income", categories: income)
+            }
+        }
+    }
 
-                ForEach(transactionStore.categories) { category in
-                    Button {
-                        toggleSelection(category.id, in: &selectedCategoryIDs)
+    @ViewBuilder
+    private func categoryGroup(title: String, categories: [Category]) -> some View {
+        if !categories.isEmpty {
+            DisclosureGroup {
+                selectAllRow(ids: Set(categories.map { $0.id }), in: $selectedCategoryIDs)
+                ForEach(categories) { category in
+                    checkRow(isOn: selectedCategoryIDs.contains(category.id)) {
+                        toggle(category.id, in: &selectedCategoryIDs)
                     } label: {
-                        HStack {
-                            Text(category.emoji)
-                            Text(category.name).foregroundColor(.primary)
-                            Spacer()
-                            Image(systemName: selectedCategoryIDs.contains(category.id)
-                                  ? "checkmark.circle.fill" : "circle")
-                                .foregroundColor(selectedCategoryIDs.contains(category.id)
-                                                 ? .blue : .secondary.opacity(0.3))
-                        }
+                        Text(category.emoji)
+                        Text(category.name).foregroundColor(.primary)
                     }
+                }
+            } label: {
+                HStack {
+                    Text(title).fontWeight(.medium)
+                    Spacer()
+                    let n = categories.filter { selectedCategoryIDs.contains($0.id) }.count
+                    Text("\(n)/\(categories.count)")
+                        .font(.caption).foregroundColor(.secondary)
                 }
             }
         }
     }
 
-    // MARK: - Advanced Filter UI
+    // MARK: - Row Builders
 
-    @ViewBuilder
-    private var advancedFilterUI: some View {
-        Section(header: Text("General")) {
-            Toggle("Exclude Outlier Transactions", isOn: $excludeOutliers)
-        }
-
-        amountRangeSection()
-
-        Section(header: Text("Exclude Accounts")) {
-            if excludedAccountIDs.isEmpty {
-                Text("All accounts included").foregroundColor(.secondary).font(.caption)
-            }
-            ForEach(accountStore.accounts) { account in
-                Button { toggleSelection(account.id, in: &excludedAccountIDs) } label: {
-                    HStack {
-                        Image(systemName: account.accountType.icon)
-                            .foregroundColor(accountTypeColor(account.accountType))
-                        Text(account.name).foregroundColor(.primary)
-                        Spacer()
-                        if excludedAccountIDs.contains(account.id) {
-                            Image(systemName: "xmark.circle.fill").foregroundColor(.red)
-                        }
-                    }
-                }
+    private func checkRow<RowLabel: View>(isOn: Bool, action: @escaping () -> Void,
+                                          @ViewBuilder label: () -> RowLabel) -> some View {
+        Button(action: action) {
+            HStack {
+                label()
+                Spacer()
+                Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(isOn ? .blue : .secondary.opacity(0.3))
             }
         }
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+    }
 
-        Section(header: Text("Exclude Categories")) {
-            if excludedCategoryIDs.isEmpty {
-                Text("All categories included").foregroundColor(.secondary).font(.caption)
-            }
-            ForEach(transactionStore.categories) { category in
-                Button { toggleSelection(category.id, in: &excludedCategoryIDs) } label: {
-                    HStack {
-                        Text(category.emoji)
-                        Text(category.name).foregroundColor(.primary)
-                        Spacer()
-                        if excludedCategoryIDs.contains(category.id) {
-                            Image(systemName: "xmark.circle.fill").foregroundColor(.red)
-                        }
-                    }
-                }
+    /// "Select all" / "Select none" for one group.
+    private func selectAllRow(ids: Set<UUID>, in selection: Binding<Set<UUID>>) -> some View {
+        let allSelected = ids.isSubset(of: selection.wrappedValue)
+        return Button(allSelected ? "Select None" : "Select All") {
+            if allSelected {
+                selection.wrappedValue.subtract(ids)
+            } else {
+                selection.wrappedValue.formUnion(ids)
             }
         }
+        .font(.caption)
     }
 
     // MARK: - Helpers
 
     private var accountsByType: [(type: AccountType, accounts: [Account])] {
         [AccountType.debit, .goal, .limit, .debt].compactMap { type in
-            let list = accountStore.accounts
+            let list = activeAccounts
                 .filter { $0.accountType == type }
                 .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             return list.isEmpty ? nil : (type, list)
         }
     }
 
-    private func accountTypeColor(_ type: AccountType) -> Color {
-        switch type {
-        case .debit:  return .primary
-        case .goal:   return .blue
-        case .limit: return .purple
-        case .debt:   return .orange
-        }
-    }
-
-    private func toggleSelection(_ id: UUID, in set: inout Set<UUID>) {
+    private func toggle(_ id: UUID, in set: inout Set<UUID>) {
         if set.contains(id) { set.remove(id) } else { set.insert(id) }
     }
 
-    private func initializeSimpleSelections() {
-        selectedAccountIDs  = Set(accountStore.accounts.map { $0.id }).subtracting(excludedAccountIDs)
-        selectedCategoryIDs = Set(transactionStore.categories.map { $0.id }).subtracting(excludedCategoryIDs)
+    /// Empty text means "no limit". Uses the same parser as amount fields,
+    /// so comma-decimal locales work too.
+    private func parsedAmount(_ text: String) -> Decimal? {
+        guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        return MathParser.evaluate(text)
     }
 
-    private func convertSimpleToExclusion() {
-        excludedAccountIDs  = Set(accountStore.accounts.map { $0.id }).subtracting(selectedAccountIDs)
-        excludedCategoryIDs = Set(transactionStore.categories.map { $0.id }).subtracting(selectedCategoryIDs)
+    private func amountString(_ amount: Decimal?) -> String {
+        guard let amount else { return "" }
+        return NSDecimalNumber(decimal: amount).stringValue
     }
 
-    private func resetFilters() {
-        excludedAccountIDs.removeAll()
-        excludedCategoryIDs.removeAll()
-        excludeOutliers = false
-        minimumAmount = nil
-        maximumAmount = nil
+    // MARK: - Draft Lifecycle
+
+    private func loadDraft() {
+        selectedAccountIDs   = activeAccountIDs.subtracting(filters.excludedAccountIDs)
+        selectedCategoryIDs  = listedCategoryIDs.subtracting(filters.excludedCategoryIDs)
+        draftExcludeOutliers = filters.excludeOutliers
+        minAmountString      = amountString(filters.minimumAmount)
+        maxAmountString      = amountString(filters.maximumAmount)
+    }
+
+    /// Applies the draft. If it no longer matches the selected saved view,
+    /// the view is deselected so the banner doesn't show a stale name.
+    private func commit() {
+        let newFilters = draft
+        filters = newFilters
+        if let preset = selectedPreset, preset.filters != newFilters {
+            selectedPresetID = nil
+        }
+    }
+
+    private func resetDraft() {
+        selectedAccountIDs   = activeAccountIDs
+        selectedCategoryIDs  = listedCategoryIDs
+        draftExcludeOutliers = false
         minAmountString = ""
         maxAmountString = ""
-        initializeSimpleSelections()
     }
 
-    private func applyDebitOnlyFilter() {
-        selectedAccountIDs = Set(accountStore.accounts.filter { !$0.isCredit }.map { $0.id })
+    // MARK: - Quick Filters
+
+    private var debitAccountIDs: Set<UUID> {
+        Set(activeAccounts.filter { $0.accountType == .debit }.map { $0.id })
     }
 
-    private func applyLargeExpensesFilter() {
-        if minimumAmount == 100 {
-            minimumAmount = nil
-            minAmountString = ""
-        } else {
-            minimumAmount = 100
-            minAmountString = "100"
-        }
+    /// Debit accounts only: Goals are "Future" money, so they're left out.
+    private var isDebitOnlyActive: Bool {
+        !debitAccountIDs.isEmpty && selectedAccountIDs == debitAccountIDs
     }
 
-    private func initializeAmountStrings() {
-        if let min = minimumAmount {
-            minAmountString = String(format: "%.2f", (min as NSDecimalNumber).doubleValue)
-        }
-        if let max = maximumAmount {
-            maxAmountString = String(format: "%.2f", (max as NSDecimalNumber).doubleValue)
-        }
+    private func toggleDebitOnly() {
+        selectedAccountIDs = isDebitOnlyActive ? activeAccountIDs : debitAccountIDs
+    }
+
+    private static let largeThreshold: Decimal = 100
+
+    private func toggleLarge() {
+        minAmountString = parsedAmount(minAmountString) == Self.largeThreshold ? "" : amountString(Self.largeThreshold)
     }
 }
 
@@ -406,6 +417,7 @@ struct QuickFilterButton: View {
                 }
             }
         }
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 }
 
@@ -414,9 +426,9 @@ struct QuickFilterButton: View {
 struct SavePresetSheet: View {
     @Environment(\.dismiss) var dismiss
 
-    let excludedAccountIDs: Set<UUID>
-    let excludedCategoryIDs: Set<UUID>
-    let excludeOutliers: Bool
+    /// The filters being saved (name is ignored).
+    let draft: InsightPreset
+    let currencySymbol: String
     let onSave: (String) -> Void
 
     @State private var presetName = ""
@@ -425,7 +437,8 @@ struct SavePresetSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Text("View Name")) {
+                Section(header: Text("View Name"),
+                        footer: Text("The view also remembers the breakdown and the Spending/Income setting.")) {
                     TextField("E.g., Monthly Spending, Debit Only", text: $presetName)
                         .focused($isNameFieldFocused)
                         .submitLabel(.done)
@@ -433,20 +446,7 @@ struct SavePresetSheet: View {
                 }
 
                 Section(header: Text("This View Includes")) {
-                    if excludedAccountIDs.isEmpty && excludedCategoryIDs.isEmpty &&
-                       !excludeOutliers {
-                        Text("All transactions").foregroundColor(.secondary)
-                    } else {
-                        if !excludedAccountIDs.isEmpty {
-                            Text("Excludes \(excludedAccountIDs.count) account(s)").font(.caption)
-                        }
-                        if !excludedCategoryIDs.isEmpty {
-                            Text("Excludes \(excludedCategoryIDs.count) category(ies)").font(.caption)
-                        }
-                        if excludeOutliers {
-                            Text("Excludes outlier transactions").font(.caption)
-                        }
-                    }
+                    PresetFilterSummary(preset: draft, currencySymbol: currencySymbol)
                 }
             }
             .navigationTitle("Save View")
@@ -471,7 +471,37 @@ struct SavePresetSheet: View {
     }
 
     private func saveAndDismiss() {
-        onSave(presetName)
+        onSave(presetName.trimmingCharacters(in: .whitespaces))
         dismiss()
+    }
+}
+
+// MARK: - Preset Filter Summary
+
+/// One line per active filter. Shared by the Save and Edit view sheets.
+struct PresetFilterSummary: View {
+    let preset: InsightPreset
+    let currencySymbol: String
+
+    var body: some View {
+        if preset.isEmpty {
+            Text("All transactions").foregroundColor(.secondary)
+        } else {
+            if !preset.excludedAccountIDs.isEmpty {
+                Text("Excludes \(preset.excludedAccountIDs.count) account(s)").font(.caption)
+            }
+            if !preset.excludedCategoryIDs.isEmpty {
+                Text("Excludes \(preset.excludedCategoryIDs.count) category(ies)").font(.caption)
+            }
+            if preset.excludeOutliers {
+                Text("Excludes outlier transactions").font(.caption)
+            }
+            if let min = preset.minimumAmount {
+                Text("Minimum \(min.formattedCurrency(symbol: currencySymbol))").font(.caption)
+            }
+            if let max = preset.maximumAmount {
+                Text("Maximum \(max.formattedCurrency(symbol: currencySymbol))").font(.caption)
+            }
+        }
     }
 }

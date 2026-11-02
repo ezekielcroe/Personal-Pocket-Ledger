@@ -213,17 +213,17 @@ struct GettingStartedView: View {
                 GuideDetailRow(
                     icon: "arrow.down.circle.fill", color: .green,
                     title: "Choose a type",
-                    description: "Inflow for money coming in (a salary, a refund). Outflow for money going out (a purchase, a bill). Transfer for moving money between your own accounts."
+                    description: "At the top of the form. Inflow for money coming in (a salary, a refund). Outflow for money going out (a purchase, a bill). Transfer for moving money between your own accounts."
                 )
                 GuideDetailRow(
                     icon: "building.columns.fill", color: .blue,
                     title: "Pick an account",
-                    description: "Which of your accounts was involved? If you paid by credit card, select that Limit account."
+                    description: "Which of your accounts was involved? If you paid by credit card, select that Limit account. Next time, the account you last used for that type is already selected — check it, and change it if needed."
                 )
                 GuideDetailRow(
                     icon: "checkmark.circle.fill", color: .green,
                     title: "Fill in the rest and save",
-                    description: "Amount, category, and optionally a remark — the form walks you through them, landing on the remark so you can type straight away. Save, and the balance updates immediately."
+                    description: "Type the amount and tap Next. Your most-used categories appear as buttons — one tap picks one — with the full list behind More. Then add an optional remark and save; the balance updates immediately. If Save is greyed out, the line above it says what's missing."
                 )
             }
             
@@ -251,7 +251,7 @@ struct GettingStartedView: View {
                         .font(.body)
                         .foregroundColor(.secondary)
                     bulletRow("Account Groups — for grouping related accounts together (e.g. all credit cards)")
-                    bulletRow("Remarks — a free-text note for the payee or context (e.g. Starbucks, Anniversary dinner)")
+                    bulletRow("Remarks — a free-text note for the payee or context (e.g. Starbucks, Anniversary dinner), plus optional #tags for why (#work)")
                     bulletRow("Insights & Buckets — spending charts, breakdowns, and remark groupings, more useful once you have a few weeks of data")
                     bulletRow("Multiple Books — for separating personal and business finances entirely")
                 }
@@ -414,7 +414,7 @@ struct TaxonomyGuideView: View {
                                description: "What is the broad nature of this transaction? (e.g. Housing, Food, Transport, Income)")
                 GuideDetailRow(icon: "text.alignleft", color: .purple,
                                title: "Remark — Who / Why",
-                               description: "The specific detail: payee, purpose, or anything worth remembering. (e.g. Starbucks, Anniversary dinner, Client lunch)")
+                               description: "The specific detail: who you paid, in plain words (Starbucks, Client lunch), and optionally why, as a #tag (#work, #datenight). One field, two kinds of detail.")
             }
             
             Section(header: Text("The Golden Rule")) {
@@ -431,8 +431,11 @@ struct TaxonomyGuideView: View {
             
             Section(header: Text("Remarks & Autocomplete")) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("As you type a remark, the app suggests remarks you've used before, ranked by how often you use them. Tapping a suggestion keeps your spelling consistent, so searches find everything.")
+                    Text("As you type a remark, the app suggests remarks you've used before, ranked by how often you use them and by the category you picked. Tapping a suggestion keeps your spelling consistent, so searches find everything.")
                         .font(.subheadline)
+                    Text("When a remark matches one you've used before, the form shows what you did last time — category, account and amount — with buttons to reuse them. Nothing changes until you tap.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
                     Divider()
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: "gearshape.fill").foregroundColor(.secondary)
@@ -450,10 +453,35 @@ struct TaxonomyGuideView: View {
                 .padding(.vertical, 4)
             }
             
+            Section(header: Text("#Tags — The Why")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("A payee says who; a tag says why. Add one anywhere in a remark: \"Dinner at Lolla #datenight\", \"Taxi #work\". Tags show in colour, and typing # suggests the tags you've used, so they stay consistent.")
+                        .font(.subheadline)
+                    Divider()
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "number").foregroundColor(.accentColor)
+                        Text("Use tags for things that cut across payees and categories — a project, a trip, a person, a claimable expense. Keep payees as plain words.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            
             Section(header: Text("Buckets — Grouping Remarks")) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("A bucket is a named umbrella over remark terms. \"Coffee\" with the terms starbucks, coffeebean, and joe's counts every transaction whose remark contains any of them.")
+                    Text("A bucket is a named umbrella over remark terms. \"Coffee\" with the terms starbucks, *bean and #coffee counts every transaction whose remark matches any of them.")
                         .font(.subheadline)
+                    VStack(alignment: .leading, spacing: 4) {
+                        termRule("star", "words starting with star — Starbucks, not Mustard")
+                        termRule("\"bar\"", "only the word bar — not Barber")
+                        termRule("joe's coffee", "those words, in order")
+                        termRule("#work", "exactly that tag — not #workout")
+                        termRule("*bean", "anywhere, even mid-word — Coffeebean")
+                    }
+                    Text("While you edit a bucket, a preview lists the remarks it catches, with a count beside each term. Use it to spot terms that catch too much.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
                     Divider()
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: "clock.arrow.2.circlepath").foregroundColor(.teal)
@@ -483,11 +511,30 @@ struct TaxonomyGuideView: View {
                         .fontWeight(.semibold)
                         .padding(.top, 4)
                     tagChipRow(["Starbucks", "FairPrice", "Netflix", "Client lunch", "Anniversary dinner"])
+                    
+                    Text("Tags (optional, for why):")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .padding(.top, 4)
+                    tagChipRow(["#work", "#datenight", "#japantrip", "#claimable"])
                 }
                 .padding(.vertical, 4)
             }
         }
         .navigationTitle("Taxonomy")
+    }
+    
+    private func termRule(_ term: String, _ meaning: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(term)
+                .font(.caption.monospaced())
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+            Text(meaning)
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
     }
     
     private func tagChipRow(_ items: [String]) -> some View {
@@ -511,10 +558,43 @@ struct InsightsGuideView: View {
     var body: some View {
         List {
             Section {
-                Text("Insights answers where your money went. Everything on the page respects the same period, filters, and Spending/Income toggle, so the numbers agree with each other.")
+                Text("Insights answers one question first: am I on track? Everything on the page respects the same period and filters, so the numbers agree with each other — and every number opens to the transactions behind it.")
                     .font(.body)
                     .foregroundColor(.secondary)
                     .padding(.vertical, 4)
+            }
+            
+            Section(header: Text("Where It Went")) {
+                GuideDetailRow(icon: "arrow.down.circle.fill", color: .green,
+                               title: "Income",
+                               description: "Money that came in, excluding transfers between your own accounts.")
+                GuideDetailRow(icon: "cart.fill", color: .red,
+                               title: "Spent",
+                               description: "Your outflows. One-offs (transactions flagged as outliers) are shown separately, so an unusual month doesn't look like a bad one.")
+                GuideDetailRow(icon: "lock.fill", color: .blue,
+                               title: "Saved",
+                               description: "Transfers into your Goal accounts, minus anything taken back out. Moving money between two Goals isn't counted.")
+                GuideDetailRow(icon: "arrow.down.right.circle.fill", color: .orange,
+                               title: "Debt paid",
+                               description: "Transfers into your Debt accounts. Paying off a credit card (a Limit account) isn't counted again — that spending was already counted when you made it.")
+                GuideDetailRow(icon: "equal.circle.fill", color: .green,
+                               title: "Left over",
+                               description: "Income minus spending, saving and debt payments. Negative means you used more than came in.")
+            }
+            
+            Section(header: Text("A Fair Comparison")) {
+                GuideDetailRow(icon: "calendar.badge.clock", color: .blue,
+                               title: "By this point last month",
+                               description: "While a period is still in progress, it's compared with the same stretch of the previous one — the 5th against the first five days of last month, not against all of it. Past periods are compared in full.")
+                GuideDetailRow(icon: "chart.bar.fill", color: .teal,
+                               title: "The trend's typical line",
+                               description: "The dashed line is the average of the earlier periods in the chart, counting only periods since your first transaction. The lighter bar is the period still in progress.")
+            }
+            
+            Section(header: Text("Can I Trust These Numbers?")) {
+                GuideDetailRow(icon: "exclamationmark.triangle.fill", color: .orange,
+                               title: "The trust card",
+                               description: "Appears when an account used in the period hasn't been verified against your bank in 30+ days (its light is red), or when the period contains plugs. Plugs are never counted as income or spending; the card shows their total so you can see how much was unexplained.")
             }
             
             Section(header: Text("Breakdowns")) {
@@ -526,10 +606,10 @@ struct InsightsGuideView: View {
                                description: "Slices spending by your remark buckets. Buckets can overlap — one transaction can count toward several — so rows show absolute totals instead of percentages, and the largest bucket sets the bar scale.")
                 GuideDetailRow(icon: "questionmark.circle", color: .secondary,
                                title: "Unmatched",
-                               description: "Spending that no bucket caught. A large Unmatched row means your buckets have gaps, or your remarks are inconsistent.")
+                               description: "Spending that no bucket caught. Tap it to see the words and #tags that come up most in those remarks, and add any of them to a bucket in one tap.")
                 GuideDetailRow(icon: "hand.tap.fill", color: .blue,
                                title: "Tap any row",
-                               description: "Opens a detail view listing the transactions behind the number. Bucket details also show a six-month trend for that bucket.")
+                               description: "Opens the exact transactions behind the number, so the list always adds up to the row. Bucket and lookup details also show a trend.")
             }
             
             Section(header: Text("The Remark Lookup")) {
@@ -550,10 +630,10 @@ struct InsightsGuideView: View {
             Section(header: Text("Time Travel")) {
                 GuideDetailRow(icon: "chevron.left.circle", color: .blue,
                                title: "Period navigation",
-                               description: "The arrows step backward and forward through weeks, months, or years. The header card compares the visible period to the one before it.")
+                               description: "The arrows step backward and forward through weeks, months, or years. Tap the date to jump back to the current period.")
                 GuideDetailRow(icon: "line.3.horizontal.decrease.circle", color: .blue,
                                title: "Filters & saved views",
-                               description: "Exclude accounts, categories, or outliers, set amount limits, and save a combination as a named view you can re-apply in one tap.")
+                               description: "Tap the filter button at the top right. Untick accounts or categories, exclude outliers, or set amount limits. Save the combination as a named view — it also remembers the breakdown and Spending/Income setting — and re-apply or update it in one tap.")
             }
         }
         .navigationTitle("Insights")
@@ -621,7 +701,7 @@ struct ReconciliationGuideView: View {
                         .font(.body)
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: "wrench.and.screwdriver.fill").foregroundColor(.orange)
-                        Text("The Reconcile tool will calculate the $1.50 difference and automatically add a small 'Reconciliation Adjustment' transaction to close the gap.")
+                        Text("The Reconcile tool will calculate the $1.50 difference and automatically add a small 'Reconciliation Adjustment' transaction to close the gap. Insights leaves these adjustments out, so a plug never shows up as income or spending. If you file a plug under one of your own categories instead, it counts like any other transaction.")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
@@ -653,7 +733,7 @@ struct InterfaceGuideView: View {
             Section(header: Text("Ergonomics")) {
                 GuideDetailRow(icon: "arrow.down.to.line", color: .blue,
                                title: "Bottom-heavy controls",
-                               description: "The Save and Add buttons live at the bottom of the screen, just above the keyboard. No reaching for the top corners.")
+                               description: "The Save and Add buttons live at the bottom of the screen, just above the keyboard. No reaching for the top corners. \"Save &\" saves and starts the next entry with the same account, category and date; a banner confirms each one.")
                 GuideDetailRow(icon: "plus.circle.fill", color: .blue,
                                title: "Floating + button",
                                description: "The add button on each tab is always visible in the bottom-right corner. One tap to start recording, wherever you are in the app.")
@@ -678,7 +758,7 @@ struct InterfaceGuideView: View {
                             .background(Color(.secondarySystemBackground))
                             .clipShape(RoundedRectangle(cornerRadius: 5))
                     }
-                    Text("The app resolves it to $22.50 instantly. You can also chain operators: 12 + 5.50 + 3.")
+                    Text("The result ($22.50) appears under the field as you type, and that's what gets saved. Use the + − × ÷ keys above the keypad; you can chain operators (12 + 5.50 + 3) and use brackets on a hardware keyboard.")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
@@ -687,12 +767,12 @@ struct InterfaceGuideView: View {
             
             Section(header: Text("Remark Autocomplete")) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Label("The remark field completes your words.", systemImage: "text.cursor")
+                    Label("The remark field completes your remarks.", systemImage: "text.cursor")
                         .font(.headline)
-                    Text("As you type, the app suggests words you've used in past remarks, ranked by how often you use them. Tap a suggestion, or press Return, to complete the current word — the top suggestion is taken and a space is added so you can keep going.")
+                    Text("As you type, the app suggests whole remarks you've used (\"Anniversary dinner\") and single words that complete the one you're typing. Tap a suggestion to use it; a space is added so you can keep going. Type # to get your tags instead.")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
-                    Text("Press Return again on an empty word to finish. On iPad and Mac hardware keyboards, Tab also completes the top suggestion.")
+                    Text("Return completes only a suggestion that starts with what you've typed — \"Star\" becomes \"Starbucks\", but \"bean\" won't become \"Coffeebean\", and a word you've used before is left as typed. Otherwise Return finishes the remark. On iPad and Mac hardware keyboards, Tab works the same way.")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                     Text("Accepting suggestions keeps your spelling consistent, which is what makes searches and buckets reliable.")

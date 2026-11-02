@@ -2,6 +2,11 @@
 //  InsightsView.swift
 //  Pocket Ledger
 //
+//  "Behavioural, not analytical": the page answers "am I on track?" before
+//  anything else — where the period's money went across the Four Pillars,
+//  compared like-for-like with the previous period, and how far the numbers
+//  can be trusted. Every figure opens to the transactions behind it.
+//
 
 import SwiftUI
 
@@ -12,136 +17,95 @@ struct InsightsView: View {
 
     @State private var showingFilterSheet = false
     @State private var showingPresetPicker = false
-    @State private var remarkSearchTerm = ""
+    @State private var showingReconcile = false
     @AppStorage("currencySymbol") private var currencySymbol: String = "$"
+
+    private var result: InsightsResult { viewModel.result }
 
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .bottomTrailing) {
-                ScrollView {
-                    VStack(spacing: 12) {
+            ScrollView {
+                VStack(spacing: 16) {
+                    VStack(spacing: 4) {
                         pickerSection
-                        
                         periodNavigator
-                        
-                        if isCustomFilterActive {
-                            activeViewBanner
-                        }
-
-                        TrendHeaderCard(
-                            current: viewModel.stats,
-                            previous: viewModel.previousStats,
-                            rangeName: viewModel.timeRange.rawValue,
-                            currencySymbol: currencySymbol
-                        )
-
-                        pageTrendSection
-
-                        VStack(alignment: .leading, spacing: 12) {
-                            breakdownControls
-
-                            if viewModel.stats.breakdownItems.isEmpty {
-                                contentUnavailableView
-                            } else {
-                                LazyVStack(spacing: 0) {
-                                    ForEach(viewModel.stats.breakdownItems) { item in
-                                        rowWithNavigation(for: item)
-                                    }
-                                }
-                            }
-                        }
-                        .padding(.vertical)
-
-                        remarkLookupSection
-
-                        Color.clear.frame(height: 80)
                     }
-                }
 
-                fabMenu
+                    if isFilterActive {
+                        activeViewBanner
+                    }
+
+                    if result.trust.hasConcerns {
+                        trustCard
+                    }
+
+                    flowsCard
+
+                    trendSection
+
+                    breakdownSection
+
+                    remarkLookupSection
+                }
+                .padding(.bottom, 32)
             }
             .navigationTitle("Insights")
-            .onAppear                                    {
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) { filterMenu }
+            }
+            .onAppear {
                 if !availableBreakdownModes.contains(viewModel.breakdownMode) {
                     viewModel.breakdownMode = .category
                 }
                 recalculate()
             }
-            .onChange(of: viewModel.timeRange)           { _, _ in
+            .onChange(of: viewModel.timeRange) { _, _ in
                 viewModel.periodOffset = 0   // Reset to current period on range change
                 recalculate()
             }
             .onChange(of: viewModel.periodOffset)        { _, _ in recalculate() }
             .onChange(of: viewModel.breakdownMode)       { _, _ in recalculate() }
-            .onChange(of: viewModel.breakdownType)       { _, _ in recalculate() }
+            .onChange(of: viewModel.showsSpending)       { _, _ in recalculate() }
+            .onChange(of: viewModel.filters)             { _, _ in recalculate() }
             .onChange(of: transactionStore.transactions) { _, _ in recalculate() }
+            .onChange(of: transactionStore.remarkBuckets) { _, _ in recalculate() }
+            // Reconciling changes verification dates (the trust card).
+            .onChange(of: accountStore.accounts)         { _, _ in recalculate() }
+            .onChange(of: viewModel.lookupTerm)          { _, _ in viewModel.refreshLookup() }
             .sheet(isPresented: $showingFilterSheet) {
                 FilterSheet(
-                    excludedAccountIDs: $viewModel.excludedAccountIDs,
-                    excludedCategoryIDs: $viewModel.excludedCategoryIDs,
-                    excludeOutliers: $viewModel.excludeOutliers,
-                    minimumAmount: $viewModel.minimumAmount,
-                    maximumAmount: $viewModel.maximumAmount
+                    filters: $viewModel.filters,
+                    selectedPresetID: $viewModel.selectedPresetID,
+                    breakdownMode: viewModel.breakdownMode,
+                    showsSpending: viewModel.showsSpending
                 )
                 .environmentObject(accountStore)
                 .environmentObject(transactionStore)
-                .onDisappear { recalculate() }
             }
             .sheet(isPresented: $showingPresetPicker) {
                 PresetPickerSheet(
                     selectedPresetID: $viewModel.selectedPresetID,
-                    onSelect: applyPreset,
-                    onReset: applyReset
+                    onSelect: { viewModel.apply($0) },
+                    onReset: { viewModel.resetFilters() }
                 )
+                .environmentObject(transactionStore)
+            }
+            .sheet(isPresented: $showingReconcile) {
+                NavigationStack {
+                    ReconcileSessionView()
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Close") { showingReconcile = false }
+                            }
+                        }
+                }
+                .environmentObject(accountStore)
                 .environmentObject(transactionStore)
             }
         }
     }
 
-    // MARK: - Navigation Destination Builder
-
-    /// Wraps each breakdown row in the correct NavigationLink.
-    /// Pseudo-items like "Ungrouped" have no real model
-    /// to navigate to, so they render as plain non-tappable rows.
-    @ViewBuilder
-    private func rowWithNavigation(for item: AnalyticsItem) -> some View {
-        let row = CategoryBarRow(
-            item: item,
-            total: viewModel.stats.totalForBreakdown,
-            currencySymbol: currencySymbol,
-            showsPercentage: viewModel.breakdownMode != .bucket
-        )
-        let dateInterval = viewModel.currentDateInterval
-
-        switch viewModel.breakdownMode {
-        case .category:
-            if let category = transactionStore.categories.first(where: { $0.id == item.id }) {
-                NavigationLink(destination: CategoryDetailView(category: category, dateFilter: dateInterval)) { row }
-            } else {
-                row
-            }
-        case .account:
-            if let account = accountStore.accounts.first(where: { $0.id == item.id }) {
-                NavigationLink(destination: AccountDetailView(account: account)) { row }
-            } else {
-                row
-            }
-        case .bucket:
-            if let bucket = transactionStore.remarkBuckets.first(where: { $0.id == item.id }) {
-                NavigationLink(destination: BucketDetailView(bucket: bucket, dateFilter: dateInterval, insights: viewModel)) { row }
-            } else {
-                row // "Unmatched" pseudo-item
-            }
-        case .group:
-            if let group = accountStore.accountGroups.first(where: { $0.id == item.id }) {
-                NavigationLink(destination: AccountGroupDetailView(group: group)) { row }
-            } else {
-                row
-            }
-        }
-    }
-
-    // MARK: - Subviews
+    // MARK: - Header
 
     var pickerSection: some View {
         Picker("Range", selection: $viewModel.timeRange) {
@@ -150,18 +114,16 @@ struct InsightsView: View {
             }
         }
         .pickerStyle(.segmented)
-        .padding()
+        .padding(.horizontal)
+        .padding(.top, 8)
     }
-    
-    // MARK: - Period Navigator
-    
-    /// Shows the current date interval with back/forward chevrons for stepping
-    /// through periods. Hidden for "All Time" since offsets have no meaning there.
+
+    /// The current period with back/forward chevrons. Tap the label to jump
+    /// back to the current period. "All Time" shows a plain label.
     var periodNavigator: some View {
         Group {
             if viewModel.supportsNavigation {
                 HStack(spacing: 16) {
-                    // Back arrow (always enabled — you can always go further back)
                     Button {
                         viewModel.goBack()
                     } label: {
@@ -170,20 +132,20 @@ struct InsightsView: View {
                             .foregroundColor(.blue)
                     }
                     .buttonStyle(.plain)
-                    
-                    // Period label — tappable to jump back to "today"
+                    .accessibilityLabel("Previous \(viewModel.periodNoun)")
+
                     Button {
                         viewModel.returnToCurrentPeriod()
                     } label: {
-                        Text(Formatters.formatInterval(viewModel.currentDateInterval))
+                        Text(periodLabel)
                             .font(.subheadline)
                             .fontWeight(.medium)
                             .foregroundColor(viewModel.periodOffset == 0 ? .secondary : .primary)
                     }
                     .buttonStyle(.plain)
                     .animation(nil, value: viewModel.periodOffset)
-                    
-                    // Forward arrow (disabled when already at current period)
+                    .accessibilityHint(viewModel.periodOffset == 0 ? "" : "Returns to the current \(viewModel.periodNoun)")
+
                     Button {
                         viewModel.goForward()
                     } label: {
@@ -193,96 +155,36 @@ struct InsightsView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(!viewModel.canGoForward)
+                    .accessibilityLabel("Next \(viewModel.periodNoun)")
                 }
-                .padding(.top, -8)
             } else {
-                // "All Time" — just show the label, no arrows
-                Text(Formatters.formatInterval(viewModel.currentDateInterval))
+                Text(periodLabel)
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .foregroundColor(.secondary)
-                    .padding(.top, -8)
                     .animation(nil, value: viewModel.timeRange)
             }
         }
     }
 
-    /// Overall trend for the page: all transactions through the same
-    /// pipeline as the breakdown (period, filters, Spending/Income toggle),
-    /// across the last six periods. Tap a bar for the exact amount.
-    private var pageTrendSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(viewModel.breakdownType == .outflow ? "Spending Trend" : "Income Trend")
-                .font(.headline)
-            
-            let stats = viewModel.remarkStats(
-                terms: [],
-                transactionStore: transactionStore,
-                accountStore: accountStore
-            )
-            RemarkTrendChart(points: stats.trend, currencySymbol: currencySymbol)
-                .frame(height: 140)
-        }
-        .padding(.horizontal)
-    }
-    
-    /// Group mode is pointless with no groups defined — everything would
-    /// land in one "Ungrouped" row — so it's hidden until a group exists.
-    private var availableBreakdownModes: [BreakdownMode] {
-        BreakdownMode.allCases.filter { mode in
-            mode != .group || !accountStore.accountGroups.isEmpty
-        }
+    private var periodLabel: String {
+        viewModel.timeRange == .allTime ? "All time" : Formatters.formatInterval(viewModel.currentDateInterval)
     }
 
-    var breakdownControls: some View {
-        VStack(spacing: 12) {
-            HStack {
-                Text(viewModel.breakdownType == .inflow ? "Income Source" : "Spending Breakdown")
-                    .font(.headline)
-                Spacer()
-            }
-
-            HStack {
-                Picker("Type", selection: $viewModel.breakdownType) {
-                    Text("Expense").tag(TransactionType.outflow)
-                    Text("Income").tag(TransactionType.inflow)
-                }
-                .pickerStyle(.segmented)
-                .fixedSize()
-
-                Spacer()
-
-                Picker("Breakdown", selection: $viewModel.breakdownMode) {
-                    ForEach(availableBreakdownModes, id: \.self) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-            }
-        }
-        .padding(.horizontal)
-    }
-
-    var fabMenu: some View {
+    private var filterMenu: some View {
         Menu {
-            Button { showingPresetPicker = true } label: {
-                Label("Saved Views", systemImage: "bookmark")
-            }
             Button { showingFilterSheet = true } label: {
                 Label("Filter Data", systemImage: "line.3.horizontal.decrease.circle")
             }
+            Button { showingPresetPicker = true } label: {
+                Label("Saved Views", systemImage: "bookmark")
+            }
         } label: {
-            Image(systemName: "slider.horizontal.3")
-                .font(.title2.weight(.semibold))
-                .foregroundColor(.white)
-                .frame(width: 56, height: 56)
-                .background(Color.blue)
-                .clipShape(Circle())
-                .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 4)
+            Image(systemName: isFilterActive
+                  ? "line.3.horizontal.decrease.circle.fill"
+                  : "line.3.horizontal.decrease.circle")
         }
-        .padding()
-        .padding(.bottom, 10)
+        .accessibilityLabel(isFilterActive ? "Filters, active" : "Filters and saved views")
     }
 
     var activeViewBanner: some View {
@@ -297,13 +199,361 @@ struct InsightsView: View {
             )
             .fontWeight(.medium)
             Spacer()
-            Button("Clear") { applyReset() }
+            Button("Edit") { showingFilterSheet = true }
+            Button("Clear") { viewModel.resetFilters() }
         }
         .font(.caption)
         .padding(10)
         .background(Color.blue.opacity(0.1))
         .cornerRadius(8)
         .padding(.horizontal)
+    }
+
+    // MARK: - Trust
+
+    /// Shown only when something undermines the figures: accounts used this
+    /// period that are overdue for verification, or plugs in the period.
+    private var trustCard: some View {
+        let trust = result.trust
+        return VStack(alignment: .leading, spacing: 8) {
+            Label("Some numbers may be incomplete", systemImage: "exclamationmark.triangle.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.orange)
+
+            if !trust.overdueAccountNames.isEmpty {
+                Text(overdueSentence(trust.overdueAccountNames))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            if !trust.plugTransactions.isEmpty {
+                NavigationLink {
+                    InsightDrillDownView(
+                        title: "Plugs",
+                        subtitle: periodLabel,
+                        transactions: trust.plugTransactions,
+                        footnote: "Adjustments added by Reconcile to match your bank. They're left out of every figure on this page."
+                    )
+                } label: {
+                    HStack {
+                        Text("Plugs this \(viewModel.periodNoun): \(trust.plugTotal.formattedCurrency(symbol: currencySymbol))")
+                            .font(.caption)
+                            .foregroundColor(.primary)
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+
+            Button("Reconcile now") { showingReconcile = true }
+                .font(.caption.weight(.semibold))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.orange.opacity(0.1))
+        .cornerRadius(12)
+        .padding(.horizontal)
+    }
+
+    private func overdueSentence(_ names: [String]) -> String {
+        switch names.count {
+        case 1:
+            return "\(names[0]) hasn't been verified against your bank in 30+ days."
+        case 2, 3:
+            let list = names.dropLast().joined(separator: ", ") + " and " + names.last!
+            return "\(list) haven't been verified against your bank in 30+ days."
+        default:
+            return "\(names.count) accounts used this \(viewModel.periodNoun) haven't been verified against your bank in 30+ days."
+        }
+    }
+
+    // MARK: - Where It Went (Four Pillars)
+
+    private var hasGoalAccounts: Bool {
+        accountStore.accounts.contains { $0.accountType == .goal && !$0.isArchived }
+    }
+
+    private var hasDebtAccounts: Bool {
+        accountStore.accounts.contains { $0.accountType == .debt && !$0.isArchived }
+    }
+
+    private var flowsCard: some View {
+        let flows = result.flows
+        let previous = result.comparison?.flows
+
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Where it went")
+                    .font(.headline)
+                Spacer()
+                if viewModel.isLoading {
+                    ProgressView().controlSize(.small)
+                }
+            }
+
+            if flows.isEmpty {
+                Text("No transactions in this period")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+            } else {
+                AllocationBar(flows: flows)
+                    .frame(height: 10)
+                    .accessibilityHidden(true)
+
+                flowRow(title: "Income", amount: flows.income, color: .green,
+                        comparison: comparisonLine(current: flows.income, previous: previous?.income, higherIsBetter: true),
+                        transactions: result.detail.income)
+
+                flowRow(title: "Spent", amount: flows.spent, color: .red,
+                        comparison: comparisonLine(current: flows.spent, previous: previous?.spent, higherIsBetter: false),
+                        transactions: result.detail.spending)
+
+                if flows.spentOneOff > 0 {
+                    // One-offs shown, not hidden behind a filter: the
+                    // difference between a bad month and an unusual one.
+                    flowRow(title: "of which one-offs", amount: flows.spentOneOff, color: .red,
+                            detail: "Typical spending: \(flows.spentTypical.formattedCurrency(symbol: currencySymbol))",
+                            transactions: result.detail.oneOffs, isSubRow: true,
+                            footnote: "Transactions flagged as outliers. Flag one-offs when you record them to keep \"typical\" honest.")
+                }
+
+                if hasGoalAccounts || flows.savedIn > 0 || flows.savedOut > 0 {
+                    flowRow(title: "Saved", amount: flows.savedNet, color: .blue,
+                            detail: flows.savedOut > 0
+                                ? "In \(flows.savedIn.formattedCurrency(symbol: currencySymbol)) · Taken out \(flows.savedOut.formattedCurrency(symbol: currencySymbol))"
+                                : nil,
+                            comparison: comparisonLine(current: flows.savedNet, previous: previous?.savedNet, higherIsBetter: true),
+                            transactions: result.detail.saving, totalOverride: flows.savedNet,
+                            footnote: "Transfers into your Goal accounts, minus anything taken out of them.")
+                }
+
+                if hasDebtAccounts || flows.debtPaid > 0 {
+                    flowRow(title: "Debt paid", amount: flows.debtPaid, color: .orange,
+                            comparison: comparisonLine(current: flows.debtPaid, previous: previous?.debtPaid, higherIsBetter: true),
+                            transactions: result.detail.debt,
+                            footnote: "Transfers into your Debt accounts. Every one shrinks a balance toward zero.")
+                }
+
+                Divider()
+
+                leftOverRow(flows.leftOver)
+            }
+        }
+        .insightCard()
+    }
+
+    @ViewBuilder
+    private func flowRow(title: String, amount: Decimal, color: Color,
+                         detail: String? = nil,
+                         comparison: ComparisonLine? = nil,
+                         transactions: [Transaction],
+                         totalOverride: Decimal? = nil,
+                         isSubRow: Bool = false,
+                         footnote: String? = nil) -> some View {
+        NavigationLink {
+            InsightDrillDownView(title: isSubRow ? "One-offs" : title,
+                                 subtitle: periodLabel,
+                                 transactions: transactions,
+                                 totalOverride: totalOverride,
+                                 footnote: footnote)
+        } label: {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Circle().fill(color).frame(width: 8, height: 8)
+                            .opacity(isSubRow ? 0 : 1)
+                        Text(title)
+                            .font(isSubRow ? .caption : .subheadline)
+                            .foregroundColor(isSubRow ? .secondary : .primary)
+                    }
+                    if let detail {
+                        Text(detail)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 14)
+                    }
+                    if let comparison {
+                        HStack(spacing: 3) {
+                            Image(systemName: comparison.symbol)
+                            Text(comparison.text)
+                        }
+                        .font(.caption2)
+                        .foregroundColor(comparison.color)
+                        .padding(.leading, 14)
+                    }
+                }
+                Spacer()
+                Text(amount.formattedCurrency(symbol: currencySymbol))
+                    .font(isSubRow ? .caption.monospacedDigit() : .subheadline.weight(.semibold).monospacedDigit())
+                    .foregroundColor(isSubRow ? .secondary : .primary)
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+                    .foregroundColor(.secondary.opacity(0.6))
+            }
+            .contentShape(Rectangle())
+            .accessibilityElement(children: .combine)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func leftOverRow(_ leftOver: Decimal) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(leftOver >= 0 ? "Left over" : "Overspent")
+                    .font(.subheadline.weight(.semibold))
+                Text("Income minus spending, saving and debt payments")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+            Text(abs(leftOver).formattedCurrency(symbol: currencySymbol))
+                .font(.title3.weight(.bold).monospacedDigit())
+                .foregroundColor(leftOver >= 0 ? .green : .red)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: - Comparison
+
+    struct ComparisonLine {
+        let text: String
+        let symbol: String
+        let color: Color
+    }
+
+    /// "↑ $510 by this point last month" while the period is in progress
+    /// (a fair comparison), or "↓ $2,900 previous month" for past periods.
+    private func comparisonLine(current: Decimal, previous: Decimal?, higherIsBetter: Bool) -> ComparisonLine? {
+        guard let comparison = result.comparison, let previous else { return nil }
+        if current == 0 && previous == 0 { return nil }
+
+        let noun = viewModel.periodNoun
+        let phrase = comparison.isLikeForLike ? "by this point last \(noun)" : "previous \(noun)"
+        let text = "\(previous.formattedCurrency(symbol: currencySymbol)) \(phrase)"
+
+        if current == previous {
+            return ComparisonLine(text: text, symbol: "equal", color: .secondary)
+        }
+        let isUp = current > previous
+        let isGood = isUp == higherIsBetter
+        return ComparisonLine(text: text,
+                              symbol: isUp ? "arrow.up" : "arrow.down",
+                              color: isGood ? .green : .red)
+    }
+
+    // MARK: - Trend
+
+    private var trendSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Trend")
+                    .font(.headline)
+                Spacer()
+                // This toggle also drives the breakdown and the lookup below.
+                Picker("View", selection: $viewModel.showsSpending) {
+                    Text("Spending").tag(true)
+                    Text("Income").tag(false)
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
+            }
+
+            RemarkTrendChart(points: result.trend, currencySymbol: currencySymbol, typical: result.trendTypical)
+                .frame(height: 150)
+
+            if let typical = result.trendTypical {
+                Text("Dashed line: your typical \(viewModel.periodNoun), \(typical.formattedCurrency(symbol: currencySymbol)) (average of the earlier \(viewModel.periodNoun)s shown). The lighter bar is still in progress.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.horizontal)
+    }
+
+    // MARK: - Breakdown
+
+    /// Group mode is pointless with no groups defined — everything would
+    /// land in one "Ungrouped" row — so it's hidden until a group exists.
+    private var availableBreakdownModes: [BreakdownMode] {
+        BreakdownMode.allCases.filter { mode in
+            mode != .group || !accountStore.accountGroups.isEmpty
+        }
+    }
+
+    private var breakdownSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(viewModel.showsSpending ? "Spending by" : "Income by")
+                    .font(.headline)
+                Picker("Breakdown", selection: $viewModel.breakdownMode) {
+                    ForEach(availableBreakdownModes, id: \.self) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                Spacer()
+            }
+            .padding(.horizontal)
+
+            if result.breakdown.isEmpty {
+                contentUnavailableView
+            } else {
+                LazyVStack(spacing: 0) {
+                    ForEach(result.breakdown) { item in
+                        NavigationLink {
+                            drillDown(for: item)
+                        } label: {
+                            BreakdownBarRow(
+                                item: item,
+                                scale: result.breakdownScale,
+                                showsPercentage: result.breakdownShowsPercentages,
+                                currencySymbol: currencySymbol
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Every row opens to exactly the transactions that make up its amount.
+    @ViewBuilder
+    private func drillDown(for item: AnalyticsItem) -> some View {
+        switch item.kind {
+        case .category:
+            InsightDrillDownView(title: item.name, subtitle: periodLabel,
+                                 transactions: item.transactions, emoji: item.emoji)
+        case .account:
+            InsightDrillDownView(title: item.name, subtitle: periodLabel,
+                                 transactions: item.transactions,
+                                 account: accountStore.accounts.first(where: { $0.id == item.id }))
+        case .group:
+            InsightDrillDownView(title: item.name, subtitle: periodLabel,
+                                 transactions: item.transactions,
+                                 group: accountStore.accountGroups.first(where: { $0.id == item.id }))
+        case .ungrouped:
+            InsightDrillDownView(title: item.name, subtitle: periodLabel,
+                                 transactions: item.transactions,
+                                 footnote: "Accounts that aren't in any group.")
+        case .bucket:
+            let bucket = transactionStore.remarkBuckets.first(where: { $0.id == item.id })
+            InsightDrillDownView(title: item.name, subtitle: periodLabel,
+                                 transactions: item.transactions,
+                                 footnote: bucket.map { "Terms: \($0.terms.joined(separator: ", ")). One transaction can count toward several buckets." },
+                                 trendTerms: bucket?.terms,
+                                 insights: viewModel)
+        case .unmatched:
+            InsightDrillDownView(title: "Unmatched", subtitle: periodLabel,
+                                 transactions: item.transactions,
+                                 footnote: "Not caught by any bucket.",
+                                 suggestsBucketTerms: true)
+        }
     }
 
     var contentUnavailableView: some View {
@@ -330,11 +580,12 @@ struct InsightsView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
     }
-    
+
     // MARK: - Remark Lookup
-    
+
     /// Ad-hoc stats for any remark term: total, count, average, and a trend
     /// over recent periods — all respecting the current filters and toggle.
+    /// Computed in the background after a short pause in typing.
     private var remarkLookupSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -346,55 +597,60 @@ struct InsightsView: View {
                         .font(.subheadline)
                 }
             }
-            
+
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
-                TextField("e.g. starbucks", text: $remarkSearchTerm)
+                TextField("e.g. starbucks", text: $viewModel.lookupTerm)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
-                if !remarkSearchTerm.isEmpty {
+                if !viewModel.lookupTerm.isEmpty {
                     Button {
-                        remarkSearchTerm = ""
+                        viewModel.lookupTerm = ""
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.secondary)
                     }
+                    .accessibilityLabel("Clear lookup")
                 }
             }
             .padding(10)
             .background(Color(.secondarySystemBackground))
             .cornerRadius(10)
-            
-            let term = remarkSearchTerm.trimmingCharacters(in: .whitespaces)
-            if !term.isEmpty {
-                let stats = viewModel.remarkStats(
-                    terms: [term],
-                    transactionStore: transactionStore,
-                    accountStore: accountStore
-                )
-                
+
+            let term = viewModel.lookupTerm.trimmingCharacters(in: .whitespaces)
+            if !term.isEmpty, let stats = viewModel.lookup {
                 if stats.count == 0 && stats.trend.allSatisfy({ $0.amount == 0 }) {
-                    Text("No matching \(viewModel.breakdownType == .outflow ? "spending" : "income") found.")
+                    Text("No matching \(viewModel.showsSpending ? "spending" : "income") found.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 } else {
-                    HStack(spacing: 0) {
-                        lookupStat(label: "Total", value: stats.total.formattedCurrency(symbol: currencySymbol))
-                        lookupStat(label: "Count", value: "\(stats.count)")
-                        lookupStat(label: "Average", value: stats.average.formattedCurrency(symbol: currencySymbol))
+                    NavigationLink {
+                        InsightDrillDownView(title: "“\(term)”", subtitle: periodLabel,
+                                             transactions: stats.transactions,
+                                             trendTerms: [term], insights: viewModel)
+                    } label: {
+                        HStack(spacing: 0) {
+                            lookupStat(label: "Total", value: stats.total.formattedCurrency(symbol: currencySymbol))
+                            lookupStat(label: "Count", value: "\(stats.count)")
+                            lookupStat(label: "Average", value: stats.average.formattedCurrency(symbol: currencySymbol))
+                            Image(systemName: "chevron.right")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
                     }
-                    
+                    .buttonStyle(.plain)
+
                     RemarkTrendChart(points: stats.trend, currencySymbol: currencySymbol)
                         .frame(height: 120)
                 }
-                
+
                 bucketSaveRow(for: term)
             }
         }
         .padding(.horizontal)
     }
-    
+
     private func lookupStat(label: String, value: String) -> some View {
         VStack(spacing: 2) {
             Text(value)
@@ -408,14 +664,15 @@ struct InsightsView: View {
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
     }
-    
+
     @ViewBuilder
     private func bucketSaveRow(for term: String) -> some View {
         let owning = transactionStore.remarkBuckets.first { bucket in
             bucket.terms.contains { $0.caseInsensitiveCompare(term) == .orderedSame }
         }
-        
+
         if let owning {
             Text("In bucket: \(owning.name)")
                 .font(.caption)
@@ -433,151 +690,75 @@ struct InsightsView: View {
 
     // MARK: - Logic Helpers
 
-    private var isCustomFilterActive: Bool {
-        !viewModel.excludedAccountIDs.isEmpty ||
-        !viewModel.excludedCategoryIDs.isEmpty ||
-        viewModel.excludeOutliers ||
-        viewModel.minimumAmount != nil
+    private var isFilterActive: Bool {
+        !viewModel.filters.isEmpty
     }
 
     private func recalculate() {
         viewModel.calculate(accountStore: accountStore, transactionStore: transactionStore)
     }
+}
 
-    private func applyReset() {
-        viewModel.excludedAccountIDs = []
-        viewModel.excludedCategoryIDs = []
-        viewModel.excludeOutliers = false
-        viewModel.minimumAmount = nil
-        viewModel.maximumAmount = nil
-        viewModel.selectedPresetID = nil
-        recalculate()
-    }
+// MARK: - Card Style
 
-    private func applyPreset(_ preset: InsightPreset) {
-        viewModel.excludedAccountIDs = preset.excludedAccountIDs
-        viewModel.excludedCategoryIDs = preset.excludedCategoryIDs
-        viewModel.excludeOutliers = preset.excludeOutliers
-        viewModel.selectedPresetID = preset.id
-        recalculate()
+private extension View {
+    func insightCard() -> some View {
+        self
+            .padding()
+            .background(Color(UIColor.systemBackground))
+            .cornerRadius(16)
+            .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 4)
+            .padding(.horizontal)
     }
 }
 
-// MARK: - Trend Header Card
+// MARK: - Allocation Bar
 
-struct TrendHeaderCard: View {
-    let current: AnalyticsStats
-    let previous: AnalyticsStats
-    let rangeName: String
-    let currencySymbol: String
+/// Where the period's money went, as one bar: spent, saved, debt paid, and
+/// what's left. Scaled to income, or to total outgoings if those exceed it.
+private struct AllocationBar: View {
+    let flows: PillarFlows
+
+    private var segments: [(Decimal, Color)] {
+        [
+            (flows.spent, .red),
+            (max(flows.savedNet, 0), .blue),
+            (flows.debtPaid, .orange),
+            (max(flows.leftOver, 0), .green),
+        ].filter { $0.0 > 0 }
+    }
 
     var body: some View {
-        VStack(spacing: 16) {
-            VStack(spacing: 4) {
-                Text("Net Cash Flow")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .textCase(.uppercase)
-
-                let net = current.net
-                Text("\(net >= 0 ? "+" : "")\(net.formattedCurrency(symbol: currencySymbol))")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .foregroundColor(net >= 0 ? .primary : .red)
-
-                if previous.net != 0 {
-                    let diff = net - previous.net
-                    let icon = diff >= 0 ? "arrow.up" : "arrow.down"
-                    let color: Color = diff >= 0 ? .green : .red
-
-                    HStack(spacing: 4) {
-                        Image(systemName: icon)
-                        Text("\(abs(diff).formattedCurrency(symbol: currencySymbol)) vs previous")
-                    }
-                    .font(.caption)
-                    .foregroundColor(color)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(color.opacity(0.1))
-                    .cornerRadius(8)
+        GeometryReader { geometry in
+            let total = segments.reduce(Decimal(0)) { $0 + $1.0 }
+            HStack(spacing: 2) {
+                ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
+                    let ratio = total > 0
+                        ? NSDecimalNumber(decimal: segment.0).doubleValue / NSDecimalNumber(decimal: total).doubleValue
+                        : 0
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(segment.1)
+                        .frame(width: max(0, geometry.size.width * ratio - 2))
                 }
             }
-
-            Divider()
-
-            HStack {
-                StatColumn(title: "Income",   amount: current.income,  prevAmount: previous.income,  color: .green, symbol: currencySymbol)
-                Divider()
-                StatColumn(title: "Expenses", amount: current.expense, prevAmount: previous.expense, color: .red,   symbol: currencySymbol)
-            }
         }
-        .padding()
-        .background(Color(UIColor.systemBackground))
-        .cornerRadius(16)
-        .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 4)
-        .padding(.horizontal)
     }
 }
 
-// MARK: - Stat Column
+// MARK: - Breakdown Bar Row
 
-struct StatColumn: View {
-    let title: String
-    let amount: Decimal
-    let prevAmount: Decimal
-    let color: Color
-    let symbol: String
-
-    var body: some View {
-        VStack(spacing: 4) {
-            Text(title)
-                .font(.caption2)
-                .fontWeight(.semibold)
-                .foregroundColor(.secondary)
-
-            Text(amount.formattedCurrency(symbol: symbol))
-                .font(.headline)
-                .foregroundColor(color)
-
-            if prevAmount > 0 {
-                let pct = ((amount - prevAmount) / prevAmount) * 100
-                let isUp = pct > 0
-                let indicatorColor: Color = (title == "Expenses"
-                    ? (isUp ? .red : .green)
-                    : (isUp ? .green : .red))
-
-                HStack(spacing: 2) {
-                    Image(systemName: isUp ? "arrow.up.right" : "arrow.down.right")
-                    Text("\(String(format: "%.0f", NSDecimalNumber(decimal: abs(pct)).doubleValue))%")
-                }
-                .font(.caption2)
-                .foregroundColor(indicatorColor)
-            } else {
-                Text("-")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity)
-    }
-}
-
-// MARK: - Category Bar Row
-
-struct CategoryBarRow: View {
+struct BreakdownBarRow: View {
     let item: AnalyticsItem
-    let total: Decimal
+    /// The period total, or the largest row when rows overlap (buckets).
+    let scale: Decimal
+    let showsPercentage: Bool
     let currencySymbol: String
-    var showsPercentage: Bool = true
 
     var body: some View {
         VStack(spacing: 6) {
             HStack {
-                if item.icon.count == 1 {
-                    Text(item.icon)
-                } else {
-                    Image(systemName: item.icon)
-                        .foregroundColor(item.color ?? .primary)
-                }
+                icon
+                    .frame(width: 22)
 
                 Text(item.name)
                     .font(.subheadline)
@@ -592,17 +773,21 @@ struct CategoryBarRow: View {
                         .monospacedDigit()
                         .foregroundColor(.primary)
 
-                    if showsPercentage && total > 0 {
+                    if showsPercentage && scale > 0 {
                         // Decimal division yields 38-digit mantissas that
                         // overflow NSDecimalNumber.intValue (it returns 0),
                         // so convert through Double instead.
                         let pct = NSDecimalNumber(decimal: item.amount).doubleValue
-                                / NSDecimalNumber(decimal: total).doubleValue * 100
+                                / NSDecimalNumber(decimal: scale).doubleValue * 100
                         Text("\(Int(pct.rounded()))%")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }
                 }
+
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+                    .foregroundColor(.secondary.opacity(0.6))
             }
 
             GeometryReader { geometry in
@@ -612,7 +797,7 @@ struct CategoryBarRow: View {
                         .frame(height: 6)
 
                     Capsule()
-                        .fill(item.color ?? .primary)
+                        .fill(tint)
                         .frame(width: barWidth(totalWidth: geometry.size.width), height: 6)
                 }
             }
@@ -620,11 +805,44 @@ struct CategoryBarRow: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var icon: some View {
+        if item.kind == .category, !item.emoji.isEmpty {
+            Text(item.emoji)
+        } else {
+            Image(systemName: systemImage)
+                .foregroundColor(tint)
+        }
+    }
+
+    private var systemImage: String {
+        switch item.kind {
+        case .category:  return "tag"
+        case .account:   return item.accountType?.icon ?? "building.columns"
+        case .group:     return "folder.fill"
+        case .bucket:    return "text.magnifyingglass"
+        case .ungrouped: return "building.columns"
+        case .unmatched: return "questionmark.circle"
+        }
+    }
+
+    private var tint: Color {
+        switch item.kind {
+        case .category:               return .primary
+        case .account:                return item.accountType?.color ?? .primary
+        case .group:                  return .purple
+        case .bucket:                 return .teal
+        case .ungrouped, .unmatched:  return .secondary
+        }
     }
 
     private func barWidth(totalWidth: CGFloat) -> CGFloat {
-        guard total > 0 else { return 0 }
-        let ratio = NSDecimalNumber(decimal: item.amount / total).doubleValue
+        guard scale > 0 else { return 0 }
+        let ratio = NSDecimalNumber(decimal: item.amount).doubleValue / NSDecimalNumber(decimal: scale).doubleValue
         return totalWidth * CGFloat(min(max(ratio, 0.0), 1.0))
     }
 }
@@ -722,6 +940,8 @@ struct EditPresetSheet: View {
     @EnvironmentObject var transactionStore: TransactionStore
     @Environment(\.dismiss) var dismiss
 
+    @AppStorage("currencySymbol") private var currencySymbol: String = "$"
+
     let preset: InsightPreset
     @State private var presetName: String
     @FocusState private var isNameFieldFocused: Bool
@@ -745,28 +965,7 @@ struct EditPresetSheet: View {
                     header: Text("Filter Summary"),
                     footer: Text("To change filters, apply the view and modify filters from the main screen.")
                 ) {
-                    if !preset.excludedAccountIDs.isEmpty {
-                        HStack {
-                            Text("Excluded Accounts")
-                            Spacer()
-                            Text("\(preset.excludedAccountIDs.count)").foregroundColor(.secondary)
-                        }
-                    }
-                    if !preset.excludedCategoryIDs.isEmpty {
-                        HStack {
-                            Text("Excluded Categories")
-                            Spacer()
-                            Text("\(preset.excludedCategoryIDs.count)").foregroundColor(.secondary)
-                        }
-                    }
-                    if preset.excludeOutliers {
-                        Text("Excludes outlier transactions").foregroundColor(.secondary)
-                    }
-                    if preset.excludedAccountIDs.isEmpty &&
-                       preset.excludedCategoryIDs.isEmpty &&
-                       !preset.excludeOutliers {
-                        Text("No filters applied").foregroundColor(.secondary)
-                    }
+                    PresetFilterSummary(preset: preset, currencySymbol: currencySymbol)
                 }
             }
             .navigationTitle("Edit View")

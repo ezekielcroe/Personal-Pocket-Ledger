@@ -41,11 +41,11 @@ enum TimeRange: String, CaseIterable, Identifiable, Hashable {
             guard let weekInterval = calendar.dateInterval(of: .weekOfYear, for: anchor) else {
                 return DateInterval(start: anchor, duration: 0)
             }
-            let offsetSeconds = TimeInterval(offset) * 7 * 24 * 60 * 60
-            return DateInterval(
-                start: weekInterval.start.addingTimeInterval(offsetSeconds),
-                end:   weekInterval.end.addingTimeInterval(offsetSeconds)
-            )
+            // Shift by calendar weeks, not by 7×24 hours: a week that crosses
+            // a daylight-saving change is 167 or 169 hours long.
+            let start = calendar.date(byAdding: .weekOfYear, value: offset, to: weekInterval.start) ?? weekInterval.start
+            let end = calendar.date(byAdding: .weekOfYear, value: 1, to: start) ?? weekInterval.end
+            return DateInterval(start: start, end: end)
             
         // MARK: Month (fiscal-aware)
         case .thisMonth:
@@ -125,7 +125,9 @@ enum TimeRange: String, CaseIterable, Identifiable, Hashable {
 // MARK: - Breakdown Mode
 
 /// How the spending breakdown chart groups its bars in the Insights view.
-enum BreakdownMode: String, CaseIterable, Identifiable, Hashable {
+/// `nonisolated` so it can travel into InsightsEngine's background work
+/// (the project's default actor isolation is MainActor).
+nonisolated enum BreakdownMode: String, CaseIterable, Identifiable, Hashable, Sendable {
     case category = "Category"
     case account  = "Account"
     case group    = "Group"

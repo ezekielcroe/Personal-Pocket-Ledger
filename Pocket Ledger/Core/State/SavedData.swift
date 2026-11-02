@@ -14,33 +14,70 @@ struct InsightPreset: Identifiable, Codable, Hashable, Sendable {
     var excludedAccountIDs: Set<UUID> = []
     var excludedCategoryIDs: Set<UUID> = []
     var excludeOutliers: Bool = false
-    
+    /// Amount range. Optional, so presets saved before these existed
+    /// decode as "no limit" (synthesized Codable uses decodeIfPresent).
+    var minimumAmount: Decimal? = nil
+    var maximumAmount: Decimal? = nil
+    /// Breakdown mode and Spending/Income view at save time. Optional, so
+    /// older presets keep whatever the page shows. The mode is stored as its
+    /// raw string: an unknown value then decodes as nil instead of failing
+    /// the whole file.
+    var breakdownModeRaw: String? = nil
+    var showsIncome: Bool? = nil
+
+    var breakdownMode: BreakdownMode? {
+        get { breakdownModeRaw.flatMap(BreakdownMode.init(rawValue:)) }
+        set { breakdownModeRaw = newValue?.rawValue }
+    }
+
+    /// The preset's filters, in the form Insights uses.
+    var filters: InsightFilters {
+        get {
+            InsightFilters(excludedAccountIDs: excludedAccountIDs,
+                           excludedCategoryIDs: excludedCategoryIDs,
+                           excludeOutliers: excludeOutliers,
+                           minimumAmount: minimumAmount,
+                           maximumAmount: maximumAmount)
+        }
+        set {
+            excludedAccountIDs = newValue.excludedAccountIDs
+            excludedCategoryIDs = newValue.excludedCategoryIDs
+            excludeOutliers = newValue.excludeOutliers
+            minimumAmount = newValue.minimumAmount
+            maximumAmount = newValue.maximumAmount
+        }
+    }
+
+    /// True when the preset applies no filters at all.
+    var isEmpty: Bool {
+        excludedAccountIDs.isEmpty && excludedCategoryIDs.isEmpty &&
+        !excludeOutliers && minimumAmount == nil && maximumAmount == nil
+    }
+
     // MARK: - Codable Compatibility
     // Presets saved before the tag system was removed contain an
     // "excludedTagIDs" key; it is ignored on decode and never re-encoded.
     enum CodingKeys: String, CodingKey {
         case id, name, excludedAccountIDs, excludedCategoryIDs, excludeOutliers
+        case minimumAmount, maximumAmount
+        case breakdownModeRaw = "breakdownMode", showsIncome
     }
 }
 
 // MARK: - Remark Bucket
 
 /// A named umbrella over free-text remarks: "Coffee" = ["starbucks",
-/// "coffeebean", "joe's"]. A transaction belongs to the bucket if its remark
-/// contains ANY term, case-insensitively. Buckets are queries, not stamps —
-/// editing one retroactively re-groups all history.
+/// "*bean", "joe's", "#coffee"]. A transaction belongs to the bucket if its
+/// remark matches ANY term (see RemarkMatcher for the term syntax). Buckets
+/// are queries, not stamps — editing one retroactively re-groups all history.
 struct RemarkBucket: Identifiable, Codable, Hashable, Sendable {
     var id: UUID = UUID()
     var name: String
     var terms: [String] = []
     
+    /// Same rule Insights uses, so a bucket's list and its row always agree.
     func matches(_ remark: String) -> Bool {
-        guard !remark.isEmpty else { return false }
-        let lower = remark.lowercased()
-        return terms.contains { term in
-            let t = term.trimmingCharacters(in: .whitespaces).lowercased()
-            return !t.isEmpty && lower.contains(t)
-        }
+        RemarkMatcher.matches(remark, anyOf: RemarkMatcher.parse(terms))
     }
 }
 

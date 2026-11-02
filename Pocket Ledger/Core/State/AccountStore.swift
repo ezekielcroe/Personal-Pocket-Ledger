@@ -213,6 +213,7 @@ class AccountStore: ObservableObject {
         
         // Fold tags from pre-remark backups into remarks
         transactionStore.migrateLegacyTags(backup.legacyTags)
+        transactionStore.assignSystemRoles()
         
         recomputeBalances(using: transactionStore.transactions)
         save()

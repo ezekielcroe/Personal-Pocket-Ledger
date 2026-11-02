@@ -2,6 +2,10 @@
 //  InsightsViewModel.swift
 //  Pocket Ledger
 //
+//  Owns the Insights page state. Builds a snapshot (InsightsInput) on the
+//  main actor, hands it to InsightsEngine on a background task, and
+//  publishes the result. A newer calculation always replaces an older one.
+//
 
 import Foundation
 import Combine
@@ -9,483 +13,243 @@ import SwiftUI
 
 @MainActor
 class InsightsViewModel: ObservableObject {
-    
-    // MARK: - Outputs (The View observes these)
-    @Published var stats: AnalyticsStats = .empty
-    @Published var previousStats: AnalyticsStats = .empty
-    @Published var isLoading: Bool = false
-    
+
+    // MARK: - Outputs
+    @Published private(set) var result: InsightsResult = .empty
+    @Published private(set) var isLoading: Bool = false
+    /// Remark Lookup results for `lookupTerm`; nil when the term is empty.
+    @Published private(set) var lookup: RemarkTermStats?
+
     // MARK: - Inputs (View State)
     @Published var timeRange: TimeRange = .thisMonth
     @Published var breakdownMode: BreakdownMode = .category
-    @Published var breakdownType: TransactionType = .outflow
+    /// true = Spending, false = Income. Drives the trend, breakdown and lookup.
+    @Published var showsSpending: Bool = true
     @Published var selectedAnchorDate = Date()
-    
+    @Published var lookupTerm: String = ""
+
     /// Signed offset from the current period. 0 = now, -1 = previous, -2 = two periods back, etc.
     @Published var periodOffset: Int = 0
-    
+
     // MARK: - Filters
-    @Published var excludedAccountIDs: Set<UUID> = []
-    @Published var excludedCategoryIDs: Set<UUID> = []
-    @Published var excludeOutliers: Bool = false
-    @Published var minimumAmount: Decimal? = nil
-    @Published var maximumAmount: Decimal? = nil
+    @Published var filters = InsightFilters()
     @Published var selectedPresetID: UUID? = nil
 
-    // MARK: - Current Date Interval (used by InsightsView for detail navigation)
+    /// The snapshot behind `result`, reused for lookups and drill-downs so
+    /// they use exactly the same period and filters as the page.
+    private var lastInput: InsightsInput?
+    private var calculationTask: Task<Void, Never>?
+    private var lookupTask: Task<Void, Never>?
 
-    /// The date interval currently displayed. Exposed so InsightsView can pass
-    /// it to detail views (CategoryDetailView) as a filter.
-    var currentDateInterval: DateInterval {
-        let fiscalStart = UserDefaults.standard.integer(forKey: "fiscalStartDay")
-        return timeRange.dateInterval(
-            relativeTo: selectedAnchorDate,
-            fiscalStartDay: fiscalStart,
-            offset: periodOffset
-        )
+    /// How many periods the trend chart shows, including the current one.
+    private let trendPeriodCount = 6
+
+    // MARK: - Periods
+
+    private var fiscalStartDay: Int {
+        UserDefaults.standard.integer(forKey: "fiscalStartDay")
+    }
+
+    private func interval(offset: Int) -> DateInterval {
+        timeRange.dateInterval(relativeTo: selectedAnchorDate, fiscalStartDay: fiscalStartDay, offset: offset)
+    }
+
+    /// The date interval currently displayed.
+    var currentDateInterval: DateInterval { interval(offset: periodOffset) }
+
+    var isCurrentPeriodInProgress: Bool {
+        timeRange != .allTime && currentDateInterval.contains(Date())
+    }
+
+    /// "month", "week" or "year", for sentences like "by this point last month".
+    var periodNoun: String {
+        switch timeRange {
+        case .thisWeek:  return "week"
+        case .thisMonth: return "month"
+        case .thisYear:  return "year"
+        case .allTime:   return "period"
+        }
     }
 
     // MARK: - Period Navigation
-    
+
     /// Whether a forward arrow should be enabled (can't go past the current period).
     var canGoForward: Bool {
         periodOffset < 0
     }
-    
+
     /// Whether period navigation makes sense for the selected range.
     var supportsNavigation: Bool {
         timeRange != .allTime
     }
-    
+
     func goBack() {
         periodOffset -= 1
     }
-    
+
     func goForward() {
         guard canGoForward else { return }
         periodOffset += 1
     }
-    
+
     func returnToCurrentPeriod() {
         periodOffset = 0
     }
 
-    // MARK: - Calculation Logic
-    
-    /// Triggers a background calculation of the analytics data.
-    /// Call this when any input (range, filter, or transaction list) changes.
+    // MARK: - Calculation
+
+    /// Recalculates in the background. Call when any input changes.
     func calculate(accountStore: AccountStore, transactionStore: TransactionStore) {
-        self.isLoading = true
-        
-        // 1. Capture data (copy to local variables to safely pass to background task)
-        let transactions  = transactionStore.transactions
-        let categories    = transactionStore.categories
-        let accounts      = accountStore.accounts
-        let groups        = accountStore.accountGroups
-        let buckets       = transactionStore.remarkBuckets
-        
-        // 2. Capture configuration
-        let currentRange  = self.timeRange
-        let currentAnchor = self.selectedAnchorDate
-        let currentOffset = self.periodOffset
-        let fiscalStart   = UserDefaults.standard.integer(forKey: "fiscalStartDay")
-        let mode          = self.breakdownMode
-        let type          = self.breakdownType
-        
-        let filterSettings = FilterSettings(
-            excludedAccounts:   excludedAccountIDs,
-            excludedCategories: excludedCategoryIDs,
-            excludeOutliers:    excludeOutliers,
-            min:                minimumAmount,
-            max:                maximumAmount
-        )
-        
-        // 3. Run on background thread
-        Task.detached(priority: .userInitiated) {
-            
-            // A. Calculate current period (shifted by periodOffset)
-            let currentStats = await self.performCalculation(
-                range: currentRange,
-                offset: currentOffset,
-                anchor: currentAnchor,
-                fiscalStart: fiscalStart,
-                transactions: transactions,
-                categories: categories,
-                accounts: accounts,
-                groups: groups,
-                buckets: buckets,
-                filters: filterSettings,
-                breakdownMode: mode,
-                breakdownType: type
-            )
-            
-            // B. Calculate previous period (one further back for comparison)
-            let prevStats = await self.performCalculation(
-                range: currentRange,
-                offset: currentOffset - 1,
-                anchor: currentAnchor,
-                fiscalStart: fiscalStart,
-                transactions: transactions,
-                categories: categories,
-                accounts: accounts,
-                groups: groups,
-                buckets: buckets,
-                filters: filterSettings,
-                breakdownMode: mode,
-                breakdownType: type
-            )
-            
-            // 4. Update UI on main actor
-            await MainActor.run {
-                self.stats = currentStats
-                self.previousStats = prevStats
-                self.isLoading = false
-            }
+        let input = makeInput(accountStore: accountStore, transactionStore: transactionStore)
+        lastInput = input
+        isLoading = true
+
+        calculationTask?.cancel()
+        calculationTask = Task {
+            let computed = await Task.detached(priority: .userInitiated) {
+                InsightsEngine.compute(input)
+            }.value
+            guard !Task.isCancelled else { return }
+            self.result = computed
+            self.isLoading = false
+        }
+        refreshLookup()
+    }
+
+    /// Recomputes the Remark Lookup after a short pause in typing.
+    func refreshLookup() {
+        lookupTask?.cancel()
+        let term = lookupTerm.trimmingCharacters(in: .whitespaces)
+        guard !term.isEmpty, let input = lastInput else {
+            lookup = nil
+            return
+        }
+        lookupTask = Task {
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            let stats = await Task.detached(priority: .userInitiated) {
+                InsightsEngine.remarkStats(terms: [term], input: input)
+            }.value
+            guard !Task.isCancelled else { return }
+            self.lookup = stats
         }
     }
-    
-    // MARK: - Internal Calculation Engine
-    
-    private struct FilterSettings {
-        let excludedAccounts: Set<UUID>
-        let excludedCategories: Set<UUID>
-        let excludeOutliers: Bool
-        let min: Decimal?
-        let max: Decimal?
+
+    /// Stats for a set of remark terms (a bucket), computed with the page's
+    /// current period and filters. Used by the bucket drill-down.
+    func remarkStats(terms: [String]) async -> RemarkTermStats {
+        guard let input = lastInput else { return .empty }
+        return await Task.detached(priority: .userInitiated) {
+            InsightsEngine.remarkStats(terms: terms, input: input)
+        }.value
     }
-    
-    private func performCalculation(
-        range: TimeRange,
-        offset: Int,
-        anchor: Date,
-        fiscalStart: Int,
-        transactions: [Transaction],
-        categories: [Category],
-        accounts: [Account],
-        groups: [AccountGroup],
-        buckets: [RemarkBucket],
-        filters: FilterSettings,
-        breakdownMode: BreakdownMode,
-        breakdownType: TransactionType
-    ) -> AnalyticsStats {
-        
-        let dateInterval = range.dateInterval(relativeTo: anchor, fiscalStartDay: fiscalStart, offset: offset)
-        
-        // Lookup sets for logic
-        let transferCategoryIDs = Set(categories.filter { $0.name == "Transfer" }.map { $0.id })
-        let pureDebtAccountIDs  = Set(accounts.filter { $0.accountType == .debt }.map { $0.id })
-        
-        // 1. Filter transactions
-        let filtered = Self.applyFilters(transactions, interval: dateInterval, filters: filters)
-        
-        // 2. Calculate global totals (smart transfer logic)
-        var income: Decimal = 0
-        var expense: Decimal = 0
-        
-        for tx in filtered {
-            let isTransferCategory = transferCategoryIDs.contains(tx.categoryID)
-            
-            if isTransferCategory {
-                // Only transfers TO pure debt accounts count as expense (loan payment)
-                if tx.type == .inflow && pureDebtAccountIDs.contains(tx.accountID) {
-                    if let linkedID = tx.linkedTransactionID,
-                       let linkedTx = transactions.first(where: { $0.id == linkedID }) {
-                        if !pureDebtAccountIDs.contains(linkedTx.accountID) {
-                            expense += tx.amount
-                        }
-                    }
-                }
+
+    // MARK: - Presets
+
+    func apply(_ preset: InsightPreset) {
+        filters = preset.filters
+        if let mode = preset.breakdownMode { breakdownMode = mode }
+        if let showsIncome = preset.showsIncome { showsSpending = !showsIncome }
+        selectedPresetID = preset.id
+    }
+
+    func resetFilters() {
+        filters = InsightFilters()
+        selectedPresetID = nil
+    }
+
+    // MARK: - Snapshot
+
+    /// Resolves everything main-actor isolated (computed model properties,
+    /// group membership, period dates) into plain values for the engine.
+    private func makeInput(accountStore: AccountStore, transactionStore: TransactionStore) -> InsightsInput {
+        let accounts = accountStore.accounts
+        let groups = accountStore.accountGroups
+        let categories = transactionStore.categories
+        let now = Date()
+
+        // Groups: only top-level groups get a row; a nested group's accounts
+        // roll up into its outermost parent. First group wins if an account
+        // sits in two top-level groups, so every dollar lands in one row.
+        let nestedGroupIDs = Set(groups.flatMap { $0.memberIDs })
+        var topLevelGroupOfAccount: [UUID: UUID] = [:]
+        for group in groups where !nestedGroupIDs.contains(group.id) {
+            for accountID in group.allAccountIDs(in: groups, accounts: accounts)
+            where topLevelGroupOfAccount[accountID] == nil {
+                topLevelGroupOfAccount[accountID] = group.id
+            }
+        }
+
+        // Comparison: like-for-like while the current period is in
+        // progress ("by this point last month"), else the whole previous one.
+        let current = currentDateInterval
+        var comparison: DateInterval?
+        var likeForLike = false
+        if timeRange != .allTime {
+            let previous = interval(offset: periodOffset - 1)
+            if current.contains(now) {
+                let elapsed = now.timeIntervalSince(current.start)
+                let end = min(previous.start.addingTimeInterval(elapsed), previous.end)
+                comparison = DateInterval(start: previous.start, end: end)
+                likeForLike = true
             } else {
-                if tx.type == .inflow       { income  += tx.amount }
-                else if tx.type == .outflow { expense += tx.amount }
+                comparison = previous
             }
         }
-        
-        // 3. Generate breakdown
-        let breakdownTransactions = Self.breakdownEligible(
-            filtered,
-            allTransactions: transactions,
-            transferCategoryIDs: transferCategoryIDs,
-            pureDebtAccountIDs: pureDebtAccountIDs,
-            breakdownType: breakdownType
-        )
-        
-        let breakdownTotal = breakdownTransactions.reduce(0) { $0 + $1.amount }
-        var breakdownItems: [AnalyticsItem] = []
-        
-        switch breakdownMode {
-        case .category:
-            var dict: [UUID: Decimal] = [:]
-            for tx in breakdownTransactions { dict[tx.categoryID, default: 0] += tx.amount }
-            
-            breakdownItems = dict.compactMap { (id, amount) in
-                guard let cat = categories.first(where: { $0.id == id }) else { return nil }
-                return AnalyticsItem(id: id, name: cat.name, icon: cat.emoji, amount: amount, color: .primary)
-            }
-            
-        case .account:
-            var dict: [UUID: Decimal] = [:]
-            for tx in breakdownTransactions { dict[tx.accountID, default: 0] += tx.amount }
-            
-            breakdownItems = dict.compactMap { (id, amount) in
-                guard let acc = accounts.first(where: { $0.id == id }) else { return nil }
-                return AnalyticsItem(id: id, name: acc.name, icon: acc.accountType.icon, amount: amount, color: acc.accountType.color)
-            }
-            
-        case .group:
-            var ungroupedAmount: Decimal = 0
-            var accountToGroupMap: [UUID: UUID] = [:]
-            
-            for group in groups {
-                let memberAccountIDs = group.allAccountIDs(in: groups, accounts: accounts)
-                for accountID in memberAccountIDs {
-                    accountToGroupMap[accountID] = group.id
-                }
-            }
-            
-            var dict: [UUID: Decimal] = [:]
-            
-            for tx in breakdownTransactions {
-                if let groupID = accountToGroupMap[tx.accountID] {
-                    dict[groupID, default: 0] += tx.amount
-                } else {
-                    ungroupedAmount += tx.amount
-                }
-            }
-            
-            breakdownItems = dict.compactMap { (id, amount) in
-                guard let group = groups.first(where: { $0.id == id }) else { return nil }
-                return AnalyticsItem(id: id, name: group.name, icon: "folder.fill", amount: amount, color: .purple)
-            }
-            
-            if ungroupedAmount > 0 {
-                breakdownItems.append(AnalyticsItem(id: UUID(), name: "Ungrouped", icon: "building.columns", amount: ungroupedAmount, color: .secondary))
-            }
-            
-        case .bucket:
-            // Buckets overlap: one transaction can feed several buckets, so
-            // amounts are absolute totals, not shares of a whole.
-            var unmatchedAmount: Decimal = 0
-            var dict: [UUID: Decimal] = [:]
-            
-            for tx in breakdownTransactions {
-                var matchedAny = false
-                for bucket in buckets where bucket.matches(tx.remark) {
-                    dict[bucket.id, default: 0] += tx.amount
-                    matchedAny = true
-                }
-                if !matchedAny { unmatchedAmount += tx.amount }
-            }
-            
-            breakdownItems = dict.compactMap { (id, amount) in
-                guard let bucket = buckets.first(where: { $0.id == id }) else { return nil }
-                return AnalyticsItem(id: id, name: bucket.name, icon: "text.magnifyingglass", amount: amount, color: .teal)
-            }
-            
-            if unmatchedAmount > 0 {
-                breakdownItems.append(AnalyticsItem(id: UUID(), name: "Unmatched", icon: "questionmark.circle", amount: unmatchedAmount, color: .secondary))
-            }
-        }
-        
-        // Bucket amounts overlap, so a shared denominator would lie; the
-        // largest bucket sets the bar scale instead.
-        let totalForBars: Decimal = (breakdownMode == .bucket)
-            ? (breakdownItems.map { $0.amount }.max() ?? 0)
-            : breakdownTotal
-        
-        return AnalyticsStats(
-            income: income,
-            expense: expense,
-            breakdownItems: breakdownItems.sorted { $0.amount > $1.amount },
-            totalForBreakdown: totalForBars
+
+        return InsightsInput(
+            transactions: transactionStore.transactions,
+            filters: filters,
+            breakdownMode: breakdownMode,
+            showsSpending: showsSpending,
+            accountTypes: Dictionary(accounts.map { ($0.id, $0.accountType) }, uniquingKeysWith: { a, _ in a }),
+            accountNames: Dictionary(accounts.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a }),
+            activeAccountIDs: Set(accounts.filter { !$0.isArchived }.map { $0.id }),
+            lastReconciled: Dictionary(accounts.compactMap { account in
+                account.lastReconciledDate.map { (account.id, $0) }
+            }, uniquingKeysWith: { a, _ in a }),
+            categories: Dictionary(categories.map {
+                ($0.id, InsightCategoryInfo(name: $0.name, emoji: $0.emoji))
+            }, uniquingKeysWith: { a, _ in a }),
+            plugCategoryIDs: transactionStore.systemCategoryIDs(for: .reconciliationAdjustment),
+            topLevelGroupOfAccount: topLevelGroupOfAccount,
+            groupNames: Dictionary(groups.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a }),
+            buckets: transactionStore.remarkBuckets.map {
+                InsightBucketInfo(id: $0.id, name: $0.name, terms: RemarkMatcher.parse($0.terms))
+            },
+            current: current,
+            comparison: comparison,
+            comparisonIsLikeForLike: likeForLike,
+            trendPeriods: trendPeriods(now: now),
+            now: now
         )
     }
 
-    
-    // =========================================================
-    // MARK: - Shared Pipeline Helpers
-    // =========================================================
-    
-    /// Step 1 of the pipeline: date window + user filters.
-    nonisolated private static func applyFilters(
-        _ transactions: [Transaction],
-        interval: DateInterval,
-        filters: FilterSettings
-    ) -> [Transaction] {
-        transactions.filter { tx in
-            if !interval.contains(tx.date)                          { return false }
-            if filters.excludeOutliers && tx.isOutlier              { return false }
-            if filters.excludedAccounts.contains(tx.accountID)      { return false }
-            if filters.excludedCategories.contains(tx.categoryID)   { return false }
-            if let min = filters.min, tx.amount < min               { return false }
-            if let max = filters.max, tx.amount > max               { return false }
-            return true
-        }
-    }
-    
-    /// Step 3 of the pipeline: which transactions count toward the breakdown,
-    /// honoring the inflow/outflow toggle and the debt-payment transfer rule.
-    nonisolated private static func breakdownEligible(
-        _ filtered: [Transaction],
-        allTransactions: [Transaction],
-        transferCategoryIDs: Set<UUID>,
-        pureDebtAccountIDs: Set<UUID>,
-        breakdownType: TransactionType
-    ) -> [Transaction] {
-        var result: [Transaction] = []
-        for tx in filtered {
-            let isTransferCategory = transferCategoryIDs.contains(tx.categoryID)
-            
-            if breakdownType == .outflow {
-                // Include: regular outflows + transfers TO pure debt accounts
-                if tx.type == .outflow && !isTransferCategory {
-                    result.append(tx)
-                } else if isTransferCategory && tx.type == .inflow && pureDebtAccountIDs.contains(tx.accountID) {
-                    if let linkedID = tx.linkedTransactionID,
-                       let linkedTx = allTransactions.first(where: { $0.id == linkedID }) {
-                        if !pureDebtAccountIDs.contains(linkedTx.accountID) {
-                            result.append(tx)
-                        }
-                    }
-                }
-            } else {
-                // Income: regular inflows only
-                if tx.type == .inflow && !isTransferCategory {
-                    result.append(tx)
-                }
-            }
-        }
-        return result
-    }
-    
-    
-    // =========================================================
-    // MARK: - Ad-hoc Remark Stats
-    // =========================================================
-    
-    /// Totals, count, average, and a per-period trend for transactions whose
-    /// remark contains ANY of `terms` (case-insensitive). An EMPTY term list
-    /// matches every transaction — used for the page-level trend. Uses the
-    /// currently selected period, filters, and inflow/outflow toggle, so the
-    /// numbers line up with everything else on the Insights page.
-    func remarkStats(
-        terms: [String],
-        transactionStore: TransactionStore,
-        accountStore: AccountStore,
-        trendPeriods: Int = 6
-    ) -> RemarkTermStats {
-        let cleaned = terms
-            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
-            .filter { !$0.isEmpty }
-        
-        func matches(_ tx: Transaction) -> Bool {
-            if cleaned.isEmpty { return true } // no terms = whole-page stats
-            guard !tx.remark.isEmpty else { return false }
-            let lower = tx.remark.lowercased()
-            return cleaned.contains { lower.contains($0) }
-        }
-        
-        let transactions = transactionStore.transactions
-        let categories   = transactionStore.categories
-        let accounts     = accountStore.accounts
-        
-        let transferCategoryIDs = Set(categories.filter { $0.name == "Transfer" }.map { $0.id })
-        let pureDebtAccountIDs  = Set(accounts.filter { $0.accountType == .debt }.map { $0.id })
-        
-        let filters = FilterSettings(
-            excludedAccounts:   excludedAccountIDs,
-            excludedCategories: excludedCategoryIDs,
-            excludeOutliers:    excludeOutliers,
-            min:                minimumAmount,
-            max:                maximumAmount
-        )
-        
-        func amountAndCount(in interval: DateInterval) -> (Decimal, Int) {
-            let filtered = Self.applyFilters(transactions, interval: interval, filters: filters)
-            let eligible = Self.breakdownEligible(
-                filtered,
-                allTransactions: transactions,
-                transferCategoryIDs: transferCategoryIDs,
-                pureDebtAccountIDs: pureDebtAccountIDs,
-                breakdownType: breakdownType
-            )
-            let matching = eligible.filter(matches)
-            return (matching.reduce(0) { $0 + $1.amount }, matching.count)
-        }
-        
-        // Current period
-        let (total, count) = amountAndCount(in: currentDateInterval)
-        let average: Decimal = count > 0 ? total / Decimal(count) : 0
-        
-        // Trend: the last `trendPeriods` periods ending at the one on screen.
-        // "All Time" has no period size, so it falls back to calendar months.
-        let fiscalStart = UserDefaults.standard.integer(forKey: "fiscalStartDay")
+    /// The last `trendPeriodCount` periods ending at the one on screen.
+    /// "All Time" has no period size, so it uses calendar months.
+    private func trendPeriods(now: Date) -> [InsightPeriod] {
         let calendar = Calendar.current
-        var trend: [TrendPoint] = []
-        
-        let labelFormatter = DateFormatter()
+        let formatter = DateFormatter()
         switch timeRange {
-        case .thisWeek:            labelFormatter.dateFormat = "d MMM"
-        case .thisMonth, .allTime: labelFormatter.dateFormat = "MMM"
-        case .thisYear:            labelFormatter.dateFormat = "yyyy"
+        case .thisWeek:            formatter.dateFormat = "d MMM"
+        case .thisMonth, .allTime: formatter.dateFormat = "MMM"
+        case .thisYear:            formatter.dateFormat = "yyyy"
         }
-        
-        if timeRange == .allTime {
-            for back in stride(from: trendPeriods - 1, through: 0, by: -1) {
-                guard let monthAnchor = calendar.date(byAdding: .month, value: -back, to: Date()),
-                      let interval = calendar.dateInterval(of: .month, for: monthAnchor) else { continue }
-                let (amount, _) = amountAndCount(in: interval)
-                trend.append(TrendPoint(label: labelFormatter.string(from: interval.start), amount: amount))
+
+        var periods: [InsightPeriod] = []
+        for back in stride(from: trendPeriodCount - 1, through: 0, by: -1) {
+            let periodInterval: DateInterval?
+            if timeRange == .allTime {
+                periodInterval = calendar.date(byAdding: .month, value: -back, to: now)
+                    .flatMap { calendar.dateInterval(of: .month, for: $0) }
+            } else {
+                periodInterval = interval(offset: periodOffset - back)
             }
-        } else {
-            for back in stride(from: trendPeriods - 1, through: 0, by: -1) {
-                let interval = timeRange.dateInterval(
-                    relativeTo: selectedAnchorDate,
-                    fiscalStartDay: fiscalStart,
-                    offset: periodOffset - back
-                )
-                let (amount, _) = amountAndCount(in: interval)
-                trend.append(TrendPoint(label: labelFormatter.string(from: interval.start), amount: amount))
-            }
+            guard let periodInterval else { continue }
+            periods.append(InsightPeriod(interval: periodInterval,
+                                         label: formatter.string(from: periodInterval.start),
+                                         isInProgress: periodInterval.contains(now)))
         }
-        
-        return RemarkTermStats(total: total, count: count, average: average, trend: trend)
+        return periods
     }
-}
-
-// MARK: - Supporting Data Structures
-
-struct AnalyticsStats {
-    var income: Decimal
-    var expense: Decimal
-    var net: Decimal { income - expense }
-    var breakdownItems: [AnalyticsItem]
-    var totalForBreakdown: Decimal
-    
-    static let empty = AnalyticsStats(income: 0, expense: 0, breakdownItems: [], totalForBreakdown: 0)
-}
-
-struct AnalyticsItem: Identifiable {
-    let id: UUID
-    let name: String
-    let icon: String
-    let amount: Decimal
-    let color: Color?
-}
-
-
-
-// MARK: - Remark Stats Types
-
-struct RemarkTermStats {
-    let total: Decimal
-    let count: Int
-    let average: Decimal
-    let trend: [TrendPoint]
-}
-
-struct TrendPoint: Identifiable {
-    let id = UUID()
-    let label: String
-    let amount: Decimal
 }

@@ -75,7 +75,7 @@ struct TransactionDetailView: View {
     }
     
     // Display Logic for Transfers
-    private var isTransfer: Bool { categoryName == "Transfer" }
+    private var isTransfer: Bool { transaction.linkedTransactionID != nil }
     
     private var displayType: String {
         if isTransfer { return "Transfer" }
